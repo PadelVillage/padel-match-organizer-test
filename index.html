@@ -28,6 +28,14 @@
       const errEl = document.getElementById('testLoaderError');
       const retryEl = document.getElementById('testLoaderRetry');
 
+      // Tetto d'attesa su OGNI chiamata a GitHub. Un rifiuto arriva subito; un APPESO
+      // lascerebbe «Caricamento…» per sempre — ed è il caso che nessuno prova.
+      const ATTESA_APP_MS = 20000;   // scaricare l'app: 3 MB, può volerci
+      const ATTESA_META_MS = 8000;   // le chiamate di controllo: piccole, o rispondono o pazienza
+      function conTetto(ms) {
+        try { return AbortSignal.timeout(ms); } catch (e) { return undefined; }
+      }
+
       function showErr(m) {
         if (errEl) { errEl.hidden = false; errEl.textContent = m; }
         if (retryEl) { retryEl.hidden = false; }
@@ -44,9 +52,14 @@
         //    dominio (./app.html, tenuta fresca da .github/workflows/sync-app.yml). Stessa
         //    origine, servita da Pages: nessuna quota GitHub, nessun 429. 'no-cache' = il
         //    browser rivalida con l'ETag, quindi fresca ma senza riscaricare 3 MB se invariata.
+        //    ⚠️ Si prendono i BYTE, non il testo: servono per l'impronta della voce 59 qui sotto.
+        //    Il testo si ricava decodificandoli, ed è lo stesso che darebbe r0.text().
         try {
-          const r0 = await fetch('./app.html', { cache: 'no-cache' });
-          if (r0.ok) return await r0.text();
+          const r0 = await fetch('./app.html', { cache: 'no-cache', signal: conTetto(ATTESA_APP_MS) });
+          if (r0.ok) {
+            const byte = new Uint8Array(await r0.arrayBuffer());
+            return { testo: new TextDecoder('utf-8').decode(byte), byte: byte, primario: true };
+          }
           guasti.push('copia locale: HTTP ' + r0.status);
         } catch (e) { guasti.push('copia locale: ' + (e && e.message ? e.message : e)); }
 
@@ -54,16 +67,18 @@
         //    strozzato (429 anti-scraping sui percorsi per-ramo di questo repo) lasciando TEST
         //    a terra: per questo ora è solo il ripiego. Prima lo SHA via API → file pinnato
         //    (raw-by-SHA è immutabile e cacheabile), poi il percorso per-ramo.
+        //    📌 Da qui in poi si legge la SORGENTE: per definizione non può essere vecchia,
+        //    quindi il controllo della voce 59 non si fa (primario: false).
         try {
           const shaResp = await fetch(
             'https://api.github.com/repos/' + repo + '/commits/' + branch,
-            { cache: 'no-store', headers: { 'Accept': 'application/vnd.github.sha' } }
+            { cache: 'no-store', headers: { 'Accept': 'application/vnd.github.sha' }, signal: conTetto(ATTESA_META_MS) }
           );
           if (shaResp.ok) {
             const sha = (await shaResp.text()).trim();
             if (/^[0-9a-f]{7,40}$/i.test(sha)) {
-              const r = await fetch('https://raw.githubusercontent.com/' + repo + '/' + sha + '/index.html', { cache: 'no-store' });
-              if (r.ok) return await r.text();
+              const r = await fetch('https://raw.githubusercontent.com/' + repo + '/' + sha + '/index.html', { cache: 'no-store', signal: conTetto(ATTESA_APP_MS) });
+              if (r.ok) return { testo: await r.text(), byte: null, primario: false };
               guasti.push('raw (SHA): HTTP ' + r.status);
             } else { guasti.push('api.github.com: risposta non valida'); }
           } else { guasti.push('api.github.com: HTTP ' + shaResp.status); }
@@ -74,19 +89,152 @@
         try {
           const r2 = await fetch(
             'https://raw.githubusercontent.com/' + repo + '/' + branch + '/index.html',
-            { cache: 'no-store' }
+            { cache: 'no-store', signal: conTetto(ATTESA_APP_MS) }
           );
-          if (r2.ok) return await r2.text();
+          if (r2.ok) return { testo: await r2.text(), byte: null, primario: false };
           guasti.push('raw (ramo): HTTP ' + r2.status);
         } catch (e) { guasti.push('raw (ramo): ' + (e && e.message ? e.message : e)); }
 
         throw new Error(guasti.join('\n'));
       }
 
+      // ────────────────────────────────────────────────────────────────────────────────
+      // VOCE 59/B — «TEST può mostrare una copia VECCHIA senza dirlo»
+      //
+      // È il prezzo della cura della 58: ./app.html è la strada PRIMARIA, quindi se la
+      // sincronia si ferma (avaria di Actions, o lo spegnimento automatico degli schedule
+      // dopo ~60 giorni di repo fermo) TEST mostra una versione vecchia e sullo schermo
+      // non si vede NIENTE.
+      //
+      // 🚨 SI CONFRONTA IL CONTENUTO, NON IL COMMIT — e non è un dettaglio.
+      //    Il dato ovvio sarebbe `source_sha` di app-meta.json contro la testa di
+      //    test-preview. È SBAGLIATO, ed è MISURATO: il 17/08 alle 21:55 la copia era
+      //    fresca al byte (blob 79d1a3a4 su entrambi i lati) mentre `source_sha` era
+      //    a0640f3 e la testa 77feb7c — DODICI commit di distanza. Motivo: sync-app.yml
+      //    ricopia solo se index.html è cambiato (`cmp -s` → `exit 0`), quindi ogni commit
+      //    che tocca solo docs/ allontana il commit senza invecchiare la copia.
+      //    ⇒ Il confronto sui commit griderebbe al lupo su una copia perfetta, che è
+      //    esattamente la malattia per cui la strada `synced_at` era già stata scartata.
+      //    Qui si confronta l'IMPRONTA del file: l'unica cosa che cambia se e solo se
+      //    l'app cambia.
+      //
+      // Vincoli, tutti voluti:
+      // · MAI bloccante — parte dopo che l'app è già a schermo, e non si aspetta;
+      // · MAI allarmista — qualunque intoppo (GitHub muto, 403, 429, rete, crypto assente)
+      //   finisce in silenzio: si avvisa solo di ciò che si è potuto DIMOSTRARE;
+      // · al massimo UNA chiamata all'ora per browser, e la memoria si invalida da sé
+      //   quando la copia servita cambia (chiave = impronta del file servito).
+      // ────────────────────────────────────────────────────────────────────────────────
+
+      const MEMORIA = 'pmoTestFreschezza.v1';
+      const UN_ORA_MS = 60 * 60 * 1000;
+
+      // Impronta git di un file: sha1("blob <byte>\0" + contenuto). È la stessa che
+      // l'API di GitHub riporta per ogni voce di un albero ⇒ i due lati sono confrontabili
+      // senza scaricare la sorgente (3 MB che non servono a nessuno).
+      async function improntaGit(byte) {
+        const testata = new TextEncoder().encode('blob ' + byte.length + '\0');
+        const tutto = new Uint8Array(testata.length + byte.length);
+        tutto.set(testata, 0);
+        tutto.set(byte, testata.length);
+        const dig = await crypto.subtle.digest('SHA-1', tutto);
+        return Array.from(new Uint8Array(dig)).map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+      }
+
+      function leggiMemoria() {
+        try { return JSON.parse(localStorage.getItem(MEMORIA) || 'null'); } catch (e) { return null; }
+      }
+      function scriviMemoria(v) {
+        // Se localStorage è pieno o negato si perde solo la parsimonia, non la correttezza:
+        // al massimo si rifà la chiamata al carico dopo.
+        try { localStorage.setItem(MEMORIA, JSON.stringify(v)); } catch (e) {}
+      }
+
+      function mostraAvviso(servita, sorgente) {
+        if (document.getElementById('pmoAvvisoCopiaVecchia')) return;
+        const box = document.createElement('div');
+        box.id = 'pmoAvvisoCopiaVecchia';
+        box.setAttribute('style', [
+          'position:fixed', 'left:12px', 'right:12px', 'bottom:12px', 'z-index:2147483647',
+          'max-width:640px', 'margin:0 auto', 'background:#fffaeb', 'border:1px solid #f5c26b',
+          'border-radius:10px', 'padding:12px 14px', 'box-shadow:0 8px 28px rgba(15,23,42,.18)',
+          'font:14px/1.45 Arial,sans-serif', 'color:#7a4a02'
+        ].join(';'));
+        const testo = document.createElement('div');
+        testo.innerHTML =
+          '<strong>⚠️ Questa non è l\'ultima versione di TEST.</strong><br>' +
+          'La copia servita da questo dominio è rimasta indietro rispetto al ramo ' +
+          '<code>test-preview</code>: la sincronia automatica non è passata. ' +
+          'Quello che vedi è codice <em>vecchio</em> — non fidarti di una prova fatta qui ' +
+          'finché non si sblocca.' +
+          '<br><span style="opacity:.75;font-size:12px">servita ' + servita.slice(0, 7) +
+          ' · sorgente ' + sorgente.slice(0, 7) + '</span>';
+        const chiudi = document.createElement('button');
+        chiudi.textContent = 'Ho capito';
+        chiudi.setAttribute('style', 'margin-top:10px;padding:6px 14px;font:14px Arial,sans-serif;border:1px solid #7a4a02;border-radius:7px;background:#fff;color:#7a4a02;cursor:pointer');
+        let chiuso = false;
+        chiudi.addEventListener('click', function () { chiuso = true; box.remove(); });
+        box.appendChild(testo);
+        box.appendChild(chiudi);
+        (document.body || document.documentElement).appendChild(box);
+
+        // 🚨 L'app di TEST monta la sua interfaccia DOPO questo punto, e rifacendo il body
+        //    si porterebbe via l'avviso. Non è teoria: al banco, con un'app che rifà il
+        //    body a 300 ms, l'avviso spariva e il caso «copia vecchia» cadeva ROSSO — cioè
+        //    proprio il caso per cui la voce 59 esiste.
+        //    ⇒ Si rimette finché l'app si assesta, ma per una finestra CHIUSA: un guardiano
+        //    perpetuo su una pagina che vive ore è un costo senza scopo, e chi ha letto
+        //    l'avviso e l'ha chiuso non se lo deve ritrovare addosso.
+        const FINESTRA_MS = 20000, PASSO_MS = 500;
+        const scaduta = Date.now() + FINESTRA_MS;
+        const guardia = setInterval(function () {
+          if (chiuso || Date.now() > scaduta) { clearInterval(guardia); return; }
+          if (!box.isConnected) (document.body || document.documentElement).appendChild(box);
+        }, PASSO_MS);
+      }
+
+      async function controllaFreschezza(byteServiti) {
+        if (!byteServiti || !window.crypto || !crypto.subtle) return;   // niente impronta, niente verdetto
+        const servita = await improntaGit(byteServiti);
+
+        // Memoria: valida solo finché la copia servita è LA STESSA. Se è cambiata,
+        // il verdetto vecchio non parla più di questo file ⇒ si ricontrolla.
+        const ricordo = leggiMemoria();
+        if (ricordo && ricordo.servita === servita && (Date.now() - ricordo.quando) < UN_ORA_MS) {
+          if (ricordo.vecchia) mostraAvviso(servita, ricordo.sorgente || '');
+          return;
+        }
+
+        // UNA chiamata, e su una CARTELLA: l'elenco della radice del ramo (27 voci, pochi KB)
+        // porta l'impronta di ogni file senza scaricarne il contenuto. Chiedere
+        // .../contents/index.html si tirerebbe dietro 3 MB inutili; questa no.
+        // 📌 Scelta ESEGUITA, non dedotta: il 17/08 questa stessa chiamata è stata fatta sul
+        //    ramo vero e ha risposto `index.html → 79d1a3a4…`, cioè lo stesso identico valore
+        //    che improntaGit calcola sui byte serviti. I due lati sono confrontabili: misurato,
+        //    non supposto.
+        let sorgente = null;
+        try {
+          const r = await fetch(
+            'https://api.github.com/repos/' + repo + '/contents/?ref=' + branch,
+            { cache: 'no-store', signal: conTetto(ATTESA_META_MS) }
+          );
+          if (!r.ok) return;                                   // 403/404/429/500 → si tace
+          const radice = await r.json();
+          if (!Array.isArray(radice)) return;
+          const voce = radice.find(function (v) { return v && (v.name === 'index.html' || v.path === 'index.html'); });
+          if (!voce || !/^[0-9a-f]{40}$/i.test(voce.sha || '')) return;
+          sorgente = voce.sha.toLowerCase();
+        } catch (e) { return; }                                 // rete, tetto d'attesa → si tace
+
+        const vecchia = sorgente !== servita;
+        scriviMemoria({ quando: Date.now(), servita: servita, sorgente: sorgente, vecchia: vecchia });
+        if (vecchia) mostraAvviso(servita, sorgente);
+      }
+
       async function boot() {
         hideErr();
         try {
-          const html = await fetchAppHtml();
+          const app = await fetchAppHtml();
           // Ambiente dichiarato esplicitamente: è la PRIMA delle due cinture. La seconda è
           // dentro l'app (pmoIsTestHostname: hostname che inizia per "test." → TEST, dalla
           // v6.112/6.113). Ridondanti di proposito: se una salta, l'altra evita che l'app di
@@ -95,7 +243,11 @@
           // Base pubblica = questo dominio: è qui che l'app cerca config-test.js.
           // ⚠️ Se il dominio cambia, si cambia QUI (e nel CNAME).
           window.PMO_PUBLIC_BASE_URL = 'https://test.padelvillage.club/';
-          document.open(); document.write(html); document.close();
+          document.open(); document.write(app.testo); document.close();
+          // Voce 59/B: si parte SOLO dopo che l'app è a schermo, e NON si aspetta il
+          // risultato. Se questa riga esplodesse, l'app resterebbe su e nessuno se ne
+          // accorgerebbe — che è il comportamento voluto per un avviso.
+          if (app.primario) { controllaFreschezza(app.byte).catch(function () {}); }
         } catch (err) {
           // Niente ritentativi automatici: ogni tentativo in più su GitHub consuma altra
           // quota e allunga il blocco. Si riprova solo dal bottone, una volta per pressione.
