@@ -10,23 +10,50 @@
     h1 { margin:0 0 8px; font-size:24px; }
     p { margin:0; color:#667085; line-height:1.45; }
     .error { color:#b42318; margin-top:12px; white-space:pre-line; }
+    .retry { margin-top:14px; padding:9px 18px; font-size:15px; border:1px solid #1f4788; border-radius:8px; background:#fff; color:#1f4788; cursor:pointer; }
+    .retry:hover { background:#f0f5fc; }
   </style>
 </head>
 <body>
   <main class="loader">
     <h1>Padel Match Organizer TEST</h1>
-    <p>Caricamento dell'ultima versione pubblicata sul canale test-preview...</p>
+    <p>Caricamento dell'app di TEST…</p>
     <p id="testLoaderError" class="error" hidden></p>
+    <button id="testLoaderRetry" class="retry" hidden>Riprova</button>
   </main>
   <script>
-    (async function loadTestPreview() {
+    (function () {
       const repo = 'PadelVillage/padel-match-organizer';
       const branch = 'test-preview';
       const errEl = document.getElementById('testLoaderError');
-      const showErr = function (m) { if (errEl) { errEl.hidden = false; errEl.textContent = 'TEST non caricato: ' + m; } };
+      const retryEl = document.getElementById('testLoaderRetry');
+
+      function showErr(m) {
+        if (errEl) { errEl.hidden = false; errEl.textContent = m; }
+        if (retryEl) { retryEl.hidden = false; }
+      }
+      function hideErr() {
+        if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
+        if (retryEl) { retryEl.hidden = true; }
+      }
 
       async function fetchAppHtml() {
-        // 1) ISTANTANEO: ultimo commit del branch → file pinnato al SHA (raw-by-SHA è immutabile, niente cache 5 min)
+        const guasti = [];
+
+        // 1) PRIMARIO (cura della voce 58, 17/08/2026): la copia dell'app pubblicata su QUESTO
+        //    dominio (./app.html, tenuta fresca da .github/workflows/sync-app.yml). Stessa
+        //    origine, servita da Pages: nessuna quota GitHub, nessun 429. 'no-cache' = il
+        //    browser rivalida con l'ETag, quindi fresca ma senza riscaricare 3 MB se invariata.
+        try {
+          const r0 = await fetch('./app.html', { cache: 'no-cache' });
+          if (r0.ok) return await r0.text();
+          guasti.push('copia locale: HTTP ' + r0.status);
+        } catch (e) { guasti.push('copia locale: ' + (e && e.message ? e.message : e)); }
+
+        // 2) RIPIEGO: la vecchia strada da GitHub, anonima. È quella che il 17/08 GitHub ha
+        //    strozzato (429 anti-scraping sui percorsi per-ramo di questo repo) lasciando TEST
+        //    a terra: per questo ora è solo il ripiego. Prima lo SHA via API → file pinnato
+        //    (raw-by-SHA è immutabile e cacheabile), poi il percorso per-ramo.
         try {
           const shaResp = await fetch(
             'https://api.github.com/repos/' + repo + '/commits/' + branch,
@@ -37,32 +64,53 @@
             if (/^[0-9a-f]{7,40}$/i.test(sha)) {
               const r = await fetch('https://raw.githubusercontent.com/' + repo + '/' + sha + '/index.html', { cache: 'no-store' });
               if (r.ok) return await r.text();
-            }
-          }
-        } catch (e) { /* passa al fallback */ }
-        // 2) FALLBACK: branch raw (può avere la cache ~5 min, ma non si rompe mai — es. rate limit API)
-        const r2 = await fetch(
-          'https://raw.githubusercontent.com/' + repo + '/' + branch + '/index.html?cache=' + Date.now(),
-          { cache: 'no-store' }
-        );
-        if (!r2.ok) throw new Error('HTTP ' + r2.status);
-        return await r2.text();
+              guasti.push('raw (SHA): HTTP ' + r.status);
+            } else { guasti.push('api.github.com: risposta non valida'); }
+          } else { guasti.push('api.github.com: HTTP ' + shaResp.status); }
+        } catch (e) { guasti.push('api.github.com: ' + (e && e.message ? e.message : e)); }
+
+        // Ultimo tentativo: il ramo raw. ⚠️ SENZA cache-buster: il vecchio '?cache=Date.now()'
+        // rendeva ogni richiesta un MISS alla CDN e consumava quota — era parte del guasto.
+        try {
+          const r2 = await fetch(
+            'https://raw.githubusercontent.com/' + repo + '/' + branch + '/index.html',
+            { cache: 'no-store' }
+          );
+          if (r2.ok) return await r2.text();
+          guasti.push('raw (ramo): HTTP ' + r2.status);
+        } catch (e) { guasti.push('raw (ramo): ' + (e && e.message ? e.message : e)); }
+
+        throw new Error(guasti.join('\n'));
       }
 
-      try {
-        const html = await fetchAppHtml();
-        // Ambiente dichiarato esplicitamente: è la PRIMA delle due cinture. La seconda è
-        // dentro l'app (pmoIsTestHostname: hostname che inizia per "test." → TEST, dalla
-        // v6.112/6.113). Ridondanti di proposito: se una salta, l'altra evita che l'app di
-        // TEST finisca a parlare col Supabase e col Matchpoint di PRODUZIONE.
-        window.PMO_FORCE_ENV = 'test';
-        // Base pubblica = questo dominio: è qui che l'app cerca config-test.js.
-        // ⚠️ Se il dominio cambia, si cambia QUI (e nel CNAME).
-        window.PMO_PUBLIC_BASE_URL = 'https://test.padelvillage.club/';
-        document.open(); document.write(html); document.close();
-      } catch (err) {
-        showErr(err && err.message ? err.message : String(err));
+      async function boot() {
+        hideErr();
+        try {
+          const html = await fetchAppHtml();
+          // Ambiente dichiarato esplicitamente: è la PRIMA delle due cinture. La seconda è
+          // dentro l'app (pmoIsTestHostname: hostname che inizia per "test." → TEST, dalla
+          // v6.112/6.113). Ridondanti di proposito: se una salta, l'altra evita che l'app di
+          // TEST finisca a parlare col Supabase e col Matchpoint di PRODUZIONE.
+          window.PMO_FORCE_ENV = 'test';
+          // Base pubblica = questo dominio: è qui che l'app cerca config-test.js.
+          // ⚠️ Se il dominio cambia, si cambia QUI (e nel CNAME).
+          window.PMO_PUBLIC_BASE_URL = 'https://test.padelvillage.club/';
+          document.open(); document.write(html); document.close();
+        } catch (err) {
+          // Niente ritentativi automatici: ogni tentativo in più su GitHub consuma altra
+          // quota e allunga il blocco. Si riprova solo dal bottone, una volta per pressione.
+          showErr(
+            'TEST non caricato. Nessuna delle strade ha risposto:\n' +
+            (err && err.message ? err.message : String(err)) +
+            '\n\nSe è un 429, GitHub sta limitando i download anonimi: di solito si sblocca ' +
+            'da solo in qualche minuto. Aspetta un momento e premi «Riprova» — ricaricare a ' +
+            'raffica peggiora il blocco.'
+          );
+        }
       }
+
+      if (retryEl) retryEl.addEventListener('click', boot);
+      boot();
     })();
   </script>
 </body>

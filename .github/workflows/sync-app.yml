@@ -1,0 +1,73 @@
+# Pubblica su questo repo (e quindi su Pages, test.padelvillage.club) la copia
+# dell'app di TEST: index.html del ramo test-preview di
+# PadelVillage/padel-match-organizer, salvato qui come app.html.
+#
+# Nasce dalla voce 58 (17/08/2026): il caricatore scaricava l'app da
+# raw.githubusercontent.com in forma anonima, e GitHub strozzava quei download
+# (HTTP 429 anti-scraping) lasciando TEST inutilizzabile. Da qui in poi il
+# caricatore legge ./app.html — stessa origine, nessuna quota — e raw resta
+# solo come ripiego.
+#
+# ⚠️ app.html e app-meta.json NON si modificano a mano: sono COPIE generate.
+#    La sorgente resta index.html sul ramo test-preview del repo dell'app.
+#
+# Tre inneschi:
+# - repository_dispatch "sync-test-app": lo manda il repo dell'app a ogni push
+#   su test-preview (workflow sync-test-loader.yml), se il secret c'è → subito;
+# - schedule ogni 10 minuti: rete di sicurezza, copre anche il caso senza secret;
+# - workflow_dispatch: a mano, quando serve adesso.
+#
+# 📌 GitHub disattiva gli schedule dopo ~60 giorni senza attività sul repo: se
+#    TEST resta fermo a lungo e la copia sembra vecchia, riattivarlo da
+#    Actions → sync-app → Enable, o lanciare un workflow_dispatch.
+
+name: sync-app
+
+on:
+  repository_dispatch:
+    types: [sync-test-app]
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-app
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout di questo repo
+        uses: actions/checkout@v4
+
+      - name: Checkout dell'app (test-preview, solo index.html)
+        uses: actions/checkout@v4
+        with:
+          repository: PadelVillage/padel-match-organizer
+          ref: test-preview
+          path: sorgente
+          sparse-checkout: |
+            index.html
+          sparse-checkout-cone-mode: false
+
+      - name: Copia e pubblica solo se cambiata
+        run: |
+          set -euo pipefail
+          SRC_SHA=$(git -C sorgente rev-parse HEAD)
+          if [ -f app.html ] && cmp -s sorgente/index.html app.html; then
+            echo "app.html già allineata a test-preview @ ${SRC_SHA:0:7} — niente da fare"
+            exit 0
+          fi
+          cp sorgente/index.html app.html
+          SRC_DATE=$(git -C sorgente log -1 --format=%cI)
+          printf '{\n  "source_repo": "PadelVillage/padel-match-organizer",\n  "source_branch": "test-preview",\n  "source_sha": "%s",\n  "source_commit_date": "%s",\n  "synced_at": "%s",\n  "note": "app.html e questo file sono COPIE generate: non modificarli a mano. Sorgente: index.html sul ramo test-preview."\n}\n' \
+            "$SRC_SHA" "$SRC_DATE" "$(date -u +%FT%TZ)" > app-meta.json
+          git config user.name "sync-app"
+          git config user.email "actions@users.noreply.github.com"
+          git add app.html app-meta.json
+          git commit -m "sync: app.html da test-preview @ ${SRC_SHA:0:7}"
+          git push
