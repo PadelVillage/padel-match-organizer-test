@@ -9,9 +9,10 @@ che il caricatore serve dalla stessa origine.
 
 | file | cosa fa |
 |---|---|
-| `index.html` | il caricatore: legge `./app.html` e lo esegue (GitHub `raw` solo come ripiego) |
+| `index.html` | il caricatore: legge `./app.html` e lo esegue (GitHub `raw` solo come ripiego), e avvisa se la copia è vecchia |
 | `app.html` | ⚠️ **copia generata** dell'app (da `test-preview`) — non si modifica a mano |
 | `app-meta.json` | ⚠️ generato: da quale commit viene `app.html` e quando è stato copiato |
+| `banco-freschezza.mjs` | rete di regressione dell'avviso qui sotto (browser vero, 10 casi + sabotaggio) |
 | `.github/workflows/sync-app.yml` | tiene fresca la copia (dispatch dal repo dell'app, cron ogni 10′, o a mano) |
 | `config-test.js` | dice all'app di collegarsi al Supabase di TEST (`cudiqnrrlbyqryrtaprd`) |
 | `CNAME` | assegna il dominio a GitHub Pages |
@@ -27,6 +28,41 @@ due reti diverse — e TEST è rimasto inutilizzabile per ore.
 Da allora il caricatore legge `./app.html` su **questa stessa origine** (Pages):
 nessuna quota, nessun 429. La strada da `raw` esiste ancora, ma solo come
 ripiego se la copia locale non risponde.
+
+## 🕰️ E il prezzo di quella cura: l'avviso «copia vecchia» (voce 59/B, 17/08/2026)
+
+Se `app.html` è la strada **primaria**, allora quando la sincronia si ferma TEST mostra
+una versione vecchia **e sullo schermo non si vede niente**. La sincronia si ferma in
+modi già visti: un'avaria di Actions (17/08), o lo spegnimento automatico degli schedule
+dopo ~60 giorni di repo fermo.
+
+⇒ Caricata l'app, il caricatore fa **una** chiamata all'API e — solo se riesce a
+dimostrare che la copia è indietro — mostra un avviso in fondo alla pagina.
+
+🚨 **Si confronta il CONTENUTO, non il commit — e non è un dettaglio di stile.**
+Il confronto ovvio (`source_sha` contro la testa di `test-preview`) è **sbagliato**, ed è
+misurato: il 17/08 la copia era fresca **al byte** — impronta `79d1a3a4…` su entrambi i
+lati — mentre `source_sha` era `a0640f3` e la testa `77feb7c`, **dodici commit** più in
+là. Il motivo sta in `sync-app.yml`: ricopia solo se `index.html` è cambiato
+(`cmp -s` → `exit 0`), quindi **ogni commit che tocca solo `docs/` allontana il commit
+senza invecchiare la copia**. Un avviso legato ai commit griderebbe al lupo su una copia
+perfetta — la stessa malattia per cui la strada `synced_at` era già stata scartata.
+
+Si confronta quindi l'**impronta git** (`sha1("blob <n>\0" + contenuto)`) fra i byte
+serviti e quelli di `index.html` su `test-preview`, letta dall'elenco della radice del
+ramo: una chiamata, pochi KB, nessun download da 3 MB.
+
+Le tre regole, tutte volute e tutte provate al banco:
+
+| | |
+|---|---|
+| **mai bloccante** | parte **dopo** che l'app è a schermo, e non si aspetta il risultato |
+| **mai allarmista** | GitHub muto, 403, 429, rete giù, risposta appesa → **silenzio**. Si avvisa solo di ciò che si è potuto **dimostrare** |
+| **al massimo 1 chiamata/ora** per browser | e la memoria si invalida **da sé** quando la copia servita cambia, perché è quella l'unica cosa di cui il verdetto parlava |
+
+📌 L'avviso viene **rimesso** se l'app rifà il `body` montandosi (finestra chiusa di 20 s):
+al banco, senza quello, il caso «copia vecchia» cadeva **rosso** — cioè proprio quello per
+cui la voce esiste. Chi preme «Ho capito» non se lo ritrova più addosso.
 
 ## ⚠️ Non modificare l'app da qui
 
