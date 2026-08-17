@@ -10,59 +10,157 @@
     h1 { margin:0 0 8px; font-size:24px; }
     p { margin:0; color:#667085; line-height:1.45; }
     .error { color:#b42318; margin-top:12px; white-space:pre-line; }
+    .avviso { margin-top:14px; padding:12px; border:1px solid #fde68a; background:#fffbeb; border-radius:8px; color:#7c4a03; line-height:1.45; }
+    button { margin-top:12px; width:100%; padding:12px 14px; font-size:16px; font-family:inherit; font-weight:bold;
+             color:#fff; background:#1f4788; border:0; border-radius:8px; cursor:pointer; }
+    button:disabled { background:#9aa8bf; cursor:default; }
   </style>
 </head>
 <body>
   <main class="loader">
     <h1>Padel Match Organizer TEST</h1>
-    <p>Caricamento dell'ultima versione pubblicata sul canale test-preview...</p>
+    <p id="testLoaderStato">Caricamento dell'ultima versione pubblicata sul canale test-preview...</p>
     <p id="testLoaderError" class="error" hidden></p>
+    <div id="testLoaderRipiego" class="avviso" hidden></div>
   </main>
   <script>
-    (async function loadTestPreview() {
+    /*
+     * 🚨⭐⭐ 17/08/2026 — PERCHÉ QUESTO FILE È CAMBIATO: TEST È MORTO PER UN'ORA, e non per
+     * colpa nostra.
+     *
+     * Il committente: «non raggiungo più test». La pagina rispondeva 200 e scriveva
+     * «TEST non caricato: HTTP 429».
+     *
+     * ⚖️ Misurato quel giorno, e la sonda decisiva è stata puntarla su un repo NON NOSTRO:
+     *   · `raw.githubusercontent.com` → 429 anche su `torvalds/linux`
+     *   · `api.github.com` → 504 anche su `torvalds/linux`
+     *   · GitHub **Pages** (questo dominio) → 200
+     *   · le chiamate AUTENTICATE (gh) → tutte a posto
+     * ⇒ Non era la nostra quota né il nostro repo: GitHub stava rifiutando le richieste
+     * **ANONIME** da quella rete. E un browser è anonimo per definizione.
+     *
+     * 🚨 IL DIFETTO NOSTRO, che resta nostro: le DUE strade che c'erano — «sha dall'API poi
+     * raw» e «raw per ramo» — finiscono **tutt'e due su `raw`**. Il ripiego proteggeva dal
+     * guasto sbagliato (l'API strozzata), non da questo. Quando `raw` dice no, TEST era un
+     * vicolo cieco con dentro un codice HTTP: la cosa che in questo progetto non si fa mai.
+     *
+     * ⇒ LA TERZA STRADA NON PASSA DA GITHUB: una copia dell'app in QUESTO repo, servita da
+     * Pages come la pagina che stai leggendo — cioè dall'unica porta che quel giorno era
+     * aperta.
+     *
+     * ⭐ E l'ordine è quello giusto: il **fresco prima**. «Ogni push su `test-preview` è
+     * subito live» resta vero; la copia entra in scena solo quando GitHub dice no.
+     * 🚨 E NON si apre da sola: si apre con un BOTTONE, perché una copia vecchia mostrata in
+     * silenzio è peggio di un errore — chi guarda TEST deve sapere che sta guardando una
+     * fotografia, o crederà di aver provato l'ultima versione.
+     * ⚠️ La versione la si legge DALLA COPIA STESSA, non da un dato scritto qui accanto: due
+     * dati gemelli aggiornati a mano divergono, ed è la trappola di questo progetto.
+     */
+    (function () {
       const repo = 'PadelVillage/padel-match-organizer';
       const branch = 'test-preview';
-      const errEl = document.getElementById('testLoaderError');
-      const showErr = function (m) { if (errEl) { errEl.hidden = false; errEl.textContent = 'TEST non caricato: ' + m; } };
+      const COPIA = './app-copia.html';
 
-      async function fetchAppHtml() {
-        // 1) ISTANTANEO: ultimo commit del branch → file pinnato al SHA (raw-by-SHA è immutabile, niente cache 5 min)
+      const statoEl = document.getElementById('testLoaderStato');
+      const errEl = document.getElementById('testLoaderError');
+      const ripiegoEl = document.getElementById('testLoaderRipiego');
+
+      function mostraErrore(m) {
+        if (errEl) { errEl.hidden = false; errEl.textContent = 'TEST non caricato: ' + m; }
+      }
+
+      // Le due cinture d'ambiente, identiche a prima e per la stessa ragione: se una salta,
+      // l'altra impedisce che l'app di TEST parli col Supabase e col Matchpoint di PRODUZIONE.
+      // ⚠️ Vanno messe PRIMA di scrivere il documento, su ogni strada — copia compresa.
+      function apri(html) {
+        window.PMO_FORCE_ENV = 'test';
+        window.PMO_PUBLIC_BASE_URL = 'https://test.padelvillage.club/';
+        document.open(); document.write(html); document.close();
+      }
+
+      /*
+       * ⏱️ IL TETTO D'ATTESA, e non è prudenza generica: è un caso VISTO provando.
+       * Un rifiuto (429) arriva subito e porta al ripiego; ma GitHub può anche restare
+       * APPESO — il 17/08 una richiesta a una CDN ci ha messo 20 secondi per poi fallire.
+       * Senza tetto la pagina resta su «Caricamento…» **per sempre**, che è un vicolo cieco
+       * peggiore dell'errore: l'errore almeno dice qualcosa.
+       * ⚖️ `AbortSignal.timeout` non c'è sui browser vecchi ⇒ se manca si tira dritto senza
+       * tetto, invece di far fallire tutto: meglio l'attesa lunga che nessun caricamento.
+       */
+      const TETTO_MS = 8000;
+      const conTetto = function () {
+        try {
+          return (AbortSignal && AbortSignal.timeout) ? { signal: AbortSignal.timeout(TETTO_MS) } : {};
+        } catch (e) { return {}; }
+      };
+
+      async function daGitHub() {
+        // 1) ISTANTANEO: ultimo commit del branch → file pinnato al SHA (immutabile, niente cache).
         try {
           const shaResp = await fetch(
             'https://api.github.com/repos/' + repo + '/commits/' + branch,
-            { cache: 'no-store', headers: { 'Accept': 'application/vnd.github.sha' } }
+            Object.assign({ cache: 'no-store', headers: { 'Accept': 'application/vnd.github.sha' } }, conTetto())
           );
           if (shaResp.ok) {
             const sha = (await shaResp.text()).trim();
             if (/^[0-9a-f]{7,40}$/i.test(sha)) {
-              const r = await fetch('https://raw.githubusercontent.com/' + repo + '/' + sha + '/index.html', { cache: 'no-store' });
+              const r = await fetch('https://raw.githubusercontent.com/' + repo + '/' + sha + '/index.html', Object.assign({ cache: 'no-store' }, conTetto()));
               if (r.ok) return await r.text();
             }
           }
-        } catch (e) { /* passa al fallback */ }
-        // 2) FALLBACK: branch raw (può avere la cache ~5 min, ma non si rompe mai — es. rate limit API)
+        } catch (e) { /* passa alla strada dopo */ }
+        // 2) Branch raw: copre il caso in cui a essere strozzata sia l'API, non raw.
         const r2 = await fetch(
           'https://raw.githubusercontent.com/' + repo + '/' + branch + '/index.html?cache=' + Date.now(),
-          { cache: 'no-store' }
+          Object.assign({ cache: 'no-store' }, conTetto())
         );
         if (!r2.ok) throw new Error('HTTP ' + r2.status);
         return await r2.text();
       }
 
-      try {
-        const html = await fetchAppHtml();
-        // Ambiente dichiarato esplicitamente: è la PRIMA delle due cinture. La seconda è
-        // dentro l'app (pmoIsTestHostname: hostname che inizia per "test." → TEST, dalla
-        // v6.112/6.113). Ridondanti di proposito: se una salta, l'altra evita che l'app di
-        // TEST finisca a parlare col Supabase e col Matchpoint di PRODUZIONE.
-        window.PMO_FORCE_ENV = 'test';
-        // Base pubblica = questo dominio: è qui che l'app cerca config-test.js.
-        // ⚠️ Se il dominio cambia, si cambia QUI (e nel CNAME).
-        window.PMO_PUBLIC_BASE_URL = 'https://test.padelvillage.club/';
-        document.open(); document.write(html); document.close();
-      } catch (err) {
-        showErr(err && err.message ? err.message : String(err));
+      // 3) La copia servita da QUESTO dominio. Nessuna richiesta a GitHub.
+      function offriLaCopia(motivo) {
+        if (statoEl) statoEl.textContent = 'GitHub non risponde: l\'ultima versione non si può scaricare adesso.';
+        mostraErrore(motivo);
+        if (!ripiegoEl) return;
+        ripiegoEl.hidden = false;
+        // 🚨⭐⭐ «UNA VOLTA APERTA È IDENTICA» — e va detto QUI, prima del tocco.
+        // Provandola il 17/08: appena l'app parte si riprende il titolo, e del «copia» non
+        // resta traccia sullo schermo. Un marchio che l'app può cancellare in silenzio è
+        // peggio di nessun marchio — prometterebbe un avviso che non c'è. ⇒ L'avvertenza sta
+        // dove non può essere cancellata: prima, accanto al bottone che si sta per premere.
+        ripiegoEl.innerHTML =
+          '<strong>Qui c\'è una copia salvata di TEST.</strong><br>'
+          + 'Non è l\'ultima pubblicata: è una fotografia, e potrebbe non avere le ultime modifiche. '
+          + '<strong>Una volta aperta è identica a TEST vero</strong>, quindi non si vede più che è '
+          + 'una copia: se stai provando una cosa appena pubblicata, aspetta invece di aprirla.<br>'
+          + 'Il download vero riparte da solo appena GitHub torna a rispondere — '
+          + '<em>non ricaricare la pagina in continuazione</em>, ogni tentativo consuma altra quota.';
+        const b = document.createElement('button');
+        b.textContent = 'Apri la copia salvata';
+        b.onclick = async function () {
+          b.disabled = true;
+          b.textContent = 'Apro la copia…';
+          try {
+            const r = await fetch(COPIA, { cache: 'no-store' });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const html = await r.text();
+            // ⭐ La versione si legge DALLA copia: nessun dato gemello da tenere allineato.
+            const v = (html.match(/APP_VERSION\s*=\s*'([^']+)'/) || [])[1];
+            document.title = 'TEST (copia' + (v ? ' v' + v : '') + ')';
+            apri(html);
+          } catch (e) {
+            b.disabled = false;
+            b.textContent = 'Apri la copia salvata';
+            mostraErrore('anche la copia non si è aperta (' + (e && e.message ? e.message : e) + ')');
+          }
+        };
+        ripiegoEl.appendChild(b);
       }
+
+      daGitHub()
+        .then(apri)
+        .catch(function (err) { offriLaCopia(err && err.message ? err.message : String(err)); });
     })();
   </script>
 </body>
