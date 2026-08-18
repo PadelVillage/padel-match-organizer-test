@@ -6394,6 +6394,7 @@ body.assessment-public-mode .assessment-public-only-card {
           <button class="side-sub-link" data-subsection-key="view_admin_notifiche" data-parent-tab="administration" onclick="goToTabSection('administration','Notifiche staff')">Notifiche staff</button>
           <button class="side-sub-link" data-subsection-key="view_admin_matchpoint" data-parent-tab="administration" onclick="goToTabSection('administration','Dati Matchpoint')">Dati</button>
           <button class="side-sub-link" data-subsection-key="view_admin_telegram" data-parent-tab="administration" onclick="goToTabSection('administration','Bot Telegram')">Bot Telegram</button>
+          <button class="side-sub-link" data-subsection-key="view_admin_circoli" data-parent-tab="administration" onclick="goToTabSection('administration','Circoli')">Circoli</button>
         </div>
         </div><!-- /.side-nav-chapters -->
 
@@ -6461,6 +6462,7 @@ body.assessment-public-mode .assessment-public-only-card {
           <button type="button" data-subsection-key="view_admin_notifiche" data-parent-tab="administration" onclick="goToTabSection('administration','Notifiche staff')">Notifiche staff</button>
           <button type="button" data-subsection-key="view_admin_matchpoint" data-parent-tab="administration" onclick="goToTabSection('administration','Dati Matchpoint')">Dati</button>
           <button type="button" data-subsection-key="view_admin_telegram" data-parent-tab="administration" onclick="goToTabSection('administration','Bot Telegram')">Bot Telegram</button>
+          <button type="button" data-subsection-key="view_admin_circoli" data-parent-tab="administration" onclick="goToTabSection('administration','Circoli')">Circoli</button>
         </div>
       </div>
     </nav>
@@ -7481,7 +7483,7 @@ body.assessment-public-mode .assessment-public-only-card {
       <div class="section">
         <div class="dashboard-page-title pmo-section-head">
           <h2>Amministrazione</h2>
-          <p>Utenti e controlli tecnici, notifiche staff, dati Matchpoint e bot Telegram.</p>
+          <p>Utenti e controlli tecnici, notifiche staff, dati Matchpoint, bot Telegram e circoli della zona.</p>
         </div>
 
         <div id="pmoAdminUsersSection" class="admin-section-panel" data-pmo-admin-section="users">
@@ -7839,6 +7841,36 @@ body.assessment-public-mode .assessment-public-only-card {
             </div>
           </div>
         </div>
+
+        <!-- Voce 60 — «Circoli». PASSO 1 del disegno (docs/circoli-esterni-disegno.md):
+             anagrafica e stato dell'accesso, in SOLA LETTURA. Non c'è nessun bottone che
+             contatti un portale altrui, e non c'è per scelta: lo scanner è il passo 2, e
+             finché non esiste questa pagina non deve poter far partire niente. -->
+        <div id="pmoAdminCircoliSection" class="admin-section-panel" data-pmo-admin-section="circoli" hidden>
+          <div class="admin-panel" id="pmoAdminCircoliPanel" data-admin-anchor="circoli">
+            <div class="admin-panel-head">
+              <div>
+                <h3>Circoli</h3>
+                <p>I circoli della zona di cui vogliamo sapere quando hanno un campo libero, e in che stato è il nostro accesso a ciascuno.</p>
+              </div>
+              <div class="admin-actions">
+                <button class="btn-primary small-btn" onclick="setActionAnchor(this); pmoCircoliCarica({ forza:true })">Aggiorna</button>
+              </div>
+            </div>
+            <div id="pmoCircoliStatus" class="info-box" style="margin-top:12px;">Caricamento in corso...</div>
+            <div class="admin-box" style="margin-top:14px;">
+              <div class="admin-box-head">
+                <div>
+                  <div class="admin-box-title">L'elenco</div>
+                  <div class="admin-box-subtitle">Serve al servizio che dirà al socio <em>dove</em> c'è posto quando da noi non ce n'è. Un circolo si interroga solo se la nostra utenza da lui è <strong>attiva</strong>: <em>in approvazione</em> vuol dire che aspettiamo che sia quel circolo ad approvarci, <em>nessuna utenza</em> che non ci siamo mai registrati — e registrarsi è una scrittura, quindi si decide, non si fa. Padel Village è il caso a parte: il suo calendario si legge dal gestionale, non da Wansport.</div>
+                </div>
+              </div>
+              <div class="admin-box-body">
+                <div id="pmoCircoliElenco"></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -7926,7 +7958,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.243';
+    const APP_VERSION = '6.244';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -10175,7 +10207,8 @@ Grazie.`
         'verifica test prod': '#pmoSupabaseDiagnosticsPanel',
         'verifica test/prod': '#pmoSupabaseDiagnosticsPanel',
         'calendario staff': '#pmoAdminCalendarioStaffSection',
-        'calendario': '#pmoAdminCalendarioStaffSection'
+        'calendario': '#pmoAdminCalendarioStaffSection',
+        'circoli': '#pmoAdminCircoliPanel'
       },
     };
 
@@ -10205,6 +10238,7 @@ Grazie.`
       if (tabName === 'administration') {
         if (key.includes('notifiche')) pmoSetAdminSection('notifications', { silent:true });
         else if (key.includes('telegram') || key.includes('bot')) pmoSetAdminSection('telegram', { silent:true });
+        else if (key.includes('circol')) pmoSetAdminSection('circoli', { silent:true });
         else if (key.includes('dati matchpoint') || key.includes('clienti matchpoint') || key.includes('prenotazioni future matchpoint') || key.includes('storico matchpoint') || key.includes('backup dati') || key.includes('slot potenziali matchpoint') || key.includes('routine dati')) pmoSetAdminSection('matchpoint-data', { silent:true });
         else if (key.includes('calendario staff') || key.includes('calendario campi') || key.includes('prenotazione staff')) pmoSetAdminSection('calendario-staff');
         else if (key.includes('sessione')) pmoSetAdminSection('users', { silent:true });
@@ -10532,6 +10566,7 @@ Grazie.`
         { key:'view_admin_notifiche', label:'Notifiche staff', adminSection:'notifications' },
         { key:'view_admin_matchpoint', label:'Dati', adminSection:'matchpoint-data' },
         { key:'view_admin_telegram', label:'Bot Telegram', adminSection:'telegram' },
+        { key:'view_admin_circoli', label:'Circoli', adminSection:'circoli' },
       ]},
     ];
     const PMO_TAB_VIEW_KEY = { dashboard:'view_dashboard', assessment:'view_assessment', members:'view_members', incassi:'view_incassi', contact:'view_contact', administration:'view_administration' };
@@ -10540,7 +10575,7 @@ Grazie.`
     // seguono il permesso `view_admin_utenti`. La vecchia chiave `view_admin_supabase`
     // puo' essere ancora scritta nei profili staff sul database: resta li' inerte,
     // nessuno la legge piu'.
-    const PMO_ADMIN_SECTION_VIEW_KEY = { users:'view_admin_utenti', notifications:'view_admin_notifiche', 'matchpoint-data':'view_admin_matchpoint', telegram:'view_admin_telegram' };
+    const PMO_ADMIN_SECTION_VIEW_KEY = { users:'view_admin_utenti', notifications:'view_admin_notifiche', 'matchpoint-data':'view_admin_matchpoint', telegram:'view_admin_telegram', circoli:'view_admin_circoli' };
     // Assistente AI: registriamo il permesso `view_assistante_ai` nell'albero ruoli in
     // TUTTI gli ambienti (TEST e PROD), così è gestibile dalla UI Gestione ruoli ovunque.
     // Il capitolo/chat è gated da questo permesso (owner/admin sempre). PMO_AI_ASSISTANT_ENABLED
@@ -10604,7 +10639,7 @@ Grazie.`
       return pmoSubsectionVisibleFor(subKey, 'administration', profile);
     }
     function pmoFirstAllowedAdminSection(profile) {
-      const order = ['users', 'notifications', 'matchpoint-data', 'telegram'];
+      const order = ['users', 'notifications', 'matchpoint-data', 'telegram', 'circoli'];
       return order.find(section => pmoAdminSectionViewAllowed(section, profile)) || 'users';
     }
     function pmoApplyTabVisibility() {
@@ -28179,11 +28214,12 @@ Per confermare scrivi ELIMINA.`);
 	    }
 	    function pmoAdminSectionKey(section='users') {
 	      const key = cleanCell(section || '').toLowerCase();
-	      if (['users', 'notifications', 'matchpoint-data', 'telegram', 'calendario-staff'].includes(key)) return key;
+	      if (['users', 'notifications', 'matchpoint-data', 'telegram', 'circoli', 'calendario-staff'].includes(key)) return key;
 	      if (key.includes('notific')) return 'notifications';
 	      // 🚨 «telegram» va PRIMA di «matchpoint/dati»: il nome della voce e' «Bot
 	      // Telegram», e senza questa riga nessuna parola la porterebbe qui.
 	      if (key.includes('telegram') || key.includes('bot')) return 'telegram';
+	      if (key.includes('circol')) return 'circoli';
 	      if (key.includes('matchpoint') || key.includes('dati')) return 'matchpoint-data';
 	      if (key.includes('session')) return 'users';
 	      // 🚨 «supabase» NON e' piu' una sezione, ma puo' essere ancora l'ultima sezione
@@ -28206,6 +28242,11 @@ Per confermare scrivi ELIMINA.`);
 	          try { refreshDataActionStatuses(); } catch (err) { console.warn('Dati Matchpoint non aggiornati:', err); }
 	          try { scheduleMatchpointRoutineCloudRefresh({ force:true }); } catch (err) { console.warn('Stato routine Matchpoint cloud non aggiornato:', err); }
 	        });
+	      }
+	      if (pmoAdminState.activeSection === 'circoli') {
+	        // Come per Telegram: la lettura si fa quando la sezione si apre, non a ogni
+	        // disegno del pannello (renderPmoAdministration gira spesso).
+	        requestAnimationFrame(() => { try { pmoCircoliCarica(); } catch (err) { console.warn('Circoli non caricati:', err); } });
 	      }
 	      if (pmoAdminState.activeSection === 'telegram') {
 	        // La lettura passa da un altro database: si fa quando la sezione si apre,
@@ -28661,9 +28702,132 @@ Per confermare scrivi ELIMINA.`);
 	      }
 	    }
 
+	    // ── Voce 60 — «Circoli»: che cosa il gestionale sa dei circoli della zona ──────
+	    // PASSO 1 del disegno (docs/circoli-esterni-disegno.md), e vuol dire SOLA LETTURA:
+	    // da qui non parte nessuno scan, non si contatta nessun portale altrui, non si
+	    // tocca niente. Si vede l'anagrafica e in che stato è il nostro accesso a ciascun
+	    // circolo. Il lettore vero (`circoli-scan`) è il passo 2 e ancora non esiste.
+	    const pmoCircoliState = { caricato:false, inCorso:false, dati:null, errore:'' };
+	    
+	    function pmoCircoliSetStato(html, tipo='info') {
+	      const box = document.getElementById('pmoCircoliStatus');
+	      if (!box) return;
+	      box.className = `info-box alert-${tipo}`;
+	      box.innerHTML = html;
+	    }
+	    
+	    async function pmoCircoliCarica(options={}) {
+	      if (pmoCircoliState.inCorso) return;
+	      if (pmoCircoliState.caricato && !options.forza) { pmoRenderCircoliPanel(); return; }
+	      pmoCircoliState.inCorso = true;
+	      pmoCircoliSetStato('Lettura in corso...');
+	      try {
+	        // Permesso vuoto = basta un profilo staff attivo. È la stessa guardia che sta
+	        // DENTRO la RPC, e la ragione è la stessa: qui non c'è un solo dato personale,
+	        // sono indirizzi di circoli, pubblici come l'insegna sulla porta.
+	        const risposta = await pmoStaffRpc('pmo_get_circoli_esterni', {}, '', 'vedere i circoli della zona');
+	        if (!risposta || risposta.ok !== true) throw new Error(pmoFriendlyCloudError(risposta, 'vedere i circoli della zona'));
+	        pmoCircoliState.dati = Array.isArray(risposta.circoli) ? risposta.circoli : [];
+	        pmoCircoliState.caricato = true;
+	        pmoCircoliState.errore = '';
+	      } catch (err) {
+	        pmoCircoliState.dati = null;
+	        pmoCircoliState.errore = (err && err.message) || String(err);
+	      } finally {
+	        pmoCircoliState.inCorso = false;
+	        pmoRenderCircoliPanel();
+	      }
+	    }
+	    
+	    function pmoRenderCircoliPanel() {
+	      const target = document.getElementById('pmoCircoliElenco');
+	      if (!target) return;
+	    
+	      if (pmoCircoliState.errore) {
+	        // Un guasto NON si traveste da «non c'è nessun circolo»: chi legge deve poter
+	        // distinguere un elenco vuoto da un elenco che non si è potuto leggere.
+	        pmoCircoliSetStato(`Non sono riuscito a leggere i circoli: ${escapeHtml(pmoCircoliState.errore)}`, 'warning');
+	        target.innerHTML = '';
+	        return;
+	      }
+	      const righe = pmoCircoliState.dati;
+	      if (!righe) { pmoCircoliSetStato('Lettura in corso...'); target.innerHTML = ''; return; }
+	    
+	      const daInterrogare = righe.filter(c => c.attivo).length;
+	      const inApprovazione = righe.filter(c => c.stato_utenza === 'in_approvazione').length;
+	      const senzaUtenza = righe.filter(c => c.stato_utenza === 'assente').length;
+	      const maiLetti = righe.filter(c => !c.ultimo_scan_at).length;
+	    
+	      // 🚨⭐ La frase che conta di più di questa pagina: PERCHÉ le colonne di destra sono
+	      // vuote. Senza, un trattino su «Ultimo scan» si legge come «gliel'ho chiesto e non
+	      // risponde», che è l'opposto della verità — a nessuno è stato chiesto niente.
+	      const spiegaVuoto = (righe.length && maiLetti === righe.length)
+	        ? ` <span class="routine-mini">Nessun circolo è mai stato interrogato: «Ultimo scan», «Esito» e «Griglia» sono vuote perché il lettore non esiste ancora (passo 2 del disegno), non perché i circoli non rispondano.</span>`
+	        : '';
+	    
+	      pmoCircoliSetStato(
+	        `<strong>${daInterrogare}</strong> ${daInterrogare === 1 ? 'circolo' : 'circoli'} da interrogare`
+	        + (inApprovazione ? `, <strong>${inApprovazione}</strong> in attesa di approvazione` : '')
+	        + (senzaUtenza ? `, <strong>${senzaUtenza}</strong> senza utenza` : '')
+	        + `. Questa sezione è in <strong>sola lettura</strong>: da qui non parte nessuna richiesta ai portali degli altri circoli.`
+	        + spiegaVuoto
+	      );
+	      target.innerHTML = pmoCircoliTabella(righe);
+	    }
+	    
+	    function pmoCircoliQuando(valore) {
+	      const v = cleanCell(valore || '');
+	      // «mai» e non «—»: il trattino non distingue fra «non è mai successo» e «non lo so».
+	      return v ? pmoFormatDateTime(v) : 'mai';
+	    }
+	    
+	    function pmoCircoliTabella(righe) {
+	      if (!righe.length) {
+	        return '<div class="ux-empty-state"><strong>Nessun circolo in elenco.</strong><div class="routine-mini">L\'anagrafica si popola con la migrazione della voce 60.</div></div>';
+	      }
+	      const pillUtenza = { attiva:'active', in_approvazione:'invited', assente:'paused' };
+	      const etichettaUtenza = { attiva:'Utenza attiva', in_approvazione:'In approvazione', assente:'Nessuna utenza' };
+	      const corpo = righe.map(c => {
+	        const nota = c.note ? `<div class="routine-mini">${escapeHtml(c.note)}</div>` : '';
+	        // ⛔ L'indirizzo si mostra ma NON è un link: aprirlo è una visita al portale di un
+	        // altro circolo, e questa sezione ha promesso di non contattarne nessuno.
+	        // 🚨 «non rilevato» vale per chi un indirizzo ce l'ha e noi non l'abbiamo preso.
+	        // Padel Village un indirizzo da interrogare NON ce l'ha per costruzione — il suo
+	        // calendario si legge dal gestionale — e chiamarlo «non rilevato» lo farebbe
+	        // sembrare un buco da tappare invece della scelta che e'. Visto GUARDANDO la
+	        // pagina vera: nel codice le due assenze hanno la stessa forma, sullo schermo no.
+	        const indirizzo = c.base_url
+	          ? `<div class="routine-mini">${escapeHtml(String(c.base_url).replace(/^https?:\/\//, '').replace(/\/$/, ''))}</div>`
+	          : (c.piattaforma === 'matchpoint'
+	          ? '<div class="routine-mini">calendario letto dal gestionale</div>'
+	          : '<div class="routine-mini">indirizzo non rilevato</div>');
+	        const interroga = c.attivo
+	          ? '<div class="routine-mini">da interrogare</div>'
+	          : '<div class="routine-mini">fermo: non verrà interrogato</div>';
+	        const pezzi = [];
+	        if (c.slot_minuti) pezzi.push(`fasce da ${escapeHtml(String(c.slot_minuti))}′`);
+	        if (c.apertura && c.chiusura) pezzi.push(`${escapeHtml(String(c.apertura).slice(0,5))}-${escapeHtml(String(c.chiusura).slice(0,5))}`);
+	        const listaCampi = (Array.isArray(c.campi) && c.campi.length) ? `<div class="routine-mini">${escapeHtml(c.campi.join(', '))}</div>` : '';
+	        const griglia = (pezzi.length || listaCampi) ? (pezzi.join(' · ') + listaCampi) : '<span class="routine-mini">da rilevare</span>';
+	        const esito = c.ultimo_esito
+	          ? escapeHtml(c.ultimo_esito) + (c.ultima_latenza_ms ? `<div class="routine-mini">${escapeHtml(String(c.ultima_latenza_ms))} ms</div>` : '')
+	          : '<span class="routine-mini">—</span>';
+	        return `<tr>
+	          <td><strong>${escapeHtml(c.nome)}</strong><div class="routine-mini">${escapeHtml(c.comune)}</div>${indirizzo}${nota}</td>
+	          <td>${escapeHtml(cleanCell(c.piattaforma || '').replace(/^./, ch => ch.toUpperCase()))}</td>
+	          <td><span class="admin-status-pill ${pillUtenza[c.stato_utenza] || ''}">${escapeHtml(etichettaUtenza[c.stato_utenza] || c.stato_utenza)}</span>${interroga}</td>
+	          <td>${escapeHtml(pmoCircoliQuando(c.ultimo_scan_at))}</td>
+	          <td>${esito}</td>
+	          <td>${griglia}</td>
+	        </tr>`;
+	      }).join('');
+	      return `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Circolo</th><th>Piattaforma</th><th>Stato</th><th>Ultimo scan</th><th>Esito</th><th>Griglia</th></tr></thead><tbody>${corpo}</tbody></table></div>`;
+	    }
+	    
 	    function renderPmoAdministration() {
 	      pmoApplyAdminSectionVisibility();
 	      pmoRenderTelegramPanel();
+	      pmoRenderCircoliPanel();
 	      pmoRenderStaffAccessPanel();
 	      pmoRenderUsersGmailCheck();
 	      pmoRenderAdminAccountStrip();
