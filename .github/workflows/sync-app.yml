@@ -14,7 +14,10 @@
 # Tre inneschi:
 # - repository_dispatch "sync-test-app": lo manda il repo dell'app a ogni push
 #   su test-preview (workflow sync-test-loader.yml), se il secret c'è → subito;
-# - schedule ogni 10 minuti: rete di sicurezza, copre anche il caso senza secret;
+# - schedule ogni 10 minuti: rete di sicurezza, copre anche il caso senza secret.
+#   ⚠️ «Ogni 10 minuti» è la CONFIGURAZIONE, non la latenza: gli schedule GitHub
+#   girano «quando possono» — misurati 24-48 minuti il 18/08/2026. Chi ha fretta
+#   usa il workflow_dispatch, chi vuole la puntualità di PROD mette il secret;
 # - workflow_dispatch: a mano, quando serve adesso.
 #
 # 📌 GitHub disattiva gli schedule dopo ~60 giorni senza attività sul repo: se

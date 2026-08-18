@@ -13,7 +13,7 @@ che il caricatore serve dalla stessa origine.
 | `app.html` | ⚠️ **copia generata** dell'app (da `test-preview`) — non si modifica a mano |
 | `app-meta.json` | ⚠️ generato: da quale commit viene `app.html` e quando è stato copiato |
 | `banco-freschezza.mjs` | rete di regressione dell'avviso qui sotto (browser vero, 10 casi + sabotaggio) |
-| `.github/workflows/sync-app.yml` | tiene fresca la copia (dispatch dal repo dell'app, cron ogni 10′, o a mano) |
+| `.github/workflows/sync-app.yml` | tiene fresca la copia (dispatch dal repo dell'app, cron `*/10` — ma vedi sotto quanto tarda davvero — o a mano) |
 | `config-test.js` | dice all'app di collegarsi al Supabase di TEST (`cudiqnrrlbyqryrtaprd`) |
 | `CNAME` | assegna il dominio a GitHub Pages |
 
@@ -72,7 +72,10 @@ dal primo sync. Un push su `test-preview` arriva qui:
 
 - **subito**, se nel repo dell'app esiste il secret `TEST_LOADER_SYNC_TOKEN`
   (il workflow `sync-test-loader.yml` manda un `repository_dispatch` a questo repo);
-- **entro ~10 minuti** col cron di `sync-app.yml`, altrimenti;
+- **quando passa il cron** di `sync-app.yml`, altrimenti. ⚠️ È configurato ogni 10′, ma gli
+  schedule GitHub girano «quando possono»: **misurati 24-48 minuti** il 18/08/2026, e quel giorno
+  il giro è passato 25 secondi *prima* del push — la copia è rimasta vecchia per mezz'ora.
+  Quando serve adesso, si lancia `sync-app` a mano da Actions;
 - **adesso**, lanciando a mano `sync-app` da Actions (workflow_dispatch).
 
 → Per verificare che un cambio sia arrivato: apri l'indirizzo e controlla il
