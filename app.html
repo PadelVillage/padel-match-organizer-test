@@ -7959,7 +7959,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.244';
+    const APP_VERSION = '6.245';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -28776,6 +28776,62 @@ Per confermare scrivi ELIMINA.`);
 	      target.innerHTML = pmoCircoliTabella(righe);
 	    }
 	    
+	    
+	    // ── «Prova ora»: la sonda su UN circolo (voce 60, passo 2) ──────────────────
+	    // ⚠️ Chiama `circoli-scan`, che esce davvero verso il portale di un altro circolo.
+	    // Perciò: conferma esplicita prima, un circolo per volta, e il verdetto scritto
+	    // per intero — compreso il caso in cui la funzione è DISARMATA, che non è un
+	    // guasto ma una scelta (mancano le credenziali nei segreti).
+	    async function pmoCircoliProva(slug, nome) {
+	      if (pmoBlockWriteIfReadonly('provare i circoli')) return;
+	      if (!confirm(`Interrogare «${nome}» adesso?\n\nParte UNA richiesta verso il portale di quel circolo, in sola lettura: si legge il calendario, non si prenota niente.`)) return;
+	      const btn = document.querySelector(`[data-circolo-prova="${slug}"]`);
+	      if (btn) { btn.disabled = true; btn.textContent = 'Interrogo…'; }
+	      pmoCircoliSetStato(`Interrogo <strong>${escapeHtml(nome)}</strong>…`);
+	      try {
+	        const cfg = await loadAssessmentSupabaseConfig();
+	        const accessToken = await pmoGetSupabaseStaffAccessToken();
+	        if (!accessToken) throw new Error('Sessione scaduta: esci e rientra, poi riprova.');
+	        const resp = await fetch(cfg.supabaseUrl + '/functions/v1/circoli-scan', {
+	          method: 'POST',
+	          headers: { 'Content-Type':'application/json', 'apikey': cfg.supabaseKey, 'Authorization': 'Bearer ' + accessToken },
+	          body: JSON.stringify({ circolo: slug, azione: 'sonda' }),
+	        });
+	        const txt = await resp.text();
+	        let dati = null; try { dati = txt ? JSON.parse(txt) : null; } catch { dati = null; }
+	        // 🚨 Un HTTP 200 non basta: l'edge risponde `ok:false` col motivo dentro.
+	        if (!dati) throw new Error('Risposta illeggibile (HTTP ' + resp.status + ').');
+	        if (dati.ok !== true) {
+	          // La funzione DISARMATA non è un guasto: manca una decisione, e si dice quale.
+	          const spiega = dati.error === 'SCANNER_DISARMATO'
+	            ? 'Lo scanner è <strong>disarmato</strong>: mancano le credenziali Wansport nei segreti della funzione. Finché non ci sono, non contatta nessun portale — ed è voluto.'
+	            : dati.error === 'TROPPO_PRESTO'
+	              ? `Troppo presto: fra due letture dello stesso circolo passa almeno un minuto (${Math.ceil((dati.attendi_ms||0)/1000)}s ancora).`
+	              : `Non ha funzionato: <strong>${escapeHtml(String(dati.error || 'motivo ignoto'))}</strong>.${dati.dettaglio ? ' ' + escapeHtml(String(dati.dettaglio)) : ''}`;
+	          pmoCircoliSetStato(spiega, 'warning');
+	        } else {
+	          const rx = dati.radiografia || {};
+	          // ⭐ Si dice che cos'è, e soprattutto che cosa NON è: una misura della FORMA
+	          // della pagina, non una lettura dei campi liberi. Chiamarla «scan riuscito»
+	          // farebbe credere che il servizio funzioni già.
+	          pmoCircoliSetStato(
+	            `<strong>${escapeHtml(nome)}</strong>: login riuscito in <strong>${dati.latenza_ms} ms</strong>. `
+	            + `La pagina è <strong>${escapeHtml(String(rx.sembra || '?'))}</strong>, `
+	            + `${rx.citaWansport ? 'cita <code>com_wansport</code>' : '<strong>non</strong> cita <code>com_wansport</code>'}, `
+	            + `${rx.quantiOrari || 0} orari e ${(rx.paroleCampo||[]).length} nomi di campo riconosciuti. `
+	            + `<span class="routine-mini">È una MISURA della forma della pagina, non una lettura dei campi liberi: il parser si scrive dopo aver letto questa radiografia (passo 2b del disegno).</span>`,
+	            'success');
+	          console.log('[circoli-scan] radiografia', dati);
+	        }
+	      } catch (err) {
+	        pmoCircoliSetStato(`Non sono riuscito a interrogare ${escapeHtml(nome)}: ${escapeHtml((err && err.message) || String(err))}`, 'warning');
+	      } finally {
+	        if (btn) { btn.disabled = false; btn.textContent = 'Prova ora'; }
+	        // L'esito è stato scritto sulla riga dalla funzione: si rilegge, così la
+	        // colonna «Ultimo scan» dice il vero invece di restare a «mai».
+	        try { await pmoCircoliCarica({ forza:true }); } catch {}
+	      }
+	    }
 	    function pmoCircoliQuando(valore) {
 	      const v = cleanCell(valore || '');
 	      // «mai» e non «—»: il trattino non distingue fra «non è mai successo» e «non lo so».
@@ -28810,6 +28866,12 @@ Per confermare scrivi ELIMINA.`);
 	        if (c.apertura && c.chiusura) pezzi.push(`${escapeHtml(String(c.apertura).slice(0,5))}-${escapeHtml(String(c.chiusura).slice(0,5))}`);
 	        const listaCampi = (Array.isArray(c.campi) && c.campi.length) ? `<div class="routine-mini">${escapeHtml(c.campi.join(', '))}</div>` : '';
 	        const griglia = (pezzi.length || listaCampi) ? (pezzi.join(' · ') + listaCampi) : '<span class="routine-mini">da rilevare</span>';
+	        // Il bottone esiste solo dove interrogare ha senso: un circolo fermo o
+	        // Padel Village non si contattano, e un bottone che risponde sempre «no»
+	        // insegna a non leggere i messaggi.
+	        const azione = (c.attivo && c.piattaforma === 'wansport')
+	          ? `<button class="btn-secondary small-btn" data-circolo-prova="${escapeHtml(c.id)}" onclick="setActionAnchor(this); pmoCircoliProva('${escapeJs(c.id)}', '${escapeJs(c.nome)}')">Prova ora</button>`
+	          : '<span class="routine-mini">—</span>';
 	        const esito = c.ultimo_esito
 	          ? escapeHtml(c.ultimo_esito) + (c.ultima_latenza_ms ? `<div class="routine-mini">${escapeHtml(String(c.ultima_latenza_ms))} ms</div>` : '')
 	          : '<span class="routine-mini">—</span>';
@@ -28820,9 +28882,10 @@ Per confermare scrivi ELIMINA.`);
 	          <td>${escapeHtml(pmoCircoliQuando(c.ultimo_scan_at))}</td>
 	          <td>${esito}</td>
 	          <td>${griglia}</td>
+	          <td>${azione}</td>
 	        </tr>`;
 	      }).join('');
-	      return `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Circolo</th><th>Piattaforma</th><th>Stato</th><th>Ultimo scan</th><th>Esito</th><th>Griglia</th></tr></thead><tbody>${corpo}</tbody></table></div>`;
+	      return `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Circolo</th><th>Piattaforma</th><th>Stato</th><th>Ultimo scan</th><th>Esito</th><th>Griglia</th><th>Azioni</th></tr></thead><tbody>${corpo}</tbody></table></div>`;
 	    }
 	    
 	    function renderPmoAdministration() {
