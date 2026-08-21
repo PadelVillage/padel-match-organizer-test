@@ -7959,7 +7959,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.245';
+    const APP_VERSION = '6.246';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -14387,7 +14387,7 @@ Grazie.`
       // tutti i device la copia "occupazione" Matchpoint finché lo scrape non si aggiorna.
       const staffSuppressed = list
         .filter(row => row?.record_type === 'staff_suppress' && !row.deleted && row.payload)
-        .map(row => { const p = row.payload || {}; return { key: `${p.data}|${Number(String(p.campo).replace(/\D/g,''))}|${p.ora}`, ts: Number(p.ts) || Date.parse(row.updated_at || '') || 0 }; });
+        .map(row => { const p = row.payload || {}; return { key: `${p.data}|${Number(String(p.campo).replace(/\D/g,''))}|${p.ora}`, ts: Number(p.ts) || Date.parse(row.updated_at || '') || 0, ids: Array.isArray(p.ids) ? p.ids : null }; });
       return { bookings, occupancyBookings, staffBookings, staffBookingsDeletedKeys, staffBookingsDeletedIds, staffSuppressed, summary };
     }
 
@@ -38785,27 +38785,112 @@ Per confermare scrivi ELIMINA.`);
   // card riapparirebbe come 🔒 sola lettura. Teniamo una lista a scadenza degli slot
   // appena annullati e li nascondiamo nel calendario finché i dati non si aggiornano.
   const _STAFFCAL_SUPPRESS_TTL_MS = 30 * 60 * 1000; // 30 min, poi si pulisce da sola
+
+  // 🚨⭐⭐ LA SOPPRESSIONE NASCONDE UNA PRENOTAZIONE, NON UNO SLOT — 21/08/2026.
+  //
+  // 📏 Il difetto, misurato sul vero e visto dal committente. Il 21/08 alle 12:13:17 viene
+  // annullata una partita sul 22/08 · 09:00 · campo 4, e parte la soppressione di quello slot.
+  // Alle 12:17 sullo STESSO slot nasce un'altra prenotazione — la lezione delle 9 col maestro
+  // Lucas, due allieve, `idReserva 9556` — e alle 12:18:46 il sync la porta nel gestionale,
+  // viva. Ma la soppressione delle 12:13 dura mezz'ora e nasconde **lo slot**: per 27 minuti il
+  // calendario dello staff ha mostrato quel campo LIBERO, con una lezione vera sopra.
+  //
+  // ⚖️ Il verso in cui fa male non è la lezione che sparisce: è il campo che sembra libero.
+  // È lo slot su cui qualcuno prenota sopra.
+  //
+  // 🩹 Una guardia c'era già (v5.687) e diceva la cosa giusta a metà: «una prenotazione staff
+  // ATTIVA sullo slot ha la precedenza sulla soppressione». Guardava però il TIPO della riga
+  // (`staff-booking`), quindi copriva solo le riprenotazioni fatte dalla nostra app e non
+  // quelle che arrivano dal circolo — che sono la maggioranza.
+  // ⇒ La domanda giusta non è «che tipo di riga è questa?» ma «è LA STESSA prenotazione che ho
+  // annullato?». La soppressione porta con sé gli `idReserva` che c'erano sullo slot quando è
+  // nata, e nasconde solo quelli.
+  //
+  // ⛔ E NON si è usato il TEMPO, che era la strada che veniva in mente per prima: «nascondi
+  // solo ciò che è arrivato prima dell'annullo». Misurato il 21/08 e scartato — `updated_at`
+  // delle occupazioni si rinfresca a OGNI giro di sync (righe create il 27 luglio risultavano
+  // aggiornate alle 12:44 di oggi), quindi «più recente della soppressione» sarebbe vero per
+  // tutto dopo due minuti, e la soppressione non proteggerebbe più da niente.
+  //
+  // ⚠️ Il verso prudente sui casi che non si sanno leggere: una riga SENZA `idReserva`
+  // (manutenzioni, card vecchie) resta nascosta come prima, e una soppressione vecchia — nata
+  // senza la lista — nasconde tutto lo slot come prima. Si cura il caso misurato, e nel dubbio
+  // si continua a nascondere: una card fantasma è rumore, un campo che sembra libero è un
+  // doppio uso del campo.
+  function pmoSoppressioneNasconde(riga, soppr) {
+    if (!soppr) return false;
+    const ids = Array.isArray(soppr.ids) ? soppr.ids.filter(Boolean).map(String) : null;
+    if (!ids || !ids.length) return true;               // soppressione cieca (vecchia): come prima
+    const suo = riga && riga.idReserva != null ? String(riga.idReserva).trim() : '';
+    if (!suo) return true;                              // riga senza identità: come prima
+    return ids.indexOf(suo) >= 0;                       // nascondi SOLO la prenotazione annullata
+  }
+
+  // Gli `idReserva` presenti su uno slot in questo momento: è ciò che la soppressione deve
+  // ricordare di aver annullato. Sta in un posto solo perché i punti che scrivono una
+  // soppressione sono TRE (annullo, spostamento, rimozione della card fantasma) e uno che se la
+  // scrivesse da sé nascerebbe cieco — cioè col difetto di prima, in un punto che nessuno guarda.
+  function pmoSoppressioneIds(isoDate, campoNum, ora) {
+    const visti = [];
+    const uguale = (p) => p && String(p.data).trim() === String(isoDate).trim()
+      && Number(String(p.campo).replace(/\D/g, '')) === Number(campoNum)
+      && String(p.ora).trim() === String(ora).trim();
+    const raccogli = (arr) => {
+      if (!Array.isArray(arr)) return;
+      arr.forEach((p) => {
+        if (!uguale(p)) return;
+        const id = p.idReserva != null ? String(p.idReserva).trim() : '';
+        if (id && visti.indexOf(id) < 0) visti.push(id);
+      });
+    };
+    try { if (typeof prenotazioniOccupazione !== 'undefined') raccogli(prenotazioniOccupazione); } catch (e) {}
+    try { if (typeof prenotazioni !== 'undefined') raccogli(prenotazioni); } catch (e) {}
+    try { if (typeof safeLoad === 'function') raccogli(safeLoad('staffBookings', [])); } catch (e) {}
+    return visti;
+  }
+
+  // Il record di soppressione, costruito in un posto solo. → `pmoSoppressioneIds`.
+  function pmoRecordSoppressione(isoDate, campoNum, ora, ids) {
+    return {
+      record_type: 'staff_suppress',
+      local_key: 'supp|' + isoDate + '|' + campoNum + '|' + ora,
+      payload: { data: isoDate, campo: campoNum, ora: ora, ts: Date.now(), ids: Array.isArray(ids) ? ids : [] },
+      deleted: false
+    };
+  }
+
   function _staffCalSuppressKey(data, campo, ora) {
     return String(data).trim() + '|' + (Number(String(campo).replace(/\D/g, '')) || 0) + '|' + String(ora).trim();
   }
+  // ⭐ Torna una MAPPA chiave → soppressione, non più un insieme di chiavi: chi filtra deve
+  // sapere non solo CHE lo slot è soppresso, ma QUALI prenotazioni erano lì. → `pmoSoppressioneNasconde`.
   function _staffCalGetSuppressed() {
     const arr = (typeof safeLoad === 'function') ? safeLoad('staffCalCancelled', []) : [];
     const list = Array.isArray(arr) ? arr : [];
     const now = Date.now();
     const live = list.filter(e => e && e.key && (now - (e.ts || 0)) < _STAFFCAL_SUPPRESS_TTL_MS);
     if (live.length !== list.length && typeof save === 'function') save('staffCalCancelled', live);
-    const s = new Set(live.map(e => e.key));
+    const s = new Map(live.map(e => [e.key, { ts: e.ts || 0, ids: Array.isArray(e.ids) ? e.ids : null }]));
     // Hide ottimistico cross-device dell'annullo (v5.913): nasconde lo slot finché il device che
     // annulla non conferma e il pull riconcilia. In-memory, reversibile (vedi staffCalRtResolveRemoteCancel).
-    try { _staffCalRemoteCancelHide.forEach(k => s.add(k)); } catch (e) {}
+    // ⚠️ Nasce CIECO (`ids: null`) di proposito: qui non si sa ancora che cosa sia stato annullato,
+    // e finché non si sa il verso giusto è nascondere.
+    try { _staffCalRemoteCancelHide.forEach(k => { if (!s.has(k)) s.set(k, { ts: Date.now(), ids: null }); }); } catch (e) {}
     return s;
   }
-  function _staffCalAddSuppressed(data, campo, ora) {
+  function _staffCalAddSuppressed(data, campo, ora, ids) {
     const arr = (typeof safeLoad === 'function') ? safeLoad('staffCalCancelled', []) : [];
     const list = Array.isArray(arr) ? arr : [];
     const key = _staffCalSuppressKey(data, campo, ora);
     const next = list.filter(e => e && e.key !== key);
-    next.push({ key: key, ts: Date.now() });
+    // ⭐ Se chi chiama non li passa se li legge da sé: i quattro punti che sopprimono in locale
+    // sono sparsi, e uno che se ne dimenticasse nascerebbe CIECO — cioè col difetto del 21/08.
+    // ⚠️ Vale finché gli elenchi non sono già stati potati: chiamata dopo la rimozione torna
+    // vuota, e una soppressione senza `ids` si comporta come prima (nasconde lo slot).
+    const _ids = Array.isArray(ids) ? ids
+      : (typeof pmoSoppressioneIds === 'function'
+          ? pmoSoppressioneIds(data, Number(String(campo).replace(/\D/g, '')) || 0, ora) : []);
+    next.push({ key: key, ts: Date.now(), ids: _ids });
     if (typeof save === 'function') save('staffCalCancelled', next);
   }
   // Unisce nelle soppressioni LOCALI quelle arrivate dal cloud (annullamenti fatti da altri
@@ -38815,16 +38900,29 @@ Per confermare scrivi ELIMINA.`);
     if (!Array.isArray(cloudList) || !cloudList.length) return false;
     const now = Date.now();
     const arr = (typeof safeLoad === 'function') ? safeLoad('staffCalCancelled', []) : [];
-    const map = new Map((Array.isArray(arr) ? arr : []).filter(e => e && e.key).map(e => [e.key, e.ts || 0]));
+    const map = new Map((Array.isArray(arr) ? arr : []).filter(e => e && e.key)
+      .map(e => [e.key, { ts: e.ts || 0, ids: Array.isArray(e.ids) ? e.ids : null }]));
     let changed = false;
     cloudList.forEach(function (e) {
       if (!e || !e.key) return;
       const ts = e.ts || 0;
       if (now - ts >= _STAFFCAL_SUPPRESS_TTL_MS) return;       // già scaduto, ignora
-      if ((map.get(e.key) || 0) < ts) { map.set(e.key, ts); changed = true; }
+      // ⭐ Gli `ids` viaggiano con la soppressione: senza, quella arrivata da un altro device
+      // nascerebbe cieca qui e nasconderebbe lo slot intero — il difetto del 21/08 cross-device.
+      const vecchio = map.get(e.key);
+      const nuoviIds = Array.isArray(e.ids) ? e.ids : null;
+      // ⭐⭐ Due ragioni per prendere quella del cloud, e la seconda non è il tempo: una
+      // soppressione che SA cosa ha annullato batte una che non lo sa, anche se è più vecchia.
+      // Senza, il device che ha annullato terrebbe per mezz'ora la propria copia cieca — scritta
+      // un istante dopo, quindi «più recente» — e su quel device il difetto resterebbe intero.
+      const cieca = vecchio && !(Array.isArray(vecchio.ids) && vecchio.ids.length);
+      if (!vecchio || vecchio.ts < ts || (cieca && nuoviIds && nuoviIds.length)) {
+        map.set(e.key, { ts: Math.max(ts, (vecchio && vecchio.ts) || 0), ids: nuoviIds });
+        changed = true;
+      }
     });
     if (changed && typeof save === 'function') {
-      save('staffCalCancelled', Array.from(map, function (kv) { return { key: kv[0], ts: kv[1] }; }));
+      save('staffCalCancelled', Array.from(map, function (kv) { return { key: kv[0], ts: kv[1].ts, ids: kv[1].ids }; }));
     }
     return changed;
   }
@@ -38895,7 +38993,7 @@ Per confermare scrivi ELIMINA.`);
       let _destId = null;   // id del record portato al NUOVO slot (da NON marcare deleted)
       // Suppress origine: nasconde la copia "occupazione" Matchpoint scrapata sul vecchio slot su
       // ogni device, finché lo scrape non si aggiorna. Resta necessaria (non riguarda staff_booking).
-      records.push({ record_type: 'staff_suppress', local_key: 'supp|' + fIso + '|' + fCn + '|' + fOra, payload: { data: fIso, campo: fCn, ora: fOra, ts: Date.now() }, deleted: false });
+      records.push(pmoRecordSoppressione(fIso, fCn, fOra, pmoSoppressioneIds(fIso, fCn, fOra)));
       // Si ri-spinge la prenotazione al NUOVO slot. Nel ramo if con lo STESSO id (l'upsert la sposta);
       // nel ramo else (booking Matchpoint non ancora in staffBookings) con un id NUOVO. In ENTRAMBI i
       // casi, sotto, marchiamo deleted gli eventuali staff_booking rimasti al VECCHIO slot nel cloud
@@ -39142,15 +39240,21 @@ Per confermare scrivi ELIMINA.`);
       // (staff_suppress, TTL 30') NON deve nascondere la nuova prenotazione. Per gli slot
       // soppressi senza prenotazione attiva (annullati) restano nascosti; su quelli
       // ri-prenotati teniamo solo la card staff e scartiamo l'occupazione stantia. v5.687.
+      // 🚨 v6.246 — QUELLA REGOLA DICEVA METÀ, e la metà mancante è costata la lezione di
+      // sabato 22/08. Guardava il TIPO della riga, quindi la riprenotazione valeva solo se
+      // fatta dalla nostra app; una prenotazione arrivata dal CIRCOLO sullo stesso slot
+      // restava nascosta, e il calendario mostrava il campo libero. Ora la domanda è «è la
+      // STESSA prenotazione che ho annullato?» → `pmoSoppressioneNasconde`.
       const _activeStaff = new Set(
         result.filter(r => r.tipo === 'staff-booking')
                .map(r => _staffCalSuppressKey(isoDate, r.campo, r.ora))
       );
       return result.filter(r => {
         const k = _staffCalSuppressKey(isoDate, r.campo, r.ora);
-        if (!_supp.has(k)) return true;                 // slot non soppresso
+        const soppr = _supp.get(k);
+        if (!soppr) return true;                        // slot non soppresso
         if (_activeStaff.has(k)) return r.tipo === 'staff-booking'; // ri-prenotato: tieni la card staff
-        return false;                                   // soppresso e senza prenotazione: nascondi
+        return !pmoSoppressioneNasconde(r, soppr);      // nascondi SOLO la prenotazione annullata
       });
     }
     return result;
@@ -44052,12 +44156,9 @@ Per confermare scrivi ELIMINA.`);
       payload: { data: b.data, ora: b.ora, ora_fine: b.oraFine, campo: b.campo, nome: b.nome, durata: b.durata, tipo: b.tipo },
       deleted: true
     }));
-    records.push({
-      record_type: 'staff_suppress',
-      local_key: 'supp|' + isoDate + '|' + _campoNum + '|' + wantOra,
-      payload: { data: isoDate, campo: _campoNum, ora: wantOra, ts: Date.now() },
-      deleted: false
-    });
+    // ⭐ Con gli `idReserva` che erano sullo slot ADESSO: la soppressione deve poter dire, fra
+    // mezz'ora, quale prenotazione aveva annullato — o nasconderà anche quella che arriva dopo.
+    records.push(pmoRecordSoppressione(isoDate, _campoNum, wantOra, pmoSoppressioneIds(isoDate, _campoNum, wantOra)));
     if (_ghostTombstones.length) records.push.apply(records, _ghostTombstones);
     if (typeof pmoSyncCloudRecordsNow === 'function') {
       try { await pmoSyncCloudRecordsNow(records, 'segnare annullata la prenotazione staff sul cloud'); }
@@ -44296,7 +44397,7 @@ Per confermare scrivi ELIMINA.`);
             recs.push({ record_type: 'staff_booking', local_key: b.id, payload: { data: b.data, ora: b.ora, campo: b.campo }, deleted: true });
           }
         });
-        recs.push({ record_type: 'staff_suppress', local_key: 'supp|' + isoN + '|' + cn + '|' + oraN, payload: { data: isoN, campo: cn, ora: oraN, ts: Date.now() }, deleted: false });
+        recs.push(pmoRecordSoppressione(isoN, cn, oraN, pmoSoppressioneIds(isoN, cn, oraN)));
         pmoSyncCloudRecordsNow(recs, 'pulire la card fantasma sul cloud').catch(function (e) { console.warn('force remove cloud:', e); });
       }
       if (typeof svcAddMessage === 'function') svcAddMessage('system', '🧹 <strong>Card rimossa dal calendario</strong>: Campo ' + cn + ' \xb7 ' + dataIt + ' \xb7 ' + oraN, 'ok');
