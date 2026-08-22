@@ -6663,7 +6663,7 @@ body.assessment-public-mode .assessment-public-only-card {
           <div class="staff-cal-input-wrap">
             <textarea
               id="staffCalInput"
-              placeholder='Es: "lezione Santiago campo 1 18-19:30" · "campo 2 ogni martedì 20-21" · 🎤'
+              placeholder='Es: "lezione LoZio campo 1 18-19:30" · "campo 2 ogni martedì 20-21" · 🎤'
               rows="1"
               oninput="staffCalAutoResize(this)"
               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();staffCalSubmitBooking()}"
@@ -7959,7 +7959,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.246';
+    const APP_VERSION = '6.247';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -37380,7 +37380,7 @@ Per confermare scrivi ELIMINA.`);
     }
     // Se sembra un nome istruttore (parola sola, iniziale maiuscola)
     if (/^[A-Z][a-zÀ-ÿ]{2,15}$/.test(entry.pattern.trim())) {
-      const target = (PARSER_RULES?.campi_opzionali?.istruttore?.valori_validi || [])[0] || 'Santiago';
+      const target = (PARSER_RULES?.campi_opzionali?.istruttore?.valori_validi || [])[0] || 'LoZio';
       return { tipo: 'fuzzy_match_aggiunto', campo: 'istruttore', mapping: { [entry.pattern]: target } };
     }
     // Default: sinonimo PRENOTA
@@ -37496,7 +37496,7 @@ Per confermare scrivi ELIMINA.`);
       if (conf < 0.5) {
         // Confidence bassa: suggerisci fuzzy_match se sembra un istruttore
         if (/^[A-Z][a-zÀ-ÿ]{2,20}$/.test(pattern.trim())) {
-          const target = (rules.campi_opzionali?.istruttore?.valori_validi || [])[0] || 'Santiago';
+          const target = (rules.campi_opzionali?.istruttore?.valori_validi || [])[0] || 'LoZio';
           if (!currentJson.campi_opzionali) currentJson.campi_opzionali = {};
           if (!currentJson.campi_opzionali.istruttore) currentJson.campi_opzionali.istruttore = {};
           if (!currentJson.campi_opzionali.istruttore.fuzzy_match) currentJson.campi_opzionali.istruttore.fuzzy_match = {};
@@ -37850,9 +37850,9 @@ Per confermare scrivi ELIMINA.`);
       campo: { tipo: 'numero 1-4', domanda_se_manca: 'Quale campo? (1, 2, 3 o 4)', default: null },
       tipo:  { tipo: 'partita|lezione', keywords_lezione: ['lezione','lesson'], default: 'partita' },
       istruttore: {
-        valori_validi: ['Santiago','LoZio','Spinazze','Lucas Vidal'],
-        fuzzy_match: { 'Santi':'Santiago','santi':'Santiago','Lo Zio':'LoZio','lo zio':'LoZio','Spinazzi':'Spinazze','spinazzi':'Spinazze','Vidal':'Lucas Vidal','vidal':'Lucas Vidal','Luca Vidal':'Lucas Vidal','luca vidal':'Lucas Vidal' },
-        domanda_se_manca: 'Quale istruttore? (Santiago, LoZio, Spinazze, Lucas Vidal)',
+        valori_validi: ['LoZio','Spinazze','Lucas Vidal'],
+        fuzzy_match: { 'Lo Zio':'LoZio','lo zio':'LoZio','Spinazzi':'Spinazze','spinazzi':'Spinazze','Vidal':'Lucas Vidal','vidal':'Lucas Vidal','Luca Vidal':'Lucas Vidal','luca vidal':'Lucas Vidal' },
+        domanda_se_manca: 'Quale istruttore? (LoZio, Spinazze, Lucas Vidal)',
         attivata_quando: "tipo === 'lezione'"
       },
       ricorrenza: { valori_validi: ['lunedì','martedì','mercoledì','giovedì','venerdì','sabato','domenica'], settimane_default: 4, default: null }
@@ -41363,7 +41363,7 @@ Per confermare scrivi ELIMINA.`);
       const maestroSec = mkSection('ti-school', 'Maestro');
       const validi = (PARSER_RULES && PARSER_RULES.campi_opzionali && PARSER_RULES.campi_opzionali.istruttore && Array.isArray(PARSER_RULES.campi_opzionali.istruttore.valori_validi))
         ? PARSER_RULES.campi_opzionali.istruttore.valori_validi.slice()
-        : ['Santiago', 'LoZio', 'Spinazze', 'Lucas Vidal'];
+        : ['LoZio', 'Spinazze', 'Lucas Vidal'];
       const cur = String(st.istruttore || '').trim();
       // Se il maestro corrente non è tra i valori validi (es. rinominato su MP) lo mostro comunque.
       if (cur && !validi.some(function (v) { return v.toLowerCase() === cur.toLowerCase(); })) validi.unshift(cur);
@@ -42947,7 +42947,7 @@ Per confermare scrivi ELIMINA.`);
   // ── Parser principale ──────────────────────────────────────────────────────
   // Formati supportati:
   //   "campo 2 18-19:30 Mario Rossi"               → partita
-  //   "lezione Santiago campo 1 18-19:30"           → lezione, nome=Santiago
+  //   "lezione LoZio campo 1 18-19:30"           → lezione, nome=LoZio
   //   "lezione LoZio campo 3 ogni martedì 18-19:30" → lezione ricorrente
   //   "campo 2 ogni venerdì 20-21:30 Spinazze"      → partita ricorrente
   // Usa PARSER_RULES (caricato da GitHub) con fallback alle regole hardcoded.
@@ -43171,7 +43171,7 @@ Per confermare scrivi ELIMINA.`);
     // prenotazione che non è mai uscita di qui.
     if (String((parsed && parsed.tipo) || '').toLowerCase().includes('lez')
         && !pmoNomeMaestroPlausibile(parsed && parsed.istruttore)) {
-      throw new Error('Lezione senza maestro: scrivi il nome del maestro subito dopo «lezione» (es. «lezione Santiago campo 1 18-19:30»), oppure creala cliccando sullo slot libero, che il maestro lo chiede.');
+      throw new Error('Lezione senza maestro: scrivi il nome del maestro subito dopo «lezione» (es. «lezione LoZio campo 1 18-19:30»), oppure creala cliccando sullo slot libero, che il maestro lo chiede.');
     }
     let giocatoriPayload;
     if (Array.isArray(parsed.giocatori) && parsed.giocatori.length) {
@@ -43694,7 +43694,7 @@ Per confermare scrivi ELIMINA.`);
     const isoDate = (document.getElementById('staffCalDate') || {}).value || staffCalTodayIso();
     const parsed = staffCalParseBookingText(text, isoDate);
     if (!parsed) {
-      staffCalSetStatus('Formato non riconosciuto. Usa: "lezione Santiago campo 1 18-19:30" oppure "campo 2 ogni martedì 20-21"', 'error');
+      staffCalSetStatus('Formato non riconosciuto. Usa: "lezione LoZio campo 1 18-19:30" oppure "campo 2 ogni martedì 20-21"', 'error');
       return;
     }
     // v6.191 — stessa regola della guardia in staffCalSubmitSingle, chiesta PRIMA di mettere in
@@ -43702,7 +43702,7 @@ Per confermare scrivi ELIMINA.`);
     // sul RICORRENTE arriverebbe a cose fatte, quattro volte di fila, e all'operatore direbbe solo
     // «0 create, 4 fallite — vedi console». Qui invece è una riga sola, e dice cosa scrivere.
     if (String(parsed.tipo || '').toLowerCase().includes('lez') && !pmoNomeMaestroPlausibile(parsed.istruttore)) {
-      staffCalSetStatus('👨‍🏫 Lezione senza maestro: scrivi il suo nome subito dopo «lezione» — es. "lezione Santiago campo 1 18-19:30". Oppure clicca sullo slot libero: la scheda il maestro lo chiede.', 'error');
+      staffCalSetStatus('👨‍🏫 Lezione senza maestro: scrivi il suo nome subito dopo «lezione» — es. "lezione LoZio campo 1 18-19:30". Oppure clicca sullo slot libero: la scheda il maestro lo chiede.', 'error');
       return;
     }
 
@@ -44707,7 +44707,7 @@ Per confermare scrivi ELIMINA.`);
       { key:'Manutenzione', engine:'manutenzione', tipo:'manutenzione' },
       { key:'Torneo',       engine:null,      tipo:null, disabled:true }
     ];
-    const maestri = (typeof PARSER_RULES !== 'undefined' && PARSER_RULES && PARSER_RULES.campi_opzionali && PARSER_RULES.campi_opzionali.istruttore && PARSER_RULES.campi_opzionali.istruttore.valori_validi) || ['Santiago','LoZio','Spinazze','Lucas Vidal'];
+    const maestri = (typeof PARSER_RULES !== 'undefined' && PARSER_RULES && PARSER_RULES.campi_opzionali && PARSER_RULES.campi_opzionali.istruttore && PARSER_RULES.campi_opzionali.istruttore.valori_validi) || ['LoZio','Spinazze','Lucas Vidal'];
 
     // Leggibilità ADATTIVA: testi/controlli scalano in modo fluido sulla LARGHEZZA REALE del
     // contenitore (non sul device). Estremi preservati: contenitore stretto (~320px, es. sidebar
@@ -45014,7 +45014,7 @@ Per confermare scrivi ELIMINA.`);
   // Step 2b — maestro (solo lezione)
   function svcAskMaestro() {
     svcFlowState.step = 'maestro';
-    const maestri = (typeof PARSER_RULES !== 'undefined' && PARSER_RULES?.campi_opzionali?.istruttore?.valori_validi) || ['Santiago', 'LoZio', 'Spinazze', 'Lucas Vidal'];
+    const maestri = (typeof PARSER_RULES !== 'undefined' && PARSER_RULES?.campi_opzionali?.istruttore?.valori_validi) || ['LoZio', 'Spinazze', 'Lucas Vidal'];
     const div = svcAddMessage('system', '👨‍🏫 <strong>Quale maestro?</strong>', 'flow');
     svcFlowState.stepMsg = div;
     const btns = svcMakeStepButtons(
@@ -46075,9 +46075,9 @@ Per confermare scrivi ELIMINA.`);
     // poi RIPRISTINA. Read-only: non tocca prenotazioni/cloud/worker.
     // NB: set RAPPRESENTATIVO (copre le categorie); il gate completo resta test/parser-test.html.
     const _VALIDATOR_REGRESSION = [
-      'prenota campo 2 domani alle 18', 'lezione con Santiago campo 1 domani 18-19',
-      'metti una lezione maestro Santiago campo 2 sabato alle 15', 'annulla la partita di domani campo 2 alle 18',
-      'disdici la lezione di sabato con Santiago', 'sposta la partita del campo 2 di domani alle 19',
+      'prenota campo 2 domani alle 18', 'lezione con LoZio campo 1 domani 18-19',
+      'metti una lezione maestro LoZio campo 2 sabato alle 15', 'annulla la partita di domani campo 2 alle 18',
+      'disdici la lezione di sabato con LoZio', 'sposta la partita del campo 2 di domani alle 19',
       'allunga la partita di domani alle 18 fino alle 20', 'aggiungi Luca alla partita di domani campo 2 alle 18',
       'togli Giovanni dalla partita di sabato', 'sostituisci Mario con Luca nella partita di domani',
       'campi liberi domani pomeriggio', 'chi gioca oggi alle 18 sul campo 1', 'che prenotazioni ci sono sabato',
@@ -48705,7 +48705,7 @@ Per confermare scrivi ELIMINA.`);
           PARSER_RULES.campi_opzionali.istruttore && PARSER_RULES.campi_opzionali.istruttore.valori_validi);
         if (Array.isArray(v) && v.length) return v;
       } catch (e) {}
-      return ['Santiago', 'LoZio', 'Spinazze', 'Lucas Vidal'];
+      return ['LoZio', 'Spinazze', 'Lucas Vidal'];
     }
     function _detectTipo(n) {
       let kw = ['lezione', 'lesson'];
