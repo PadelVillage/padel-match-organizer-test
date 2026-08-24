@@ -7959,7 +7959,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.247';
+    const APP_VERSION = '6.248';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -28806,9 +28806,35 @@ Per confermare scrivi ELIMINA.`);
 	          const spiega = dati.error === 'SCANNER_DISARMATO'
 	            ? 'Lo scanner è <strong>disarmato</strong>: mancano le credenziali Wansport nei segreti della funzione. Finché non ci sono, non contatta nessun portale — ed è voluto.'
 	            : dati.error === 'TROPPO_PRESTO'
-	              ? `Troppo presto: fra due letture dello stesso circolo passa almeno un minuto (${Math.ceil((dati.attendi_ms||0)/1000)}s ancora).`
+	              ? `Troppo presto: fra due letture dello stesso circolo passa <strong>almeno un giorno</strong> — è una cortesia verso un server che non è nostro, non un limite tecnico. Mancano ancora ${Math.ceil((dati.attendi_ms||0)/3600000)} ore.`
 	              : `Non ha funzionato: <strong>${escapeHtml(String(dati.error || 'motivo ignoto'))}</strong>.${dati.dettaglio ? ' ' + escapeHtml(String(dati.dettaglio)) : ''}`;
 	          pmoCircoliSetStato(spiega, 'warning');
+	        } else if (dati.piattaforma === 'matchpoint') {
+	          // 🏠 CASA NOSTRA — qui la sonda legge DAVVERO i campi liberi, quindi il
+	          //    verdetto è diverso da quello Wansport, che è solo una radiografia.
+	          //    ⚠️ Scrivere anche qui «è una misura della forma della pagina, non una
+	          //    lettura dei campi liberi» sarebbe FALSO, e falso al contrario: farebbe
+	          //    credere rotta una cosa che funziona. Un messaggio copiato da un altro
+	          //    caso mente appena i due casi divergono — e qui hanno già divergiuto.
+	          const slot = Array.isArray(dati.slot) ? dati.slot : [];
+	          const perCampo = new Map();
+	          slot.forEach(sl => {
+	            if (!perCampo.has(sl.campo)) perCampo.set(sl.campo, []);
+	            perCampo.get(sl.campo).push(sl.ora);
+	          });
+	          const righeCampo = [...perCampo.entries()]
+	            .map(([campo, ore]) => `<strong>${escapeHtml(String(campo))}</strong>: ${ore.map(o => escapeHtml(String(o))).join(' · ')}`)
+	            .join('<br>');
+	          const g = dati.griglia || {};
+	          pmoCircoliSetStato(
+	            slot.length
+	              ? `<strong>${escapeHtml(nome)}</strong> — <strong>${slot.length} slot liberi</strong> il ${escapeHtml(String(dati.data||''))}, letti in <strong>${dati.latenza_ms} ms</strong>.<br>${righeCampo}`
+	                + `<br><span class="routine-mini">Griglia osservata: ${escapeHtml(String(g.apertura||'?'))}-${escapeHtml(String(g.chiusura||'?'))}, passo ${escapeHtml(String(g.slotMinuti||'?'))}′. `
+	                + `È una lettura VERA dei campi liberi, non una radiografia — vale per la data mostrata e per la durata standard.</span>`
+	              : `<strong>${escapeHtml(nome)}</strong>: lettura riuscita in ${dati.latenza_ms} ms, <strong>nessuno slot libero</strong> il ${escapeHtml(String(dati.data||''))}. `
+	                + `<span class="routine-mini">È un «pieno» MISURATO, non un guasto: se il portale non avesse risposto lo direbbe con un errore, non con uno zero.</span>`,
+	            'success');
+	          console.log('[circoli-scan] lettura matchpoint', dati);
 	        } else {
 	          const rx = dati.radiografia || {};
 	          // ⭐ Si dice che cos'è, e soprattutto che cosa NON è: una misura della FORMA
