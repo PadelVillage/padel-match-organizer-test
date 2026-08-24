@@ -7959,7 +7959,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.248';
+    const APP_VERSION = '6.249';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -28892,10 +28892,19 @@ Per confermare scrivi ELIMINA.`);
 	        if (c.apertura && c.chiusura) pezzi.push(`${escapeHtml(String(c.apertura).slice(0,5))}-${escapeHtml(String(c.chiusura).slice(0,5))}`);
 	        const listaCampi = (Array.isArray(c.campi) && c.campi.length) ? `<div class="routine-mini">${escapeHtml(c.campi.join(', '))}</div>` : '';
 	        const griglia = (pezzi.length || listaCampi) ? (pezzi.join(' · ') + listaCampi) : '<span class="routine-mini">da rilevare</span>';
-	        // Il bottone esiste solo dove interrogare ha senso: un circolo fermo o
-	        // Padel Village non si contattano, e un bottone che risponde sempre «no»
-	        // insegna a non leggere i messaggi.
-	        const azione = (c.attivo && c.piattaforma === 'wansport')
+	        // Il bottone esiste solo dove interrogare ha senso: un circolo fermo non si
+	        // contatta, e un bottone che risponde sempre «no» insegna a non leggere i
+	        // messaggi.
+	        // 🔄 Fino al 24/08/2026 qui era escluso anche `matchpoint`, cioè Padel
+	        //    Village, e il commento diceva «non si contatta». Adesso si contatta e
+	        //    si legge (voce 60), quindi la riga vecchia è stata CORRETTA.
+	        // 🚨 Il difetto l'ha visto il committente in dieci secondi guardando la
+	        //    pagina: la riga mostrava griglia ed esito — scritti dalle chiamate di
+	        //    collaudo — ma nella colonna Azioni c'era «—». Avevo curato il VERDETTO
+	        //    del bottone senza controllare che il bottone ESISTESSE, e nessuna delle
+	        //    prove automatiche poteva accorgersene: guardavano la risposta della
+	        //    funzione, non la pagina. È la prova fisica, di nuovo.
+	        const azione = (c.attivo && (c.piattaforma === 'wansport' || c.piattaforma === 'matchpoint'))
 	          ? `<button class="btn-secondary small-btn" data-circolo-prova="${escapeHtml(c.id)}" onclick="setActionAnchor(this); pmoCircoliProva('${escapeJs(c.id)}', '${escapeJs(c.nome)}')">Prova ora</button>`
 	          : '<span class="routine-mini">—</span>';
 	        const esito = c.ultimo_esito
