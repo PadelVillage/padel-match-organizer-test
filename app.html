@@ -6775,7 +6775,7 @@ body.assessment-public-mode .assessment-public-only-card {
                 <div><label>Stato socio</label><select id="statusFilter" onchange="membersCurrentPage=1; displayMembers()"><option value="">Tutti gli stati</option><option value="active">Solo attivi</option><option value="inactive">Solo inattivi</option></select></div>
                 <div><label>Livello giocatore</label><select id="levelFilter" onchange="membersCurrentPage=1; displayMembers()"><option value="">Tutti i livelli</option><option>0.5</option><option>1</option><option>1.5</option><option>2</option><option>2.5</option><option>3</option><option>3.5</option><option>4</option><option>4.5</option><option>5</option><option>5.5</option><option>6</option><option>6.5</option><option>7</option></select></div>
                 <div><label>Sesso giocatore</label><select id="genderFilter" onchange="membersCurrentPage=1; displayMembers()"><option value="">Tutti i sessi</option><option value="M">Maschi</option><option value="F">Femmine</option><option value="NA">Sesso da completare</option></select></div>
-                <div><label>Filtra per</label><select id="attentionFilter" onchange="pmoOnAttentionFilterChange()"><option value="">Tutti</option><option value="hasWallet">Con borsellino</option><option value="toComplete">Da completare</option><option value="noEmail">Senza email</option><option value="noPhone">Senza telefono</option><option value="noId">Senza ID</option><option value="level05AfterAssessment">Livello 0.5 dopo autovalutazione</option><option value="doppioni">Doppioni da rivedere</option></select></div>
+                <div><label>Filtra per</label><select id="attentionFilter" onchange="pmoOnAttentionFilterChange()"><option value="">Tutti</option><option value="hasWallet">Con borsellino</option><option value="toComplete">Da completare</option><option value="noEmail">Senza email</option><option value="noPhone">Senza telefono</option><option value="noId">Senza ID</option><option value="daCertificare">Da certificare dal maestro</option><option value="level05AfterAssessment">Livello 0.5 dopo autovalutazione</option><option value="doppioni">Doppioni da rivedere</option></select></div>
               </div>
               <div class="players-table-wrap">
                 <table class="players-table">
@@ -7959,7 +7959,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.251';
+    const APP_VERSION = '6.252';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -15570,6 +15570,8 @@ Grazie.`
       if (type === 'level05') return String(g.level ?? '') === '0.5';
       if (type === 'noId') return !g.memberId;
       if (type === 'level05AfterAssessment') return level05AfterAssessment;
+      // 🎓 Voce 98: chi il test l'ha superato sopra il tetto e in scheda ha meno.
+      if (type === 'daCertificare') return !!assessmentAspettaIlMaestro(g);
       if (type === 'hasWallet') { const w = _walletResolve(g); return !!(w && typeof w.balance_cents === 'number' && w.balance_cents > 0); }
       // Doppioni: la risposta arriva dal CLOUD (vedi pmoRicaricaDoppioni), non dall'elenco locale,
       // dove una persona con due schede compare una volta sola. Finché il controllo non è andato
@@ -15996,8 +15998,24 @@ Grazie.`
         const _dupWhy = _dup
           ? `<div class="players-dup-why" title="${escapeHtml('Righe: ' + (_dup.righe || []).join('   +   '))}">🚨 Doppione — ${escapeHtml(_dup.spiega)}</div>`
           : '';
+        // 🎓 Voce 98 — CHI ASPETTA IL MAESTRO, e si dice SEMPRE, non solo col filtro acceso:
+        // è la stessa scelta della riga qui sopra. Chi arriva su questo nome cercando altro
+        // deve vedere lo stesso che quella persona sta aspettando qualcosa da noi.
+        // ⭐ E si dice QUANDO GIOCA, perché è la mezza informazione senza cui la riga non
+        // serve: il maestro deve sapere quando andare a guardarlo, e il giorno il gestionale
+        // lo sa già — sono le prenotazioni. Chi gioca FUORI dal circolo resta il caso che
+        // nessuno può leggere da qui, ed è quello per cui esiste la frase «di' alla
+        // segreteria il giorno in cui giochi».
+        const _maestro = (typeof assessmentAspettaIlMaestro === 'function') ? assessmentAspettaIlMaestro(g) : null;
+        let _maestroWhy = '';
+        if (_maestro) {
+          const _quando = pmoQuandoGiocaEtichetta(pmoProssimaVoltaInCampo(g));
+          const _dice = pmoLivelloEtichettaStaff(_maestro.dimostrato) || String(_maestro.dimostrato);
+          const _ora = _maestro.inScheda === null ? 'nessun livello' : (pmoLivelloEtichettaStaff(_maestro.inScheda) || String(_maestro.inScheda));
+          _maestroWhy = `<div class="players-dup-why" style="color:var(--blue,#2563eb);" title="${escapeHtml('Il test ha dimostrato ' + _dice + '; in scheda ha ' + _ora + '. Sopra Intermedio il livello lo certifica il maestro guardandolo giocare.')}">🎓 Da certificare — il test dice ${escapeHtml(_dice)}, in scheda ${escapeHtml(_ora)}${_quando ? ' · gioca ' + escapeHtml(_quando) : ' · nessuna partita nei prossimi 30 giorni'}</div>`;
+        }
         return `<tr class="${isOpen ? 'selected' : ''}" onclick="openMemberCard('${escapeHtml(String(g.id))}')">
-          <td><div class="players-name">${escapeHtml(playerFullName(g) || '-')}</div><div class="players-meta">${escapeHtml(formatMemberIdLabel(g.memberId) || 'ID mancante')}${g.age ? ' · ' + escapeHtml(String(g.age)) + ' anni' : ''}${g.email ? ' · ' + escapeHtml(g.email) : ' · email non presente'}</div>${_dupWhy}</td>
+          <td><div class="players-name">${escapeHtml(playerFullName(g) || '-')}</div><div class="players-meta">${escapeHtml(formatMemberIdLabel(g.memberId) || 'ID mancante')}${g.age ? ' · ' + escapeHtml(String(g.age)) + ' anni' : ''}${g.email ? ' · ' + escapeHtml(g.email) : ' · email non presente'}</div>${_dupWhy}${_maestroWhy}</td>
           <td><span class="badge ${g.gender === 'NA' || !g.gender ? 'badge-warning' : 'badge-info'}">${escapeHtml(g.gender === 'NA' || !g.gender ? 'Da completare' : g.gender)}</span></td>
           <td><strong>${escapeHtml(pmoLivelloEtichettaStaff(g.level) || (g.level ?? 3))}</strong></td>
           <td>${escapeHtml(g.phone || '-')}</td>
@@ -16178,7 +16196,16 @@ Grazie.`
                 <div><label>ID giocatore Padel Village</label><input value="${escapeHtml(pmoIdPadelVillage(g) || '-')}" readonly title="Il nostro identificatore. È il riferimento del gestionale e del bot, e resta valido anche senza Matchpoint."></div>
                 <div><label>ID giocatore Matchpoint</label><input value="${escapeHtml(pmoIdMatchpoint(g) || '-')}" readonly title="Il codice cliente di Matchpoint (quello della tendina «000140-Nome»). Vuoto per chi non è cliente del circolo."></div>
                 ${pmoIdInternoMatchpoint(g) ? `<div><label>ID interno Matchpoint</label><input value="${escapeHtml(pmoIdInternoMatchpoint(g))}" readonly title="Il numero con cui Matchpoint identifica il socio nelle sue pagine. È DIVERSO dal codice cliente qui sopra e non si può calcolare: se lo prende da solo quando il socio entra in una prenotazione. Serve a riconoscerlo senza passare dal nome (gli omonimi)."></div>` : ''}
-                <div><label>Livello di gioco</label><input type="number" step="0.5" min="0" max="7" id="cardLevel" value="${escapeHtml(g.level || 3)}" oninput="pmoCardLevelWord()"><small class="member-level-word" id="cardLevelWord">${escapeHtml(pmoLivelloDefinizione(g.level || 3) || '')}</small></div>
+                <!-- 🔒 IL LIVELLO NASCE CHIUSO (26/08/2026, sua richiesta: «nella tab anagrafica
+                     metti il livello non editabile»).
+                     ⚖️ Chiuso, NON di sola lettura: bloccarlo e basta avrebbe tolto al maestro
+                     l'unico modo che ha di certificare chi sta sopra il tetto — cioè la cosa che
+                     la voce 98 ha appena promesso al socio. ⇒ Si apre con un gesto esplicito, e
+                     il gesto è la protezione: quello che si voleva evitare è il cambio per
+                     abitudine o per sbaglio mentre si correggeva un telefono, non il cambio.
+                     📌 Una protezione che toglie anche l'uso legittimo non è una protezione: è
+                     un pezzo di funzionalità in meno con l'aspetto di una cautela. -->
+                <div><label>Livello di gioco</label><input type="number" step="0.5" min="0" max="7" id="cardLevel" value="${escapeHtml(g.level || 3)}" oninput="pmoCardLevelWord()" readonly title="Il livello è chiuso: si apre con «Cambia livello». Sopra Intermedio lo certifica il maestro guardando giocare."><small class="member-level-word" id="cardLevelWord">${escapeHtml(pmoLivelloDefinizione(g.level || 3) || '')}</small><button type="button" class="btn-secondary small-btn" id="cardLevelUnlock" style="margin-top:6px;" onclick="pmoSbloccaLivello(this)">🔓 Cambia livello</button></div>
                 <div><label>Nome</label><input id="cardFirstName" value="${escapeHtml(g.firstName || '')}"></div>
                 <div><label>Cognome</label><input id="cardSurname" value="${escapeHtml(g.surname || '')}"></div>
                 <div><label>Sesso</label><select id="cardGender"><option value="NA" ${g.gender === 'NA' ? 'selected' : ''}>Da completare</option><option value="M" ${g.gender === 'M' ? 'selected' : ''}>M</option><option value="F" ${g.gender === 'F' ? 'selected' : ''}>F</option></select></div>
@@ -16243,7 +16270,41 @@ Grazie.`
                 </div>
                 <div style="margin-top:6px;font-size:11px;color:#6b7280;">Sottrae dal borsellino su Matchpoint (totale o parziale). Operazione reale.</div>
               </div>` : ''}` : '';
-      const _autovalBody = showSecAutoval ? `${assessmentMeta}${assessmentHistoryBox || `<details class="assessment-member-history"><summary>Storico invii, token e risposte</summary><div class="assessment-member-history-list">Nessuno storico autovalutazione disponibile.</div></details>`}` : '';
+      /* 🎓 VOCE 98 — IL RIQUADRO DEL MAESTRO, nel tab «Autovalutazione» della scheda socio.
+         🗣️ Sua richiesta del 26/08: *«nella scheda socio c'è un tab che si chiama
+         autovalutazione, perché non la metti lì»*. Ed è il posto giusto: qui c'è la storia del
+         test di QUESTA persona, e la frase parla di lei.
+         ⚖️ Non sostituisce il filtro «Da certificare dal maestro» nell'elenco soci: sono due
+         cose diverse e servono a due momenti diversi — il filtro risponde a *«chi devo andare
+         a guardare?»* (è la lista, ed è la voce 98), il riquadro a *«questa persona che cosa
+         aspetta?»*. Chi apre una scheda per altro deve trovarcelo lo stesso.
+         ⛔ Qui NON si applica niente e non c'è nessun bottone: il livello sopra il tetto lo
+         scrive il maestro dal campo del livello, come qualunque altro. Un bottone «certifica»
+         darebbe per fatta una cosa che si fa guardando giocare. */
+      let _maestroBox = '';
+      if (showSecAutoval) {
+        const _aspetta = assessmentAspettaIlMaestro(g);
+        if (_aspetta) {
+          const _quandoP = pmoProssimaVoltaInCampo(g);
+          const _quando = pmoQuandoGiocaEtichetta(_quandoP);
+          const _dice = pmoLivelloEtichettaStaff(_aspetta.dimostrato) || String(_aspetta.dimostrato);
+          const _ora = _aspetta.inScheda === null ? 'nessun livello' : (pmoLivelloEtichettaStaff(_aspetta.inScheda) || String(_aspetta.inScheda));
+          _maestroBox = `<section class="member-panel">
+            <div class="member-panel-head">
+              <h4>🎓 Aspetta il maestro</h4>
+              <span class="badge badge-info">Da certificare</span>
+            </div>
+            <div class="member-source-lines">
+              <div class="member-source-line"><span>Il test dice</span><strong>${escapeHtml(_dice)}</strong></div>
+              <div class="member-source-line"><span>In scheda</span><strong>${escapeHtml(_ora)}</strong></div>
+              <div class="member-source-line"><span>Prossima volta in campo</span><strong>${escapeHtml(_quando || 'nessuna partita nei prossimi 30 giorni')}</strong></div>
+              ${_quandoP && _quandoP.campo ? `<div class="member-source-line"><span>Campo</span><strong>${escapeHtml(String(_quandoP.campo))}</strong></div>` : ''}
+            </div>
+            <div class="member-source-line" style="margin-top:8px;color:#666;">Sopra Intermedio il livello non lo decide il quiz: lo certifica il maestro guardandolo giocare. Quando l'ha visto, il livello si scrive dal campo «Livello di gioco».</div>
+          </section>`;
+        }
+      }
+      const _autovalBody = showSecAutoval ? `${_maestroBox}${assessmentMeta}${assessmentHistoryBox || `<details class="assessment-member-history"><summary>Storico invii, token e risposte</summary><div class="assessment-member-history-list">Nessuno storico autovalutazione disponibile.</div></details>`}` : '';
       const _attivitaBody = showSecAttivita ? `
               <div class="member-tab-subhead">Stato rapido</div>
               <div class="member-status-grid">
@@ -29760,10 +29821,58 @@ Per confermare scrivi ELIMINA.`);
         }
         const data = res.data || [];
         let updatedCount = 0;
+        /* 🚨⭐⭐ QUI SI PERDEVANO LE SCHEDE, ed è misurato il 26/08/2026 sulla voce 98.
+           Questo giro scriveva `assessmentTokens[key].token = item.token` e basta: un socio
+           con più gettoni (Maurizio ne ha SEDICI) teneva l'ULTIMO che passava, e l'ordine lo
+           decide `jsonb_agg` sulla tabella, cioè nessuno. Il gettone della scheda consegnata
+           spariva senza lasciare traccia — e `get_self_assessments_by_tokens` cerca **per
+           gettone**: niente gettone, niente scheda.
+           📏 La misura: 49 schede su Supabase, **30** arrivate all'app. Le 19 perdute
+           comprendevano quella del 26/08 delle 08:27, cioè esattamente il caso per cui la
+           voce 98 esiste. La lista del maestro era vuota su dati veri.
+           ⚖️ La cura non inventa niente: `previousTokens` c'è già, e lo riempiono da sempre
+           gli altri TRE punti che sostituiscono un gettone (righe ~25280, ~30985, ~35037).
+           Questo era l'unico che buttava via il vecchio. ⇒ Non è una funzione nuova: è
+           l'unico posto che non seguiva l'idioma di casa.
+           📌 *Un archivio che tre scritture su quattro riempiono non è un archivio: è una
+           cosa che qualcuno crede piena.* */
+        const perSocio = new Map();
         data.forEach(item => {
-          const key = String(item.member_local_id);
-          if (!key) return;
+          const key = String(item.member_local_id || '');
+          if (!key || key === 'null' || key === 'undefined') return;
+          if (!perSocio.has(key)) perSocio.set(key, []);
+          perSocio.get(key).push(item);
+        });
+        const quando = (item) => {
+          const t = Date.parse(String(item?.completed_at || item?.sent_at || item?.created_at || ''));
+          return Number.isFinite(t) ? t : 0;
+        };
+        perSocio.forEach((righe, key) => {
+          // Il più recente diventa quello corrente; gli altri NON si buttano.
+          righe.sort((a, b) => quando(b) - quando(a));
+          const item = righe[0];
           const prev = assessmentTokens[key] || {};
+          const archivio = Array.isArray(prev.previousTokens) ? prev.previousTokens.slice() : [];
+          const giaVisti = new Set(archivio.map(x => normalizeText(x?.token || '')).filter(Boolean));
+          giaVisti.add(normalizeText(item.token || ''));
+          const archivia = (token, extra = {}) => {
+            const chiave = normalizeText(token || '');
+            if (!chiave || giaVisti.has(chiave)) return;
+            giaVisti.add(chiave);
+            archivio.push({ token, memberId: key, archivedAt: new Date().toISOString(), ...extra });
+          };
+          // ① i gettoni più vecchi che il cloud porta insieme a questo
+          righe.slice(1).forEach(vecchio => archivia(vecchio.token, {
+            status: vecchio.status || '', createdAt: vecchio.created_at || '',
+            sentAt: vecchio.sent_at || null, completedAt: vecchio.completed_at || null,
+            reason: 'cloud_storico'
+          }));
+          // ② e quello che l'app aveva prima, se il cloud ne dichiara un altro
+          archivia(prev.token, {
+            status: prev.status || '', createdAt: prev.createdAt || '',
+            sentAt: prev.sentAt || null, completedAt: prev.completedAt || null,
+            reason: 'sostituito_dal_cloud'
+          });
           assessmentTokens[key] = {
             ...prev,
             memberId: key,
@@ -29777,9 +29886,10 @@ Per confermare scrivi ELIMINA.`);
             sentAt: item.sent_at || prev.sentAt || null,
             completedAt: item.completed_at || prev.completedAt || null,
             registeredToSupabase: !!item.registered_at || item.status !== 'created',
-            registeredAt: item.registered_at || prev.registeredAt || null
+            registeredAt: item.registered_at || prev.registeredAt || null,
+            previousTokens: archivio
           };
-          updatedCount++;
+          updatedCount += righe.length;
         });
         const cloudMemberIds = new Set(data.map(item => String(item.member_local_id)).filter(Boolean));
         let prunedCount = 0;
@@ -29814,19 +29924,44 @@ Per confermare scrivi ELIMINA.`);
       try {
         saveAssessmentSettings({ silent });
         if (options.skipCloudLogs !== true) await assessmentEmailImportCloudLogs({ silent:true });
-        const tokens = Object.values(assessmentTokens || {}).map(r => cleanCell(r.token)).filter(Boolean);
+        /* ⇒ TUTTI i gettoni del socio, non solo quello corrente: una scheda si aggancia
+           **per gettone**, e il gettone della scheda consegnata è quasi sempre uno vecchio.
+           Vedi il commento in `syncAssessmentTokensFromSupabase`, dove il vecchio veniva
+           buttato: qui si legge l'archivio che quella cura ha smesso di svuotare. */
+        const tokens = [...new Set(
+          Object.values(assessmentTokens || {}).flatMap(r => [
+            cleanCell(r?.token),
+            ...(Array.isArray(r?.previousTokens) ? r.previousTokens.map(x => cleanCell(x?.token)) : [])
+          ])
+        )].filter(Boolean);
         if (!tokens.length) {
           if (!silent) showAlert('⚠️ Nessun token locale da aggiornare. Prima genera i token.', 'warning');
           return { ok:false, reason:'no_tokens' };
         }
         if (!silent) showAlert('⏳ Aggiornamento risposte in corso...', 'info');
         const { supabaseUrl, supabaseKey } = await loadAssessmentSupabaseConfig();
+        /* 🚨⭐⭐ CON LA CHIAVE PUBBLICABILE QUESTA CHIAMATA NON POTEVA RIUSCIRE PIÙ, e non
+           per un socio o per un ruolo: **per nessuno**. Il 16/08/2026 la RPC ha preso la
+           guardia di staff (`pmo_current_staff_profile`) e con essa il grant è passato ad
+           `authenticated` soltanto; l'app però continuava a mandare la chiave pubblicabile
+           come `Authorization`, cioè a presentarsi come `anon`.
+           📏 Misurato il 26/08 sull'app viva di PROD, le due chiamate una accanto all'altra:
+           chiave pubblicabile → **401 `permission denied for function`**; gettone di sessione
+           dello staff → **200**. ⇒ Da dieci giorni nessun browser riusciva più a scaricare
+           una risposta, e il sintomo era una lista vuota — indistinguibile da «non c'è
+           nessuno che aspetta».
+           ⚖️ L'idioma di casa era già lì: `pmoCloudRpc(nome, payload, { accessToken })`, che
+           tutta l'anagrafica cloud usa da mesi. Questa era una `fetch` scritta a mano.
+           📌 *Una chiamata che si autentica da sola con la chiave pubblica non è più semplice:
+           è una chiamata che smette di funzionare il giorno in cui qualcuno mette una guardia,
+           e lo fa in silenzio.* */
+        const accessToken = await pmoGetSupabaseStaffAccessToken();
         const response = await fetch(`${supabaseUrl}/rest/v1/rpc/get_self_assessments_by_tokens`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`
+            'Authorization': `Bearer ${accessToken || supabaseKey}`
           },
           body: JSON.stringify({ p_tokens: tokens })
         });
@@ -30706,6 +30841,117 @@ Per confermare scrivi ELIMINA.`);
         .sort((a,b) => b.time - a.time);
       return rows[0] || null;
     }
+    /* ═══ 🎓 CHI ASPETTA IL MAESTRO — la voce 98 ═══════════════════════════════════════
+       🚨 IL BUCO CHE CHIUDE, ed è misurato e non previsto. Dal 25/08 il test dice al socio
+       *«sopra Intermedio il livello te lo certifica il maestro guardandoti giocare»*, e la
+       segnalazione parte davvero: il 26/08 alle 09:00 il registro di PROD portava
+       `ha risposto da Avanzato (4): sopra Intermedio certifica il maestro`. Ma finiva in un
+       `console.log` dell'edge — **non la leggeva nessuno**. ⇒ Una promessa fatta a qualcuno e
+       scritta in un log è una promessa non fatta.
+
+       🔎 CHI VA IN LISTA, e il criterio è un FATTO, non una colonna di stato. La strada facile
+       era `staff_status === 'applied_review'`: sbagliata, e si vede sul caso vero del 26/08 —
+       quella scheda è stata **saltata** (il livello non andava riscritto), quindi nel database
+       non ha lasciato nessuno stato. ⇒ Il fatto è: *il test ha dimostrato più di quello che il
+       socio ha in scheda, e il resto lo può dare solo il maestro.*
+       ⚖️ Perciò chi ha GIÀ un livello sopra il tetto non compare: per lui non c'è niente da
+       certificare, il livello è già quello. È il caso del 26/08 — dimostrato 4, in scheda 4 —
+       e la lista che lo mostrasse chiederebbe al maestro un lavoro già fatto.
+
+       ⛔ E qui NON si applica niente: questa è una lista che si guarda. Il livello sopra il
+       tetto lo scrive il maestro dalla scheda del socio, come qualunque altro livello a mano. */
+    const PMO_TETTO_MAESTRO = 3.5;
+
+    /** L'ultima scheda del socio per data di consegna, applicata o no. */
+    function assessmentUltimaScheda(member) {
+      const rows = assessmentMemberResponses(member) || [];
+      let ultima = null, quando = -Infinity;
+      rows.forEach(r => {
+        const t = Date.parse(String(r?.submitted_at || '').trim());
+        const n = Number.isFinite(t) ? t : -Infinity;
+        if (n >= quando) { quando = n; ultima = r; }
+      });
+      return ultima;
+    }
+
+    /**
+     * Il socio è FERMO AL TETTO: torna i due livelli, o `null` se non c'è niente da certificare.
+     * ⚖️ Si guarda solo l'ULTIMA scheda: una prova di aprile che diceva Agonista non tiene in
+     * lista chi a giugno ha risposto da Base — sarebbe una coda che non si svuota mai.
+     */
+    function assessmentAspettaIlMaestro(member) {
+      const scheda = assessmentUltimaScheda(member);
+      if (!scheda) return null;
+      // Il quiz dev'essere passato: a chi lo fallisce la promessa del maestro non è mai uscita.
+      const quiz = normalizeText(scheda?.raw_response?.knowledge?.status || '');
+      if (quiz && quiz !== 'pass') return null;
+      const dimostrato = parseFloat(String(scheda.calculated_level ?? '').replace(',', '.'));
+      if (!Number.isFinite(dimostrato) || !(dimostrato > PMO_TETTO_MAESTRO)) return null;
+      const inScheda = parseFloat(String(member?.level ?? '').replace(',', '.'));
+      /* 🔄🗣️⭐⭐ 27/08/2026 — IL CRITERIO SI ALLARGA, e qui c'era scritto il contrario.
+         🗣️ Sua decisione, dopo la sua domanda della sera: *«chi è come livello avanzato e
+         facendo il test risulta agonista, come risponde il bot?»* — e poi, misura alla mano,
+         *«si allarga la lista»*.
+
+         🚨 LA RIGA VECCHIA ERA `inScheda > PMO_TETTO_MAESTRO → null`, cioè *«chi è già sopra il
+         tetto non aspetta nessuno: il livello ce l'ha»*. Aveva una ragione **vera** e un caso
+         **vero** dietro: Maurizio, il 26/08, dimostrato 4 e in scheda 4 — per lui non c'è niente
+         da certificare, e metterlo in lista avrebbe chiesto al maestro un lavoro già fatto.
+         ⚖️ Ma quella condizione, scritta per escludere QUEL caso, ne escludeva anche un altro:
+         chi ha **4** in scheda e dimostra **Agonista (5)**. Lì da certificare c'è eccome — e dal
+         27/08 quel socio riceve pure il messaggio che lo manda in segreteria dal maestro. ⇒ Si
+         presentava al circolo, e in Anagrafica soci non c'era niente che lo dicesse.
+         📌 *Una condizione scritta per escludere un caso ne esclude sempre anche un altro: la si
+         prova sul caso che voleva escludere, e passa; quello che non voleva escludere non lo
+         cerca nessuno.*
+
+         ⇒ Il criterio giusto non è **dove sta** il socio, è **quanto ha dimostrato in più**:
+         `dimostrato > inScheda`. Ed è la stessa frase con cui questa scheda descriveva sé stessa
+         fin dal 26/08 — *«il test ha dimostrato più di quello che il socio ha in scheda»* — che
+         il codice non applicava fino in fondo.
+         ⚖️ Il caso di Maurizio resta fuori **per la ragione giusta** invece che per posizione:
+         dimostrato 4, in scheda 4, e 4 non è più di 4.
+         🔒 Chi non ha ancora un livello (`inScheda` non è un numero) entra come prima: non ha
+         niente da confrontare, e il tetto sopra basta da solo. */
+      if (Number.isFinite(inScheda) && !(dimostrato > inScheda)) return null;
+      return { dimostrato, inScheda: Number.isFinite(inScheda) ? inScheda : null, scheda };
+    }
+
+    /**
+     * La prossima volta che il socio è IN CAMPO — non «che ha organizzato».
+     * 🚨 `playerFutureBookingsCount` guarda solo `p.giocatore`, cioè chi ha prenotato: al
+     * maestro serve sapere quando quella persona GIOCA, e chi è stato invitato da un altro
+     * sta solo dentro `p.giocatori`. Cercare nel posto sbagliato manderebbe il maestro a
+     * guardare una partita che non è la sua.
+     * ⚖️ Guarda 30 giorni avanti e non di più: oltre, il calendario è quasi vuoto e una data
+     * lontanissima non aiuta a organizzarsi.
+     */
+    function pmoProssimaVoltaInCampo(member) {
+      const nome = playerFullName(member);
+      if (!nome) return null;
+      const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+      const fine = addDays(oggi, 30);
+      const suo = (p) => {
+        if (samePlayerName(p?.giocatore, nome)) return true;
+        const elenco = Array.isArray(p?.giocatori) ? p.giocatori : [];
+        return elenco.some(g => samePlayerName(typeof g === 'string' ? g : (g && g.nome) || '', nome));
+      };
+      const righe = (prenotazioni || [])
+        .filter(p => isDateBetween(p?.data, oggi, fine) && suo(p))
+        .sort((a, b) => String(a.data + (a.ora || '')).localeCompare(String(b.data + (b.ora || ''))));
+      return righe[0] || null;
+    }
+
+    /** «gio 28/08 alle 19:00» — e senza data non si inventa niente: torna ''. */
+    function pmoQuandoGiocaEtichetta(prenotazione) {
+      if (!prenotazione || !prenotazione.data) return '';
+      const d = new Date(`${prenotazione.data}T00:00`);
+      if (Number.isNaN(d.getTime())) return '';
+      const giorno = d.toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: '2-digit' });
+      const ora = cleanCell(prenotazione.ora || '');
+      return ora ? `${giorno} alle ${ora}` : giorno;
+    }
+
     function assessmentMemberNeedsLevelRestore(member) {
       const info = assessmentLatestAppliedLevelInfo(member);
       return !!(member && isLevelZeroPointFive(member) && info && Math.abs(info.level - 0.5) > 0.001);
@@ -36249,6 +36495,32 @@ Per confermare scrivi ELIMINA.`);
     // 🚨 Sta FUORI dalle sentinelle ASSESS-KNOWLEDGE, e non è una questione di ordine: quel blocco
     // dev'essere identico a quello dell'emulatore, che di schede socio non ne ha. Ce l'avevo messa
     // dentro, e il banco della scala l'ha vista subito — fa esattamente il lavoro per cui esiste.
+    /**
+     * Apre il campo del livello, e chiede PERCHÉ.
+     *
+     * 🗣️ 26/08/2026 — sua richiesta: il livello non dev'essere editabile nella tab anagrafica.
+     * ⚖️ Ma «non editabile» e «immutabile» sono due cose diverse, e la seconda avrebbe rotto la
+     * voce 98 appena messa in servizio: sopra Intermedio il livello lo scrive il maestro, a
+     * mano, e questo campo è l'unico posto da cui può farlo. Un campo davvero bloccato avrebbe
+     * lasciato la frase «te lo certifica il maestro» senza nessuno strumento dietro.
+     * ⇒ Quello che si toglie è il cambio DISTRATTO — la cifra ritoccata mentre si correggeva un
+     * telefono — non il cambio deliberato.
+     *
+     * 🚨 Il motivo NON si salva da nessuna parte, ed è voluto: non è un registro, è un attrito.
+     * Serve a far fermare un secondo chi sta per cambiare un livello. Dichiararlo qui evita che
+     * qualcuno lo cerchi poi nei log, o peggio che ce lo aggiunga credendo di completarlo —
+     * un registro a metà è peggio di nessun registro.
+     */
+    function pmoSbloccaLivello(btn) {
+      const input = document.getElementById('cardLevel');
+      if (!input) return;
+      const attuale = pmoLivelloEtichettaStaff(input.value) || cleanCell(input.value) || 'nessuno';
+      if (!confirm(`Cambiare il livello di gioco?\n\nAdesso è ${attuale}.\n\nSopra Intermedio il livello lo certifica il maestro guardando giocare: cambialo qui solo quando l'ha visto, o per correggere un errore.`)) return;
+      input.removeAttribute('readonly');
+      input.focus();
+      try { input.select(); } catch (e) {}
+      if (btn) btn.remove();
+    }
     function pmoCardLevelWord() {
       const input = document.getElementById('cardLevel');
       const out = document.getElementById('cardLevelWord');
@@ -36573,18 +36845,28 @@ Per confermare scrivi ELIMINA.`);
         return;
       }
 
+      let esitoInvio = null;
       try {
         if (isExternal && !payload.token) {
           await submitAssessmentExternalRequestToSupabase(payload);
         } else {
-          await submitAssessmentPublicResponseToSupabase(payload);
+          esitoInvio = await submitAssessmentPublicResponseToSupabase(payload);
           saveAssessmentPublicResponseLocally(payload);
           markAssessmentPublicSubmitted(payload.token);
         }
         lockAssessmentPublicSubmitButton('Autovalutazione inviata');
 
         if (successBox) {
-          successBox.textContent = isExternal ? 'Autovalutazione inviata. Lo staff verificherà il livello indicato e ti invierà una mail di conferma con il livello impostato.' : 'Autovalutazione inviata correttamente. Grazie!';
+          /* 🆕 25/08 — IL TETTO: chi dimostra più di Intermedio legge perché il livello
+             scritto è Intermedio e cosa deve fare per averne uno più alto.
+             ⭐ La frase NON si compone qui: arriva già scritta dall'edge (`certificazione`),
+             che la prende da `conoscenza.js` insieme al numero del tetto. Comporla qui
+             vorrebbe dire una seconda copia della regola dentro la pagina — ed è esattamente
+             da lì che la banca delle domande è stata tolta il 14/08. */
+          const certificazione = esitoInvio && esitoInvio.data && esitoInvio.data.certificazione;
+          successBox.textContent = certificazione && certificazione.messaggio
+            ? certificazione.messaggio
+            : (isExternal ? 'Autovalutazione inviata. Lo staff verificherà il livello indicato e ti invierà una mail di conferma con il livello impostato.' : 'Autovalutazione inviata correttamente. Grazie!');
           successBox.style.display = 'block';
           if (typeof scrollMainContentToElement === 'function') scrollMainContentToElement(successBox, { block:'center' }); else successBox.scrollIntoView({behavior:'smooth', block:'center'});
         }
