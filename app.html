@@ -7959,7 +7959,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.255';
+    const APP_VERSION = '6.256';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -36169,7 +36169,7 @@ Per confermare scrivi ELIMINA.`);
 
       const intro = document.createElement('p');
       intro.className = 'assessment-public-note';
-      intro.textContent = 'Ultime quattro domande sul gioco, per completare la scheda.';
+      intro.textContent = 'Le ultime domande sul gioco, per completare la scheda.';   // 🔄 27/08: senza il numero — la pescata decide quante sono (oggi 5), e un quattro scritto qui mentirebbe
       box.appendChild(intro);
 
       pescate.forEach((domanda, indice) => {
