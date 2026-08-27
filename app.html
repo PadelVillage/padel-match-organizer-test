@@ -7959,7 +7959,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.254';
+    const APP_VERSION = '6.255';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -30914,6 +30914,16 @@ Per confermare scrivi ELIMINA.`);
          🔒 Chi non ha ancora un livello (`inScheda` non è un numero) entra come prima: non ha
          niente da confrontare, e il tetto sopra basta da solo. */
       if (Number.isFinite(inScheda) && !(dimostrato > inScheda)) return null;
+      /* 🔄🗣️⭐⭐ 27/08/2026 mattina — E SI CONFRONTANO LE PAROLE, NON SOLO I NUMERI. Sua regola,
+         data col caso di Maurizio sotto gli occhi (in scheda 4, test 4,5 — tutti e due
+         «Avanzato»): *«quando uno fa il test e risulta lo stesso livello che già ha nella scheda
+         di anagrafica, non c'è bisogno che si chiami il maestro»*. Il livello di un socio è una
+         PAROLA, e il maestro certifica una parola che il socio non ha ancora: 4 → 4,5 è la
+         stessa parola, e in lista chiederebbe al maestro un lavoro già fatto.
+         ⚖️ La gemella `sopraIlTetto` in `giro-del-test.ts` (3 copie) cambia insieme, e le due si
+         guardano nei banchi (`lista-per-il-maestro`, casi M del ponte del link). */
+      if (Number.isFinite(inScheda)
+        && pmoLivelloDefinizione(dimostrato) === pmoLivelloDefinizione(inScheda)) return null;
       return { dimostrato, inScheda: Number.isFinite(inScheda) ? inScheda : null, scheda };
     }
 
