@@ -7959,7 +7959,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.258';
+    const APP_VERSION = '6.259';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -13295,6 +13295,23 @@ Grazie.`
           if (!id) return;
           const m = cloudPerId.get(id);
           if (!m) return;
+          /* 🩹🚨⭐⭐ 28/08/2026 tarda sera (voce 105) — LA CHIAVE SI RINFRESCA SEMPRE, E FUORI
+             DAL CONFRONTO SULLA FRESCHEZZA. Qui la prima stesura della cura è morta in
+             silenzio: `cloudLocalKey` usciva da `pmoLoadAllMembersFromCloud` ma non arrivava
+             MAI fin qui, perché `pmoMemberFieldsFromCloud` copia solo i campi di
+             `PMO_MEMBER_CLOUD_FIELDS` — e per ogni socio già in `localStorage` (cioè
+             praticamente tutti) la chiave restava assente. ⇒ La cura era **inerte**, e
+             `pmoMemberCloudLocalKey` tornava a calcolarsela dal telefono.
+             📏 Misurato pagando: Fabiola Limuti si è **sdoppiata lo stesso** alle 20:54:23,
+             con la cura in servizio su PROD da otto minuti.
+             ⚖️ E NON basta aggiungerla a `PMO_MEMBER_CLOUD_FIELDS`: quella copia scatta solo
+             se la riga del cloud è **più fresca** della copia locale, e una chiave non è un
+             dato che compete sulla freschezza — è **l'indirizzo della riga**, e va sempre
+             quello vero. Perciò si scrive qui, prima e fuori dal confronto.
+             📌 *Una cura che produce un valore che nessuno riceve è verde in ogni banco che
+             guardi il produttore invece del destinatario.* */
+          const chiaveViva = cleanCell(m.cloudLocalKey);
+          if (chiaveViva && g.cloudLocalKey !== chiaveViva) { g.cloudLocalKey = chiaveViva; }
           const esito = pmoMemberFieldsFromCloud(g, m, rowAt.get(id));
           if (esito.changed) { giocatori[i] = esito.next; updated++; }
         });
