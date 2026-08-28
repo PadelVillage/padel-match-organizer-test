@@ -7959,7 +7959,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.257';
+    const APP_VERSION = '6.258';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -12950,7 +12950,16 @@ Grazie.`
       const identita = row => cleanCell(row?.payload?.id || row?.local_key || '');
       const members = list
         .filter(row => row?.record_type === 'member' && !row.deleted && row.payload)
-        .map(row => ({ ...row.payload, id: row.payload.id || row.local_key }));
+        /* 🆕🚨⭐⭐ 28/08/2026 (voce 105) — LA RIGA SI PORTA DIETRO LA PROPRIA CHIAVE.
+           Fin qui `local_key` veniva **buttata via** qui, e chi poi riscriveva il socio se ne
+           calcolava una nuova dal telefono (`pmoMemberCloudLocalKey`). ⇒ Per chi vive su
+           `email:` o `name:` la scrittura non aggiornava la sua riga: ne **creava un'altra**.
+           📏 Misurato la sera del 28/08 su PROD: Maurizio Aprea sdoppiato alle 22:17 da una
+           modifica di livello della segreteria, con una riga **archiviata dal 19 luglio
+           riportata in vita** (`deleted` da true a false). Esposti **25 soci su 2817**.
+           ⚖️ Il campo è di SOLO USO LOCALE: `pmoBuildMemberCloudRecord` lo toglie prima di
+           scrivere, o finirebbe dentro il payload del cloud. */
+        .map(row => ({ ...row.payload, id: row.payload.id || row.local_key, cloudLocalKey: cleanCell(row.local_key) }));
       const retired = new Set();
       const live = new Set();
       // ⭐ Quando la RIGA è stata scritta, per identità. Non è un di più: è l'unico orologio
@@ -27443,6 +27452,23 @@ Per confermare scrivi ELIMINA.`);
 	      pmoSyncCloudRecordsNow([record], actionLabel).catch(error => pmoNotifyImmediateMemberCloudFailure(error, actionLabel));
 	    }
 	    function pmoMemberCloudLocalKey(member, fallbackKey='') {
+	      /* 🆕🚨⭐⭐ 28/08/2026 (voce 105) — LA CHIAVE DELLA RIGA VIVA VINCE SU TUTTO.
+	         🔎 Il difetto che chiude: sotto c'è `if (phoneDigits.length >= 8) return phone:…`, cioè
+	         il telefono vinceva **sempre** — anche quando la riga viva di quel socio stava su
+	         `email:` o `name:`. La scrittura non aggiornava la riga viva: ne creava un'altra, e se al
+	         suo posto ne esisteva una archiviata la **resuscitava**.
+	         📌 *Una scrittura non deve poter inventare un'identità, e men che meno riportare in vita
+	         una riga che qualcuno aveva archiviato.*
+	         ⛔ NON si inverte l'ordine delle due regole di sotto: cambierebbe la chiave a tutti e
+	         **2788** i soci già su `phone:`, che è il danno grande al posto del piccolo. Qui si
+	         aggiunge un gradino SOPRA, che vale solo per chi la chiave ce l'ha davvero.
+	         ⏳ **COSA NON COPRE, dichiarato**: se la chiave portata è **stantia** — il sync ha
+	         ri-chiavato quel socio e archiviato la riga vecchia dopo l'ultima idratazione (finestra:
+	         i 10 minuti di throttle) — si scriverebbe di nuovo sulla riga sbagliata. La cura
+	         definitiva è più in là, in `pmo_upsert_records_admin`: ritrovare la riga per `payload.id`
+	         invece di fidarsi della `local_key` che arriva. */
+	      const viva = cleanCell(member?.cloudLocalKey || '');
+	      if (viva) return viva;
 	      const rawPhone = cleanCell(member?.phone || member?.telefono || '');
 	      const phoneDigits = rawPhone.replace(/\D/g, '');
 	      if (phoneDigits.length >= 8) return `phone:${phoneDigits}`;
@@ -27461,6 +27487,10 @@ Per confermare scrivi ELIMINA.`);
 	        memberId: member.memberId || '',
 	        updatedAt: member.updatedAt || now
 	      };
+	      // 🆕 28/08 (voce 105) — `cloudLocalKey` serve a decidere DOVE scrivere, non è un dato
+	      // del socio: nel payload del cloud non ci entra, o il prossimo che legge lo scambierebbe
+	      // per un campo dell'anagrafica e finirebbe per fidarsene.
+	      delete payload.cloudLocalKey;
 	      if (options.deleted) {
 	        const deletedAt = options.deletedAt || member.deletedAt || now;
 	        payload.active = false;
