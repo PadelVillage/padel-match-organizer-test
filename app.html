@@ -7959,7 +7959,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.260';
+    const APP_VERSION = '6.261';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16628,10 +16628,18 @@ Grazie.`
       // salvataggio che tocca il telefono non blocca nessuna prova in attesa.
       pmoMarcaLivelloCambiato(giocatori[idx], currentEditable.level, now);
       save('giocatori', giocatori);
+      // 🚨⭐⭐ 29/08/2026 — LA SPINTA AL CLOUD STA SUBITO DOPO IL SALVATAGGIO LOCALE, e non piu'
+      // in fondo alla coda. Prima passavano PRIMA `closeMemberCard()` e `updateStats()`, che non
+      // sono protette da niente: un lancio dentro una qualunque delle due — un permesso che
+      // nasconde una sezione, un elemento che non c'e' — si portava via la spinta insieme al
+      // resto, e la scheda restava salvata SOLO nel browser con l'avviso verde gia' mostrato.
+      // ⚖️ Spostarla non cambia cosa si scrive: `giocatori[idx]` qui e' gia' definitivo, e la
+      // spinta e' comunque asincrona (non ritarda di un fotogramma il disegno che segue).
+      // 📌 *Cio' che non si puo' perdere non si mette in fondo a una fila che puo' spezzarsi.*
+      pmoQueueImmediateMemberCloudSync(giocatori[idx], 'salvare subito la scheda socio su Supabase');
       closeMemberCard();
       try { displayAssessment(); } catch (err) { console.warn('Autovalutazione non aggiornata:', err); }
       updateStats();
-      pmoQueueImmediateMemberCloudSync(giocatori[idx], 'salvare subito la scheda socio su Supabase');
       // Esito mostrato nella chat di sinistra (pmoMemberEditChatFlow). Il toast verde
       // "Scheda salvata" resta SOLO per chi non ha la chat attiva (niente doppio avviso).
       const _chatReadyToast = !!document.getElementById('svcChatMessages')
@@ -27569,6 +27577,24 @@ Per confermare scrivi ELIMINA.`);
 	      if (!result || result.ok !== true) {
 	        throw new Error(pmoFriendlyCloudError(result?.error || 'Aggiornamento cloud non riuscito.', actionLabel));
 	      }
+	      /* 🚨⭐⭐ 29/08/2026 — UNA SPINTA CHE SCRIVE ZERO RECORD NON E' UNA SPINTA RIUSCITA.
+	         Fin qui si guardava solo `ok`, e `pmo_upsert_records_admin` risponde `ok:true` anche
+	         quando NON scrive niente: scarta in silenzio i record senza `local_key`, senza
+	         `record_type` o con un tipo fuori dalla sua whitelist, e torna `count: 0`.
+	         ⇒ L'app diceva «✅ Scheda salvata» e nel cloud non era arrivato nulla.
+	         📏 MISURATO sul registro `pmo_audit_log` di PROD, dal 15 al 29 agosto: **67 spinte su
+	         411 hanno scritto ZERO record** — una su sei — e nessuna di quelle 67 ha mai avvisato
+	         nessuno. Non e' un caso di punta: succede tutti i giorni.
+	         ⚖️ Il confronto e' con lo ZERO e non con `list.length`, di proposito: un lotto puo'
+	         legittimamente scrivere MENO record di quanti ne manda, perche' la RPC fonde i `member`
+	         che finiscono sulla stessa riga viva (`distinct on (local_key)`). Zero invece non ha
+	         nessuna lettura innocente: significa che di tutto il lotto non e' passato niente.
+	         📌 *Un attrezzo che sbaglia in silenzio e' peggio di uno che si rompe* — trappola ①
+	         del 29/08, qui applicata a chi il silenzio lo produceva. */
+	      const scritti = Number(result.count);
+	      if (!Number.isFinite(scritti) || scritti <= 0) {
+	        throw new Error(`Il cloud ha accettato la richiesta ma non ha scritto nessun record (${actionLabel}). La modifica e' salvata solo in questo browser.`);
+	      }
 	      pmoCloudState.lastSyncAt = new Date().toISOString();
 	      pmoCloudState.lastSyncCount = result.count || list.length;
 	      // Promemoria di servizio: qui il dato è GIÀ sul cloud (la RPC sopra è andata). Se la
@@ -27593,10 +27619,99 @@ Per confermare scrivi ELIMINA.`);
 	      console.warn('PMO_MEMBER_IMMEDIATE_CLOUD_SYNC_FAILED', actionLabel, error);
 	      showAlert(`Scheda salvata nel browser, ma aggiornamento cloud non riuscito: ${message}`, 'warning');
 	    }
+	    /* ── 🚨⭐⭐ LA TRACCIA DI CIO' CHE NON E' ANCORA SALITO (29/08/2026) ──────────────────
+	       🗣️ Nasce da un caso vero: la sera del 29/08 la segreteria ha cambiato il livello di un
+	       socio DUE volte (4 → 3,5 → 4) e nel cloud non e' arrivata nessuna delle due. Lo schermo
+	       mostrava 3,5, il cloud diceva 4, e nessuno dei due sapeva di essere in disaccordo.
+	       📏 Misurato su PROD: in tutto il 29/08 l'unica scrittura di un record `member` e' stata
+	       il sync clienti delle 19:30. Zero soci con `payload.updatedAt` di quel giorno su 2817.
+	       ⇒ I due salvataggi sono rimasti **solo nel browser**, e il gestionale ha detto «salvato».
+
+	       ⚖️ PERCHE' UNA TRACCIA E NON LA CURA DEL RAMO CHE SI ROMPE. I modi di perdere quella
+	       scrittura sono almeno quattro, e stanno in punti diversi: la spinta che non parte
+	       (`if (!record) return`, muta), quella che parte e viene rifiutata, quella che scrive zero
+	       record dicendo `ok` (curata qui sopra), e quella che non viene mai raggiunta perche' una
+	       chiamata dell'interfaccia ha lanciato prima. Curarli uno per uno lascia scoperto il
+	       QUINTO, che non conosciamo ancora — e il caso del 29/08 e' proprio quello: il ramo che
+	       l'ha mangiata non si e' potuto nominare nemmeno leggendo il registro del database.
+	       ⇒ La traccia non ha bisogno di sapere QUALE ramo si rompe: si scrive PRIMA di spingere e
+	       si cancella SOLO quando il cloud conferma di aver scritto. Qualunque strada in mezzo si
+	       interrompa, il segno resta.
+	       📌 *Una perdita silenziosa non si cura indovinando il ramo: si cura rendendola rumorosa.*
+
+	       ⛔ COSA NON FA, dichiarato: non rispinge da sola. Una ripetizione automatica manderebbe
+	       la copia di QUESTO browser sopra una riga che nel frattempo puo' essere piu' fresca — e'
+	       il danno della voce 105 con un altro nome. Qui si dice all'operatore che quella scheda
+	       non e' salita; a rimandarla e' un gesto suo, che sa cosa stava scrivendo. */
+	    const PMO_MEMBER_SOSPESI_KEY = 'pmoMemberCloudSospesi';
+	    function pmoMemberSospesiLeggi() {
+	      try {
+	        const grezzo = JSON.parse(localStorage.getItem(PMO_MEMBER_SOSPESI_KEY) || '{}');
+	        return (grezzo && typeof grezzo === 'object' && !Array.isArray(grezzo)) ? grezzo : {};
+	      } catch (e) { return {}; }
+	    }
+	    // ⚠️ Non passa da `save()`: se la memoria del browser e' piena il salvataggio del socio deve
+	    // andare avanti lo stesso. Una traccia perduta e' un peccato; un salvataggio perduto per
+	    // colpa della traccia sarebbe il difetto che questa cura esiste per togliere.
+	    function pmoMemberSospesiScrivi(mappa) {
+	      try { localStorage.setItem(PMO_MEMBER_SOSPESI_KEY, JSON.stringify(mappa || {})); }
+	      catch (e) { console.warn('PMO_MEMBER_SOSPESI_NON_SALVATI', e); }
+	    }
+	    function pmoMemberSospesoChiave(member) {
+	      return cleanCell(member?.id || '') || cleanCell(pmoMemberCloudLocalKey(member) || '');
+	    }
+	    function pmoMemberSospesoSegna(member, actionLabel, motivo='') {
+	      const chiave = pmoMemberSospesoChiave(member);
+	      if (!chiave) return;
+	      const mappa = pmoMemberSospesiLeggi();
+	      mappa[chiave] = {
+	        nome: (typeof playerFullName === 'function' ? playerFullName(member) : cleanCell(member?.name || '')) || chiave,
+	        quando: new Date().toISOString(),
+	        azione: cleanCell(actionLabel),
+	        motivo: cleanCell(motivo)
+	      };
+	      pmoMemberSospesiScrivi(mappa);
+	    }
+	    function pmoMemberSospesoTogli(member) {
+	      const chiave = pmoMemberSospesoChiave(member);
+	      if (!chiave) return;
+	      const mappa = pmoMemberSospesiLeggi();
+	      if (!(chiave in mappa)) return;
+	      delete mappa[chiave];
+	      pmoMemberSospesiScrivi(mappa);
+	    }
+	    function pmoMemberSospesiElenco() {
+	      const mappa = pmoMemberSospesiLeggi();
+	      return Object.keys(mappa).map(chiave => ({ chiave, ...(mappa[chiave] || {}) }))
+	        .sort((a, b) => String(a.quando || '').localeCompare(String(b.quando || '')));
+	    }
+	    /* 🚨 L'AVVISO ALL'AVVIO, e non solo al momento del guasto: il salvataggio perduto del 29/08
+	       nessuno l'ha visto passare, e il giorno dopo sullo schermo non ne restava traccia. Un
+	       avviso che vive solo nell'istante in cui il guasto capita e' un avviso che si perde. */
+	    function pmoMemberSospesiAvvisa() {
+	      const elenco = pmoMemberSospesiElenco();
+	      if (!elenco.length) return 0;
+	      const nomi = elenco.slice(0, 3).map(v => v.nome).join(', ');
+	      console.warn('PMO_MEMBER_CLOUD_SOSPESI', elenco);
+	      try {
+	        showAlert(`⚠️ ${elenco.length === 1 ? 'Una modifica di scheda socio non è' : elenco.length + ' modifiche di schede socio non sono'} arrivata al cloud: ${escapeHtml(nomi)}${elenco.length > 3 ? '…' : ''}. Riaprila e salvala di nuovo.`, 'warning');
+	      } catch (e) {}
+	      return elenco.length;
+	    }
 	    function pmoQueueImmediateMemberCloudSync(member, actionLabel='aggiornare subito il socio su Supabase') {
 	      const record = pmoBuildMemberCloudRecord(member);
-	      if (!record) return;
-	      pmoSyncCloudRecordsNow([record], actionLabel).catch(error => pmoNotifyImmediateMemberCloudFailure(error, actionLabel));
+	      /* 🚨 Questa uscita era MUTA, ed era il quarto modo di perdere un salvataggio: nessun
+	         avviso, nessuna riga in console, la scheda salvata solo in locale. */
+	      if (!record) {
+	        pmoMemberSospesoSegna(member, actionLabel, 'record non costruibile (chiave mancante)');
+	        console.warn('PMO_MEMBER_CLOUD_RECORD_NON_COSTRUIBILE', member && member.id);
+	        try { showAlert('⚠️ Scheda salvata nel browser: non è stato possibile prepararla per il cloud.', 'warning'); } catch (e) {}
+	        return;
+	      }
+	      pmoMemberSospesoSegna(member, actionLabel);
+	      pmoSyncCloudRecordsNow([record], actionLabel)
+	        .then(() => pmoMemberSospesoTogli(member))
+	        .catch(error => pmoNotifyImmediateMemberCloudFailure(error, actionLabel));
 	    }
 	    // Spinge la modifica del socio verso Matchpoint (via edge matchpoint-clients-update
 	    // → worker /update-client). Ritorna sempre uno stato ({status, reason}) e NON lancia.
@@ -30742,6 +30857,11 @@ Per confermare scrivi ELIMINA.`);
         showAlert('🧪 Partita fittizia completa creata per testare messaggio finale e chiusura nello storico.', 'info');
       }
       console.log(`✅ Padel Match Organizer v${APP_VERSION} caricato`);
+      // 🚨 Le schede socio che non sono mai arrivate al cloud si dicono ADESSO, all'apertura, e
+      // non solo nell'istante del guasto: un avviso che vive un secondo e' un avviso che si
+      // perde — ed e' esattamente cosi' che i due salvataggi del 29/08 sono spariti senza che
+      // nessuno potesse accorgersene il giorno dopo. Ritardato, o si accoda ai toast dell'avvio.
+      try { setTimeout(() => { try { pmoMemberSospesiAvvisa(); } catch (e) {} }, 4000); } catch (e) {}
     });
 
 
@@ -52973,6 +53093,16 @@ Per confermare scrivi ELIMINA.`);
     if (activeEl) g.active = activeEl.checked;
     g.updatedAt = new Date().toISOString();
     if (typeof save === 'function') save('giocatori', giocatori);
+    // 🚨⭐⭐ 29/08/2026 — come in `saveMemberCard`: la spinta al cloud PRIMA del disegno e della
+    // chiusura del pannello. Qui era in fondo e per giunta dentro un `catch (e) {}` NUDO, che e'
+    // la forma piu' silenziosa possibile di perdere un salvataggio: nessun avviso, nessuna riga
+    // in console, e lo schermo che dice «Scheda aggiornata».
+    try { if (typeof pmoQueueImmediateMemberCloudSync === 'function') pmoQueueImmediateMemberCloudSync(g, 'salvare subito la scheda socio su Supabase'); }
+    catch (e) {
+      console.warn('PMO_MEMBER_CLOUD_SPINTA_NON_PARTITA', e);
+      try { if (typeof pmoMemberSospesoSegna === 'function') pmoMemberSospesoSegna(g, 'salvare subito la scheda socio su Supabase', (e && e.message) || String(e)); } catch (_) {}
+      try { if (typeof showAlert === 'function') showAlert('⚠️ Scheda salvata nel browser, ma la sincronizzazione col cloud non è partita.', 'warning'); } catch (_) {}
+    }
     if (typeof displayMembers === 'function') displayMembers();
     // Chiudo TUTTO il pannello soci (non torno alla ricerca) così la chat in basso è
     // visibile, come per il salvataggio dalla scheda in Anagrafica.
@@ -52980,7 +53110,6 @@ Per confermare scrivi ELIMINA.`);
     // Salvataggio su Supabase + propagazione a Matchpoint raccontata in chat (stesso
     // flusso del salvataggio scheda in Anagrafica): prima questo pannello salvava SOLO
     // in locale, senza sincronizzare nulla.
-    try { if (typeof pmoQueueImmediateMemberCloudSync === 'function') pmoQueueImmediateMemberCloudSync(g, 'salvare subito la scheda socio su Supabase'); } catch (e) {}
     try { window.PMOAi && PMOAi.logManual && PMOAi.logManual('anagrafica', 'modifica', 'confirmed', { via: 'scheda socio', name: g.name }); } catch (e) {}
     var nowSnap = {
       firstName: g.firstName || '', surname: g.surname || '', phone: g.phone || '',
