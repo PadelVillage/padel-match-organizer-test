@@ -7959,7 +7959,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.259';
+    const APP_VERSION = '6.260';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -11783,6 +11783,42 @@ Grazie.`
     function parseLevel(value, fallback=3) {
       const n = parseFloat(cleanCell(value).replace(',', '.'));
       return isNaN(n) ? fallback : n;
+    }
+
+    /**
+     * 🚨⭐⭐ PUNTO D — LA DATA DELL'ULTIMA MANO SUL LIVELLO, in UN posto solo (29/08/2026).
+     *
+     * `assessment-apply-level` decide guardando `Math.max(lastLevelUpdateAt, selfAssessmentDate)`,
+     * e il suo commento si presenta così: *«IL CONTROLLO CHE IMPEDISCE IL DANNO: una scheda
+     * vecchia non deve mai scavalcare un livello aggiornato dopo»*. 📏 Misurato il 29/08: quel
+     * campo lo scrivevano **due punti soli**, tutti e due dentro il giro dell'autovalutazione ⇒
+     * la guardia era **cieca esattamente al tipo di aggiornamento che nomina**, cioè la mano della
+     * segreteria. Su **2817** soci ce l'avevano in **20**, gli stessi 20 passati dal test.
+     *
+     * 🔄 **E IL BIVIO CHE TENEVA FERMA LA CURA NON ESISTE, misurato invece che ricordato.** Il
+     * passaggio di consegne diceva: *«il livello lo scrive anche l'import da Matchpoint, e marcare
+     * la data a ogni scrittura bloccherebbe ogni scheda per sempre»*. ⇒ Falso: l'import **non
+     * scrive mai** il livello di un socio già presente — `applyMatchpointMembersToLocal` fa
+     * `level: existing.level || member.level || 3`, e l'edge `matchpoint-clients-sync` fa
+     * `level: existing.level || imported.level || 0.5` con tanto di commento *«curato nell'app,
+     * mai sovrascritto da Matchpoint»*. Non scrivendo, non marcherebbe niente. 📌 *Un bivio di
+     * disegno dichiarato ma mai verificato costa più di un difetto: ferma la cura senza esistere.*
+     *
+     * ⭐ **Si marca SOLO SE IL LIVELLO CAMBIA DAVVERO**, ed è la riga che tiene onesta la cura:
+     * salvare la scheda per correggere un telefono non deve bloccare nessuna prova. Il confronto
+     * è numerico dove si può (`4` e `4.0` e `4,0` sono lo stesso livello) e testuale dove non si
+     * può (il vuoto del jolly «Ospite»).
+     */
+    function pmoMarcaLivelloCambiato(member, livelloPrima, quando) {
+      if (!member) return false;
+      const testoPrima = cleanCell(livelloPrima).replace(',', '.');
+      const testoDopo  = cleanCell(member.level).replace(',', '.');
+      if (testoPrima === testoDopo) return false;
+      const numPrima = parseFloat(testoPrima);
+      const numDopo  = parseFloat(testoDopo);
+      if (Number.isFinite(numPrima) && Number.isFinite(numDopo) && numPrima === numDopo) return false;
+      member.lastLevelUpdateAt = cleanCell(quando) || new Date().toISOString();
+      return true;
     }
     function parseDateValue(value) {
       if (value instanceof Date && !isNaN(value)) return formatLocalDate(value);
@@ -16587,6 +16623,10 @@ Grazie.`
         availabilityUpdatedAt: now,
         updatedAt: now
       };
+      // 🚨 PUNTO D — la mano della segreteria sul livello lascia la sua data. Vedi
+      // `pmoMarcaLivelloCambiato`: marca solo se il livello e' cambiato davvero, quindi un
+      // salvataggio che tocca il telefono non blocca nessuna prova in attesa.
+      pmoMarcaLivelloCambiato(giocatori[idx], currentEditable.level, now);
       save('giocatori', giocatori);
       closeMemberCard();
       try { displayAssessment(); } catch (err) { console.warn('Autovalutazione non aggiornata:', err); }
@@ -31976,6 +32016,10 @@ Per confermare scrivi ELIMINA.`);
       member.level = '0.5';
       member.selfAssessmentToken = '';
       member.selfAssessmentDate = '';
+      // 🚨 PUNTO D — questo strumento RIPORTA INDIETRO il socio per rifare la prova: la data
+      // dell'ultima mano sul livello va AZZERATA come le altre, o resterebbe a bloccare la
+      // scheda che lo strumento esiste per far ripassare.
+      member.lastLevelUpdateAt = '';
       member.selfAssessmentStaffStatus = '';
       member.selfAssessmentMatchpointToken = '';
       member.selfAssessmentMatchpointPendingAt = '';
@@ -33933,6 +33977,11 @@ Per confermare scrivi ELIMINA.`);
         const oldLevel = cleanCell(member.level || '');
         member.level = parseLevel(row.newLevel, 0.5);
         member.updatedAt = now;
+        // 🚨 PUNTO D — anche l'import da Excel e' una decisione della segreteria, e vale come
+        // aggiornamento del livello: da qui in poi una scheda piu' VECCHIA non lo scavalca.
+        // ⚖️ Non e' un effetto collaterale da tollerare: e' il comportamento giusto. Tocca solo
+        // chi sta a 0,5 (`isLevelZeroPointFive` qui sopra), cioe' chi un livello non ce l'ha.
+        pmoMarcaLivelloCambiato(member, oldLevel, now);
         assessmentExcelImportAppendHistory(member, oldLevel, row.newLevel, now);
         giocatori[idx] = member;
         updatedMembers.push(member);
@@ -52088,6 +52137,8 @@ Per confermare scrivi ELIMINA.`);
         if (changes.gender != null) next.gender = changes.gender;
         if (changes.position != null) next.playingPosition = changes.position;
         if (changes.level != null) next.level = parseLevel(changes.level, 3);
+        // 🚨 PUNTO D — l'assistente scrive per conto della segreteria: stessa mano, stessa data.
+        if (changes.level != null) pmoMarcaLivelloCambiato(next, cur.level, now);
         if (changes.firstName != null || changes.surname != null) {
           const fn = changes.firstName != null ? changes.firstName : (cur.firstName || '');
           const sn = changes.surname != null ? changes.surname : (cur.surname || '');
@@ -52914,6 +52965,9 @@ Per confermare scrivi ELIMINA.`);
     var em = get('smeEmail'); if (em) g.email = em;
     var gv = get('smeGender'); if (gv) g.gender = gv;
     var lv = get('smeLevel'); if (lv) g.level = parseFloat(lv);
+    // 🚨 PUNTO D — questa e' la stessa scheda socio, aperta dall'altro pannello: la mano e' la
+    // stessa e la data si scrive uguale. `prevSnap.level` e' lo scatto di PRIMA, poche righe su.
+    if (typeof pmoMarcaLivelloCambiato === 'function') pmoMarcaLivelloCambiato(g, prevSnap.level, new Date().toISOString());
     var pos = get('smePosition'); if (pos) g.playingPosition = pos;
     var activeEl = document.getElementById('smeActive');
     if (activeEl) g.active = activeEl.checked;
