@@ -7028,7 +7028,7 @@ body.assessment-public-mode .assessment-public-only-card {
                ridisegna. Un'anteprima che si puo' scostare dal prodotto non e' un'anteprima.
                🚨 E il link GENERICO non si distribuisce piu' da qui: sua decisione del 9/08
                (riga 11 della Tabella 1), e la porta e' chiusa anche lato pagina
-               (assessmentPublicShowGenericLinkClosed). Su PROD non l'aveva mai usato nessuno:
+               (assessmentPublicPortaChiusa, che dal 30/08 chiude anche il link personale). Su PROD non l'aveva mai usato nessuno:
                assessment_external_requests = 0 righe, da sempre. -->
           <!-- 🚨 NIENTE `data-assessment-public-staff-panel` qui, ed e' voluto: chi ce l'ha
                finisce sotto `setAssessmentPublicStaffPanel()`, che all'avvio nasconde ogni
@@ -7038,14 +7038,14 @@ body.assessment-public-mode .assessment-public-only-card {
           <div class="assessment-public-form-card assessment-public-staff-panel">
             <div class="assessment-public-form-head">
               <div>
-                <h4>La scheda è una sola</h4>
-                <p>Quella che il socio riceve dal suo link personale. Qui non c'è una copia: si apre quella vera.</p>
+                <h4>Il test si fa nel bot</h4>
+                <p>Dal 30/08 il socio risponde dentro Telegram, una domanda alla volta, da «📊 Test Livello di Gioco». Questa pagina non raccoglie più schede: chi ci arriva con un vecchio indirizzo trova la porta che glielo dice.</p>
               </div>
             </div>
             <div class="assessment-public-actions">
-              <button type="button" class="btn-primary small-btn" onclick="setActionAnchor(this); assessmentPublicOpenRealCard()">Apri la scheda come la vede il socio</button>
+              <button type="button" class="btn-secondary small-btn" onclick="setActionAnchor(this); assessmentPublicOpenRealCard()">Guarda cosa vede chi apre un vecchio link</button>
             </div>
-            <p class="assessment-public-small">Si apre in una finestra nuova, in prova: le risposte non vengono salvate.</p>
+            <p class="assessment-public-small">Le domande qui sotto sono quelle che il bot chiede: restano allineate al motore del test, e servono a sapere cosa gli viene chiesto.</p>
           </div>
 
           <div id="assessmentPublicLivePreview" class="assessment-public-real-form-panel">
@@ -7053,8 +7053,8 @@ body.assessment-public-mode .assessment-public-only-card {
             <div class="assessment-public-head-brand">
               <img class="assessment-public-logo" src="https://app.padelvillage.club/logo-padel-village.jpeg" alt="Padel Village">
               <div>
-                <h4><span class="assessment-public-live-title">Scheda di Autovalutazione</span><span class="assessment-public-demo-title">Demo scheda autovalutazione</span></h4>
-                <p class="assessment-admin-demo-note">Anteprima del modulo pubblico: non compilabile dall'app staff.</p>
+                <h4><span class="assessment-public-live-title">Scheda di Autovalutazione</span><span class="assessment-public-demo-title">Le domande che il bot chiede</span></h4>
+                <p class="assessment-admin-demo-note">Le stesse otto domande che il socio riceve dentro Telegram, una alla volta: qui in fila e non compilabili. È l'anteprima che il banco tiene allineata al motore del test.</p>
               </div>
             </div>
           </div>
@@ -7959,7 +7959,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.262';
+    const APP_VERSION = '6.263';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -36524,6 +36524,8 @@ Per confermare scrivi ELIMINA.`);
 
     /**
      * 🆕 9/08/2026 — cosa vede chi arriva col vecchio link generico.
+     * 🔄🚪⭐⭐ 30/08/2026 (voce 97, terzo passo ②) — ADESSO VALE PER TUTTI, gettone compreso:
+     * il test si fa **dentro il bot**, e questa pagina è solo la porta che lo dice.
      *
      * ⚖️ Non una pagina d'errore: chi ci arriva non ha sbagliato niente, ha in mano un
      * indirizzo che gli abbiamo dato noi. Quindi si dice **cos'è cambiato** e **come si va
@@ -36531,8 +36533,12 @@ Per confermare scrivi ELIMINA.`);
      * ⭐ Si scrive dentro `#assessmentPublicLivePreview` invece di aggiungere una card altrove:
      * quel contenitore è già l'unico che si vede in modalità pubblica, quindi il socio vede
      * questo e nient'altro. Nessun pezzo del modulo può restare acceso sotto.
+     * 🔒 IL NOME resta `...GenericLinkClosed` di proposito? NO: si è rinominata in
+     * `assessmentPublicPortaChiusa`, perché un nome che dice «generico» su una funzione che
+     * ora chiude **tutte** le strade è la prossima riga che qualcuno legge e capisce al
+     * contrario. Chiamarla come fa è l'unica documentazione che non invecchia.
      */
-    function assessmentPublicShowGenericLinkClosed() {
+    function assessmentPublicPortaChiusa() {
       const panel = document.getElementById('assessmentPublicLivePreview');
       if (!panel) return;
       panel.innerHTML = [
@@ -36540,16 +36546,16 @@ Per confermare scrivi ELIMINA.`);
         '  <div class="assessment-public-head-brand">',
         '    <img class="assessment-public-logo" src="https://app.padelvillage.club/logo-padel-village.jpeg" alt="Padel Village">',
         '    <div>',
-        '      <h4>Autovalutazione Livello di Gioco</h4>',
-        '      <p>Questo indirizzo non è più attivo.</p>',
+        '      <h4>Test Livello di Gioco</h4>',
+        '      <p>Il test non si fa più da questa pagina.</p>',
         '    </div>',
         '  </div>',
         '</div>',
         '<div class="assessment-public-form-card">',
-        '  <p>Il test del livello si fa dal <strong>link personale</strong>: quello che ti arriva',
-        '  per e-mail o dal bot Telegram del circolo. È personale perché ti riconosce, così non',
-        '  devi reinserire i tuoi dati.</p>',
-        '  <p class="assessment-public-small">Se non ce l\'hai, chiedilo alla segreteria del Padel Village.</p>',
+        '  <p>Adesso si fa <strong>dentro il bot Telegram del circolo</strong>, una domanda alla',
+        '  volta: ti riconosce da solo, quindi non devi reinserire i tuoi dati.</p>',
+        '  <p>Apri il bot del Padel Village e scegli <strong>«📊 Test Livello di Gioco»</strong>.</p>',
+        '  <p class="assessment-public-small">Se non hai ancora l\'accesso al bot, chiedilo alla segreteria del Padel Village.</p>',
         '</div>',
       ].join('\n');
     }
@@ -36566,23 +36572,44 @@ Per confermare scrivi ELIMINA.`);
 
       document.body.classList.add('assessment-public-mode');
 
-      // 🆕🚨⭐⭐ 9/08/2026 — LA PORTA DEL LINK GENERICO È CHIUSA, ed è QUI che si chiude.
-      //
-      // Sua decisione del 9/08 (riga 11 della Tabella 1): il link generico
-      // `?assessment=link-esterno` **non deve più esistere**. Chiuderlo qui — prima che si
-      // componga il modulo — è ciò che fa esistere **una scheda sola**: finché quel modulo si
-      // apriva, ogni cura andava fatta due volte e la seconda si dimenticava.
-      // 📏 Non si perde niente di vivo: su PROD `assessment_external_requests` ha **0 righe**,
-      // da sempre. Il link generico non ha mai portato una scheda in due anni.
-      // ⚖️ Non è un `return false`: quello riconsegnerebbe la pagina all'app dello staff e il
-      // socio finirebbe sulla schermata di accesso del gestionale. Si resta in modalità
-      // pubblica e si dice una cosa sola, con la strada per andare avanti.
-      // 🚨 Con un gettone in mano si passa di qui SENZA fermarsi (`!token`): un indirizzo che
-      // porta tutt'e due i parametri è un link personale, e vale il personale.
-      if (isExternal && !token) {
-        assessmentPublicShowGenericLinkClosed();
-        return true;
-      }
+      /* 🆕🚨⭐⭐ 9/08/2026 — LA PORTA DEL LINK GENERICO È CHIUSA, ed è QUI che si chiude.
+         Sua decisione del 9/08 (riga 11 della Tabella 1). Chiuderla qui — prima che si componga
+         il modulo — è ciò che fa esistere **una scheda sola**: finché quel modulo si apriva,
+         ogni cura andava fatta due volte e la seconda si dimenticava.
+         ⚖️ Non è un `return false`: quello riconsegnerebbe la pagina all'app dello staff e il
+         socio finirebbe sulla schermata di accesso del gestionale. Si resta in modalità
+         pubblica e si dice una cosa sola, con la strada per andare avanti.
+
+         🔄🚪⭐⭐ 30/08/2026 — E DA OGGI VALE PER TUTTI, IL LINK PERSONALE COMPRESO.
+         Qui c'era scritto: *«con un gettone in mano si passa SENZA fermarsi: un indirizzo che
+         porta tutt'e due i parametri è un link personale, e vale il personale»*. Non più: è il
+         terzo passo della voce 97 — il test si fa **dentro il bot**, una domanda alla volta, e
+         questa pagina non lo fa più.
+
+         📏 MISURATO PRIMA DI CHIUDERLA, perché una porta si chiude sui fatti e non sull'idea:
+         · schede per sorgente — `scheda-pubblica` **17**, dal 22/05 al **23/06**, poi mai più;
+           `bot-a-passi` **38**, dal 26/08 a oggi ⇒ **68 giorni** senza una scheda da qui;
+         · i 133 gettoni `status: sent` non sono link ricevuti da qualcuno: **132 non hanno un
+           indirizzo email** e **nessuno dei 133 è mai stato aperto**. 🗣️ E il committente lo
+           conferma: *«Non abbiamo mai mandato quel link in giro ai soci del circolo»*.
+
+         🚨 L'ORDINE NON È STATO UNA PREFERENZA: fino alle 17:01 di oggi il bot **scriveva questo
+         indirizzo** al socio come ripiego (`frasePerIlTest`, ramo `if (dove)`). Chiudere prima
+         avrebbe consegnato a un socio un link a una porta chiusa — e non l'avrebbe detto nessun
+         banco, l'avrebbe detto lui. ⇒ Prima il bot (in servizio, deploy #126), POI questa riga.
+         📌 *La regola dell'ordine di messa in servizio vale anche a rovescio: per TOGLIERE una
+         strada si comincia da chi la offre, non da chi la apre.* */
+      assessmentPublicPortaChiusa();
+      return true;
+
+      /* ⛔⛔ DA QUI IN GIÙ È CODICE IRRAGGIUNGIBILE, e lo si dichiara invece di nasconderlo.
+         È il modulo che componeva la scheda sulla pagina: non lo esegue più nessuno dal 30/08.
+         ⚖️ NON è stato cancellato nello stesso commit di proposito — questo cambio è di
+         COMPORTAMENTO, e mescolarci dentro la rimozione di alcune centinaia di righe renderebbe
+         impossibile leggere quale delle due cose ha rotto qualcosa se qualcosa si rompe.
+         🚨 Ma un modulo morto che sembra vivo è precisamente ciò che qualcuno «riaccende per
+         pulizia» fra sei mesi: la rimozione è un lavoro dichiarato nella voce 97, non un
+         ripensamento. Finché è qui, questa riga è l'unica cosa che lo dice. */
 	let rec = token ? (Object.values(assessmentTokens || {}).find(r => normalizeText(r?.token || '') === normalizeText(token)) || null) : null;
       let member = rec ? giocatori.find(g => String(g.id) === String(rec.memberId) || String(g.memberId) === String(rec.memberId)) : null;
       if (!member && isExternal) member = assessmentPublicExternalMemberFromParams(params);
