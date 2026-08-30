@@ -7959,7 +7959,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.261';
+    const APP_VERSION = '6.262';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16194,6 +16194,7 @@ Grazie.`
               <div class="member-source-line"><span>Calcolato</span><strong>${escapeHtml(pmoLivelloEtichettaStaff(assessmentResponse.calculated_level || assessmentResponse.declared_level) || '-')}</strong></div>
               <div class="member-source-line"><span>Coerenza</span><strong>${escapeHtml(assessmentResponse.consistency_status || '-')}</strong></div>
               ${assessKnowledgeRiepilogo(assessmentKnowledgeOf(assessmentResponse)) ? `<div class="member-source-line"><span>Conoscenza</span><strong>${escapeHtml(assessKnowledgeRiepilogo(assessmentKnowledgeOf(assessmentResponse)))}</strong></div>` : ''}
+              ${assessmentGiocaRiepilogo(assessmentResponse) ? `<div class="member-source-line"><span>Gioca</span><strong>${escapeHtml(assessmentGiocaRiepilogo(assessmentResponse))}</strong></div>` : ''}
             </div>
             ${renderAssessmentExternalSourceSummary(assessmentResponse, { empty:'' })}
             ${renderAvailabilityProfile(getAssessmentAvailabilityProfile(assessmentResponse), { empty:'<div class="assessment-availability-box"><strong>Disponibilita dichiarata</strong><br><span class="muted">Disponibilita non ricevuta in questa risposta.</span></div>' })}
@@ -31434,11 +31435,36 @@ Per confermare scrivi ELIMINA.`);
       // e devono passare dalla segreteria per scelta, non perché il conto torna per caso.
       return knowledge && knowledge.status ? knowledge : null;
     }
+    /* 🆕 30/08/2026 — DA QUANTO GIOCA E QUANTE VOLTE, sotto gli occhi di chi decide.
+       📏 Le due risposte c'erano già: la prima in colonna, la seconda solo dentro `raw_response`
+       (la colonna `monthly_frequency` era vuota su 44 schede su 44, per una chiave sbagliata in
+       scrittura — curata lo stesso giorno). Nessuna delle due era mostrata da nessuna parte.
+       ⇒ Una bandiera che ferma una scheda senza far vedere il dato su cui si è alzata obbliga la
+       segreteria a fidarsi: qui si mostra il dato, e la bandiera diventa verificabile a occhio.
+       ⚠️ La frequenza si legge con un ripiego su `raw_response`: le schede vecchie hanno la
+       colonna vuota, e senza il ripiego questa riga sparirebbe proprio su tutto lo storico. */
+    function assessmentGiocaRiepilogo(response) {
+      const da = cleanCell(response?.experience || response?.raw_response?.experience || '');
+      const quante = cleanCell(response?.monthly_frequency || response?.raw_response?.frequency || '');
+      const pezzi = [];
+      if (da) pezzi.push(da);
+      if (quante) pezzi.push(`${quante} volte al mese`);
+      if (!pezzi.length) return '';
+      const bandiere = [];
+      if (response?.raw_response?.experience_flag) bandiere.push('gioca da poco');
+      if (response?.raw_response?.frequency_flag) bandiere.push('gioca di rado');
+      return pezzi.join(' · ') + (bandiere.length ? ` ⚠️ ${bandiere.join(', ')}` : '');
+    }
     function assessmentEmailIsAutoApplicable(response) {
       if (assessmentPublicPayloadIsExternal(response || {})) return false;
       const knowledge = assessmentKnowledgeOf(response);
       if (knowledge && knowledge.status !== 'pass') return false;
       if (response?.raw_response?.experience_flag) return false;
+      // 🆕 30/08 — la gemella: dichiara Intermedio o più e gioca 0-1 volte al mese. Sta QUI e
+      // non solo nell'edge perché questa funzione è la copia che l'app usa per decidere se una
+      // scheda si applica da sé: se le due dicessero cose diverse, il gestionale prometterebbe
+      // un'applicazione che `assessment-apply-level` poi rifiuta.
+      if (response?.raw_response?.frequency_flag) return false;
       const diff = assessmentEmailLevelDiff(response);
       return diff !== null && diff <= 0.5 && normalizeText(response?.consistency_status || '') !== 'low';
     }
