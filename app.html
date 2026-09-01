@@ -2764,6 +2764,11 @@
       transition:border-color .15s,background .15s; gap:10px;
     }
     #staffCalV36 .agenda-free:hover { border-color:var(--accent); background:var(--accent-light); }
+    /* 🆕🔭 VOCE 114 — la riga di cui NON sappiamo niente: stessa forma, colore spento.
+       ⚖️ Non è un allarme (non c'è niente di rotto) e non è un invito (non sappiamo se è libero):
+       è un grigio, che è esattamente quanto ne sappiamo. */
+    #staffCalV36 .agenda-free-ignoto { border-style:dotted; opacity:.75; }
+    #staffCalV36 .agenda-free-ignoto .agenda-free-label { color:var(--text-muted); }
     #staffCalV36 .agenda-free-label { font-size:.85rem; color:var(--text); }
     #staffCalV36 .agenda-free-label span { color:var(--text-muted); font-size:.8rem; margin-left:4px; }
     #staffCalV36 .agenda-free-cta { font-size:.8rem; color:var(--accent); font-weight:700; white-space:nowrap; flex-shrink:0; }
@@ -7959,7 +7964,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.263';
+    const APP_VERSION = '6.264';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -39807,6 +39812,54 @@ Per confermare scrivi ELIMINA.`);
     return pieno(s.istruttore);
   }
 
+  /**
+   * 🆕🔭 VOCE 114 (01/09/2026) — FIN DOVE ARRIVA CIÒ CHE IL GESTIONALE HA VISTO.
+   *
+   * 🗣️ Nata da una sua domanda: *«non vedo quattro campi prenotati il 4 ottobre alle 10:30»*.
+   * 🔎 Non era un guasto — il 4 ottobre stava a 33 giorni e il sync ne porta 30 — ma quello che
+   * si vedeva al posto suo sì: **quattro campi verdi con scritto «Libero»**. Un'assenza di dato
+   * mostrata come risposta affermativa, e nel verso peggiore: «libero» è la condizione per
+   * prenotarci sopra.
+   *
+   * ⚖️ E ALLARGARE L'ORIZZONTE NON È LA CURA, è il motivo per cui questa funzione esiste: a 60
+   * giorni la stessa bugia ricomparirebbe il 61°. Il confine si sposta, la frase falsa no.
+   *
+   * ⭐⭐ L'orizzonte NON si scrive qui come costante, ed è la decisione di questa funzione: nel
+   * sync sta `DEFAULT_FUTURE_DAYS`, e una seconda copia del numero dentro l'app sarebbe la
+   * stessa regola scritta due volte — divergerebbe il giorno in cui qualcuno cambia una sola
+   * delle due, e a valle direbbe «libero» con la stessa sicurezza di adesso. ⇒ Si **misura sul
+   * dato**: fin dove arrivano le prenotazioni che il gestionale ha, lì arriva ciò che sa. Il
+   * giorno in cui l'orizzonte diventa 60, questa riga non si tocca.
+   *
+   * ⚠️ IL LIMITE, dichiarato: se il circolo avesse gli ultimi giorni della finestra davvero
+   * vuoti, l'orizzonte risulterebbe qualche giorno più corto del vero e quei giorni direbbero
+   * «non lo so» invece di «libero». È il verso SICURO — si perde utilità, non verità — e i due
+   * casi da qui sono indistinguibili per costruzione: «nessuno ha prenotato» e «non l'ho ancora
+   * guardato» sono la stessa assenza.
+   * ⚠️ E `''` = **non lo so nemmeno io**: a liste vuote (app che sta ancora caricando) si torna
+   * al comportamento di prima invece di dipingere di grigio tutto il calendario.
+   */
+  function staffCalOrizzonte() {
+    let max = '';
+    const guarda = function (lista) {
+      if (!Array.isArray(lista)) return;
+      for (const p of lista) {
+        const d = p && p.data ? String(p.data) : '';
+        if (d && d > max) max = d;
+      }
+    };
+    guarda(typeof prenotazioniOccupazione !== 'undefined' ? prenotazioniOccupazione : null);
+    guarda(typeof prenotazioni !== 'undefined' ? prenotazioni : null);
+    return max;
+  }
+
+  /** 🆕🔭 VOCE 114 — vero se di questo giorno il gestionale non sa ancora niente. */
+  function staffCalOltreOrizzonte(isoDate) {
+    const oriz = staffCalOrizzonte();
+    if (!oriz || !isoDate) return false;
+    return String(isoDate) > oriz;
+  }
+
   function staffCalGetSlots(isoDate) {
     const result = [];
     // Read occupancy from local data
@@ -40968,10 +41021,19 @@ Per confermare scrivi ELIMINA.`);
         freeRow.className = 'agenda-free';
         const labelDiv = document.createElement('div');
         labelDiv.className = 'agenda-free-label';
-        labelDiv.innerHTML = '<strong>Libero</strong><span>' + slots[freeStart] + '–' + freeEndTime + '</span>';
+        /* 🆕🔭 VOCE 114 — oltre l'orizzonte non si dice «Libero»: quello che c'è è un'assenza di
+         * dato, e «libero» è la condizione per prenotarci sopra. Qui la riga è alta e il perché
+         * ci sta: si dice anche PERCHÉ non si sa, che è l'unica cosa utile per decidere. */
+        const _oltre114 = staffCalOltreOrizzonte(isoDate);
+        if (_oltre114) freeRow.classList.add('agenda-free-ignoto');
+        labelDiv.innerHTML = _oltre114
+          ? '<strong>Non lo so</strong><span>' + slots[freeStart] + '–' + freeEndTime + ' · il circolo non ha ancora questi giorni</span>'
+          : '<strong>Libero</strong><span>' + slots[freeStart] + '–' + freeEndTime + '</span>';
         freeRow.appendChild(labelDiv);
         const ctaDiv = document.createElement('div');
         ctaDiv.className = 'agenda-free-cta';
+        /* ⚖️ Il bottone RESTA, ed è una scelta: la segreteria una prenotazione lontana la deve
+         * poter fare. Si toglie la bugia, non la possibilità — e chi tocca sa di non sapere. */
         ctaDiv.textContent = '+ Prenota';
         freeRow.appendChild(ctaDiv);
         freeRow.addEventListener('click', (function(iso, campo, h) {
@@ -41010,6 +41072,11 @@ Per confermare scrivi ELIMINA.`);
     }
 
     // Build per-field booking data
+    /* 🆕🔭 VOCE 114 — questo giorno il gestionale l'ha guardato, o è oltre ciò che sa?
+     * Si chiede UNA volta per giornata e non a ogni segmento: la risposta non cambia dentro lo
+     * stesso giorno, e ricalcolarla per ogni buco vorrebbe dire riscorrere le due liste intere
+     * qualche decina di volte per disegnare una schermata. */
+    const _oltre114 = staffCalOltreOrizzonte(isoDate);
     const fieldSlots = { 1: [], 2: [], 3: [], 4: [] };
     for (const s of staffCalGetSlots(isoDate)) {
       const c = s.campo;
@@ -41072,8 +41139,8 @@ Per confermare scrivi ELIMINA.`);
           const hgt = ((bs - cursor) / 30) * ROW_H - 2;
           if (hgt >= 2) {
             const seg = document.createElement('div');
-            seg.style.cssText = 'position:absolute;left:2px;right:2px;top:' + top + 'px;height:' + hgt + 'px;border-radius:5px;background:#dcfce7;color:#166534;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;';
-            if (hgt >= 36) seg.textContent = 'Libero';
+            seg.style.cssText = 'position:absolute;left:2px;right:2px;top:' + top + 'px;height:' + hgt + 'px;border-radius:5px;background:' + (_oltre114 ? '#f1f5f9;color:#64748b' : '#dcfce7;color:#166534') + ';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;';
+            if (hgt >= 36) seg.textContent = _oltre114 ? 'non lo so' : 'Libero';
             (function(_iso, _campo, _ora) {
               seg.addEventListener('click', function() { staffCalClickFree(_iso, _campo, _ora); });
             })(isoDate, c, _minToHHMM(cursor));
@@ -41087,8 +41154,8 @@ Per confermare scrivi ELIMINA.`);
         const hgt = ((MAP_END - cursor) / 30) * ROW_H - 2;
         if (hgt >= 2) {
           const seg = document.createElement('div');
-          seg.style.cssText = 'position:absolute;left:2px;right:2px;top:' + top + 'px;height:' + hgt + 'px;border-radius:5px;background:#dcfce7;color:#166534;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;';
-          if (hgt >= 36) seg.textContent = 'Libero';
+          seg.style.cssText = 'position:absolute;left:2px;right:2px;top:' + top + 'px;height:' + hgt + 'px;border-radius:5px;background:' + (_oltre114 ? '#f1f5f9;color:#64748b' : '#dcfce7;color:#166534') + ';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;';
+          if (hgt >= 36) seg.textContent = _oltre114 ? 'non lo so' : 'Libero';
           (function(_iso, _campo, _ora) {
             seg.addEventListener('click', function() { staffCalClickFree(_iso, _campo, _ora); });
           })(isoDate, c, _minToHHMM(cursor));
@@ -41170,6 +41237,11 @@ Per confermare scrivi ELIMINA.`);
     const avail = window.innerHeight - rectTop - (isDesktop ? 24 : 74);
     const laneH = Math.max(isDesktop ? 96 : 120, Math.floor((avail - HEADERH) / 4));
 
+    /* 🆕🔭 VOCE 114 — questo giorno il gestionale l'ha guardato, o è oltre ciò che sa?
+     * Si chiede UNA volta per giornata e non a ogni segmento: la risposta non cambia dentro lo
+     * stesso giorno, e ricalcolarla per ogni buco vorrebbe dire riscorrere le due liste intere
+     * qualche decina di volte per disegnare una schermata. */
+    const _oltre114 = staffCalOltreOrizzonte(isoDate);
     const fs = { 1: [], 2: [], 3: [], 4: [] };
     for (const s of staffCalGetSlots(isoDate)) {
       const c = s.campo; if (c < 1 || c > 4) continue;
@@ -41223,8 +41295,8 @@ Per confermare scrivi ELIMINA.`);
         const left = ((gs - START) / 30) * COLW;
         const w = ((ge - gs) / 30) * COLW - 3;
         const seg = document.createElement('div');
-        seg.style.cssText = 'position:absolute;top:4px;bottom:4px;left:' + left + 'px;width:' + w + 'px;border-radius:6px;background:#dcfce7;color:#166534;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;cursor:pointer;';
-        if (w >= 44) seg.textContent = 'Libero';
+        seg.style.cssText = 'position:absolute;top:4px;bottom:4px;left:' + left + 'px;width:' + w + 'px;border-radius:6px;background:' + (_oltre114 ? '#f1f5f9;color:#64748b' : '#dcfce7;color:#166534') + ';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;cursor:pointer;';
+        if (w >= 44) seg.textContent = _oltre114 ? 'non lo so' : 'Libero';
         (function (iso, cc, gStart, gEnd) {
           seg.addEventListener('click', function (e) {
             let mins = gStart + Math.floor((e.offsetX || 0) / COLW) * 30;
