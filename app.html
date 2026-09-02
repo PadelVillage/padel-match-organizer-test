@@ -7964,7 +7964,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.267';
+    const APP_VERSION = '6.268';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -30679,7 +30679,26 @@ Per confermare scrivi ELIMINA.`);
           preferred_days: cleanCell(firstAvailable(row, ['preferred_days','preferredDays','Giorni preferiti'])) || previous.preferred_days || '',
           desired_frequency: cleanCell(firstAvailable(row, ['desired_frequency','desiredFrequency','Frequenza desiderata'])) || previous.desired_frequency || '',
           notice: cleanCell(firstAvailable(row, ['notice','Preavviso minimo'])) || previous.notice || '',
-          preferred_match_type: cleanCell(firstAvailable(row, ['preferred_match_type','matchType','Tipo partita preferita'])) || previous.preferred_match_type || ''
+          preferred_match_type: cleanCell(firstAvailable(row, ['preferred_match_type','matchType','Tipo partita preferita'])) || previous.preferred_match_type || '',
+          /* 🆕🚨⭐⭐ 02/09/2026 (voce 84 ⓑ) — IL SECONDO IMBUTO A ELENCO FISSO.
+             📏 Misurato sull'app viva di PROD (6.263) con la console remota, non dedotto:
+             la RPC `get_self_assessments_by_tokens` torna **16** colonne e porta
+             `review_reason: 'quiz_non_superato'`; l'oggetto che l'app teneva in
+             `assessmentResponses` ne aveva **15**, e la mancante era proprio quella.
+             ⇒ `assessmentReviewReasonLabel(response)` leggeva un campo inesistente e tornava
+             stringa vuota, quindi la riga «Perché è da controllare» non si disegnava — con il
+             riquadro «da validare» che invece compariva, cioè col sintomo che somiglia a una
+             cura riuscita.
+             ⚖️ È lo STESSO difetto già curato un piano più sotto (la RPC aveva l'elenco fisso
+             delle colonne, migrazione `20260902123000`): la cura aveva allargato l'imbuto di
+             sopra e lasciato intatto quello di sotto, a due funzioni di distanza.
+             📌 *Fra il dato e chi lo legge non c'è UN trasporto: ce ne sono in fila, e
+             allargarne uno non dice niente degli altri.*
+             🚨 E il campo `applied_member_id`, che `assessmentMemberResponses` interroga, la
+             RPC non lo manda affatto: quel confronto è cieco per ogni riga arrivata dal cloud.
+             Dichiarato qui perché è stato misurato, NON curato — vuole di suo la colonna nella
+             RPC, quindi una migrazione, e non è questa voce. */
+          review_reason: cleanCell(firstAvailable(row, ['review_reason','reviewReason','Motivo controllo'])) || previous.review_reason || ''
         };
         if (idx >= 0) { assessmentResponses[idx] = { ...assessmentResponses[idx], ...normalized }; updated++; }
         else { assessmentResponses.push(normalized); added++; }
