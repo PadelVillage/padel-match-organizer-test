@@ -7964,7 +7964,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.264';
+    const APP_VERSION = '6.265';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -31226,6 +31226,34 @@ Per confermare scrivi ELIMINA.`);
       if (previousStatus === 'edited') return 'edited';
       return 'review';
     }
+    /* 🆕🚨⭐⭐ VOCE 84 ⓑ (02/09/2026) — PERCHÉ questa scheda è «da controllare».
+       📏 Misurato su PROD facendo girare `assessment-apply-level` in simulazione: 63 schede
+       esaminate, 0 applicate, e la causa più numerosa è una sola — «in mano alla segreteria
+       (review)», 9 soci, fermi da 5 a 125 giorni.
+       🎯 Non applicarle è GIUSTO (senza conoscenza dimostrata la scheda non si applica da
+       sola). Il difetto è che si chiamavano «in mano alla segreteria» e in mano a nessuno ci
+       sono mai state: da qui non si distinguevano da quelle che ci ha messo la segreteria.
+       ⇒ La scheda RESTA nella lista — è una decisione del committente — e adesso dice perché.
+       🔒 I CODICI stanno in `supabase/functions/assessment-quiz/motivo-review.ts`, che è dove
+       la regola decide; qui ci sono solo le PAROLE. Una guardia (`motivo-review.test.ts`)
+       pretende che questa mappa copra esattamente quei codici: un motivo nuovo senza la sua
+       frase fa rosso, invece di comparire a video come un codice grezzo.
+       ⚠️ Vuoto ⇒ non si scrive niente, ed è «non misurato», NON «l'ha messa lì una persona»:
+       le schede di prima del 02/09/2026 non hanno il motivo, e indovinarlo sarebbe inventare. */
+    const ASSESSMENT_REVIEW_REASON_LABELS = {
+      genere_mancante: 'Sesso non indicato',
+      quiz_non_superato: 'Quiz di conoscenza non superato',
+      poca_esperienza: 'Dichiara medio-alto ma gioca da poco',
+      poca_frequenza: 'Dichiara medio-alto ma gioca una volta al mese',
+      coerenza_bassa: 'Risposte lontane dal livello dichiarato',
+      dati_insufficienti: 'Dati tecnici insufficienti per il calcolo'
+    };
+    function assessmentReviewReasonLabel(response) {
+      const codice = cleanCell((response && response.review_reason) || '');
+      if (!codice) return '';
+      return Object.prototype.hasOwnProperty.call(ASSESSMENT_REVIEW_REASON_LABELS, codice)
+        ? ASSESSMENT_REVIEW_REASON_LABELS[codice] : '';
+    }
     function assessmentPostStatusLabel(status) {
       return { ready:'Da controllare', review:'Da controllare con attenzione', notResponded:'Senza risposta', sentNoResponse:'Inviato senza risposta', paused:'In pausa', levelApplied:'Livello aggiornato' }[status] || status;
     }
@@ -35722,6 +35750,9 @@ Per confermare scrivi ELIMINA.`);
         const canPause = !info.paused && status === 'sentNoResponse';
         const canResume = info.paused;
         const statusBadgeHtml = assessmentBadge(assessmentPostStatusLabel(status), assessmentPostStatusClass(status));
+        // 🆕 VOCE 84 ⓑ — accanto al «da controllare», PERCHÉ. Vuoto ⇒ niente riga: non si
+        // scrive «motivo sconosciuto» a una scheda che una persona ha messo lì apposta.
+        const reviewReasonText = status === 'review' ? assessmentReviewReasonLabel(info.response) : '';
         const levelEmailSentAt = assessmentEmailLevelConfirmationSentAt(member, info.response, info.rec);
         const responseActions = info.response
           ? (info.applied
@@ -35743,7 +35774,7 @@ Per confermare scrivi ELIMINA.`);
                 ${responseActions}
               </div>
             </div>
-            <div class="assessment-post-cell"><strong>Invio</strong>: ${escapeHtml(sentAtText)}<br><strong>Risposta</strong>: ${escapeHtml(responseAtText)}</div>
+            <div class="assessment-post-cell"><strong>Invio</strong>: ${escapeHtml(sentAtText)}<br><strong>Risposta</strong>: ${escapeHtml(responseAtText)}${reviewReasonText ? `<br><span class="muted">⚠️ ${escapeHtml(reviewReasonText)}</span>` : ''}</div>
             <div class="assessment-post-cell"><strong>${escapeHtml(levelsText)}</strong><br><span class="muted">${escapeHtml(availabilityText)}</span></div>
         </div>`;
       }).join('') + '</div>';
