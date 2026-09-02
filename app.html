@@ -8053,7 +8053,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.278';
+    const APP_VERSION = '6.279';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -25018,9 +25018,18 @@ Grazie!`
             });
             continue;
           }
-          // ── payment: lo STORNO è una riga marcata deleted con `voided_at`. Non si salta:
-          //    si mostra col segno meno, che è quello che il socio deve poter verificare.
-          const stornato = !!(r.deleted || pl.voided_at || (pl.status && pl.status !== 'paid'));
+          /* ── payment: lo STORNO si riconosce da `voided_at` (o da uno `status` diverso da
+             `paid`), NON dal flag `deleted`.
+             🚨 Misurato su TEST, e su PROD non si sarebbe visto: là i 20 storni sono anche
+             `deleted`, quindi le due condizioni coincidono e `deleted` sembrava un buon segnale.
+             Su TEST **no**: ci sono centinaia di righe `deleted` che sono **simulazioni ripulite**
+             (`_pmoSimCleanupPayments`), cioè record CANCELLATI — e contandole come storni la
+             sezione dichiarava **3.001 € di rimborsi mai avvenuti**.
+             ⇒ Un `deleted` che non è stornato è una riga tolta dai conti: si SALTA, non si mostra.
+             📌 *Due condizioni che coincidono nei dati che guardo non sono la stessa condizione:
+             è l'ambiente con dati diversi a dirmi quale delle due significava davvero qualcosa.* */
+          const stornato = !!(pl.voided_at || (pl.status && pl.status !== 'paid'));
+          if (r.deleted && !stornato) continue;
           const cents = Number(pl.amount_cents) || 0;
           const dove = [pl.campo ? ('campo ' + pl.campo) : '', pl.ora ? ('ore ' + String(pl.ora).slice(0, 5)) : ''].filter(Boolean).join(' · ');
           righe.push({
@@ -25067,11 +25076,20 @@ Grazie!`
           + '<div style="margin-top:8px;"><button class="btn-secondary small-btn" onclick="pmoAggiornaPagamenti(\'' + escapeHtml(chiave) + '\', this)">↻ Riprova</button></div>';
       }
       const righe = c.righe || [];
+      /* 📏 Misurato su PROD: il cliente generico «Ospite» ha **689** pagamenti (e su TEST 1326).
+         Non è un errore di attribuzione — quelle righe sono davvero del cliente Ospite, ed è lì
+         che finisce chi paga senza essere socio — ma disegnarle tutte fa una scheda illeggibile e
+         centinaia di nodi inutili. ⇒ Se ne mostrano 50 e si DICE quante sono, con la via per
+         vederle tutte. 📌 *Un elenco che non entra in uno schermo non è più un elenco: nascondere
+         il resto senza dirlo, però, è peggio che mostrarlo tutto.* */
+      const TETTO = 50;
+      const tutte = window.__pmoPagamentiTutte === chiave;
+      const visibili = tutte ? righe : righe.slice(0, TETTO);
       const speso = righe.filter(r => r.tipo === 'spesa').reduce((t, r) => t + r.cents, 0);
       const rimborsato = righe.filter(r => r.tipo === 'storno').reduce((t, r) => t + Math.abs(r.cents), 0);
       const ricaricato = righe.filter(r => r.tipo === 'wallet' && r.cents > 0).reduce((t, r) => t + r.cents, 0);
       const dataIt = (d) => { if (!d) return '—'; const p = String(d).split('-'); return p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : String(d); };
-      const elenco = righe.length ? `<div class="pmo-pag-elenco">${righe.map(r => `
+      const elenco = righe.length ? `<div class="pmo-pag-elenco">${visibili.map(r => `
               <div class="pmo-pag-riga${r.annullato ? ' annullata' : ''}">
                 <span class="pmo-pag-data">${escapeHtml(dataIt(r.data))}</span>
                 <span class="pmo-pag-cosa">${escapeHtml(r.cosa)}</span>
@@ -25088,6 +25106,7 @@ Grazie!`
               </div>
               <div class="member-tab-subhead has-divider">Movimenti — ${righe.length}</div>
               ${elenco}
+              ${righe.length > visibili.length ? `<div style="margin-top:8px;font-size:12.5px;color:#667085;">Mostrati i ${visibili.length} più recenti su ${righe.length}. <a href="#" onclick="event.preventDefault(); window.__pmoPagamentiTutte='${escapeHtml(chiave)}'; renderOpenMemberCard();" style="color:var(--primary);font-weight:600;">Mostrali tutti</a></div>` : ''}
               <div class="pmo-pag-avviso">💡 <strong>Le ricariche si registrano dal 2 settembre 2026.</strong> Prima di quel giorno il gestionale non le annotava: quelle già fatte non si possono recuperare, e in questo elenco non ci sono. Il <strong>saldo</strong> qui sopra è invece quello vero, letto da Matchpoint.</div>
               <div style="margin-top:10px;"><button class="btn-secondary small-btn" onclick="pmoAggiornaPagamenti('${escapeHtml(chiave)}', this)">↻ Aggiorna movimenti</button></div>`;
     }
