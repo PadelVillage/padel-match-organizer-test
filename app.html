@@ -7964,7 +7964,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.266';
+    const APP_VERSION = '6.267';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -30968,9 +30968,33 @@ Per confermare scrivi ELIMINA.`);
     }
     function assessmentRecordFor(member) {
       const rec = member ? getAssessmentTokenRecord(member.id) : null;
-      const response = rec?.token ? getAssessmentResponseByToken(rec.token) : null;
+      /* 🆕🚨⭐⭐ 02/09/2026 (voce 84 ⓑ) — IL GETTONE CORRENTE È SEMPRE QUELLO VUOTO.
+         📏 Misurato sui gettoni veri di PROD, al millesimo: la scheda consegnata dal bot alle
+         **08:18:22.105** e il gettone SUCCESSIVO, vuoto, coniato alle **08:18:22.754** —
+         **649 ms dopo**. `syncAssessmentTokensFromSupabase` ordina per
+         `completed_at || sent_at || created_at` e prende il primo ⇒ vince **sempre** quello
+         appena coniato, che una scheda non ce l'ha.
+         ⇒ `getAssessmentResponseByToken(rec.token)` torna **niente**, il pannello «da
+         validare» non si disegna, e la scheda socio mostra l'ultimo livello applicato come se
+         non fosse arrivato niente. Vale per **ogni** scheda che passa dal bot, cioè per tutte:
+         il canale email è dismesso dal 13/08 e la sezione Autovalutazione è congelata.
+         🗣️ L'ha trovato lui aprendo la scheda: badge «Applicata», origine 28/08, mentre in
+         archivio c'era la scheda di quella mattina.
+         ⚖️ **Non si tocca l'ordinamento del gettone corrente**: per il pannello «da inviare»
+         il gettone nuovo È quello giusto — è lì che si guarda se un invito è partito. A essere
+         sbagliata è la domanda *«qual è la sua scheda?»* posta al gettone invece che al socio.
+         ⇒ Se il gettone corrente non ha una scheda, si prende **la più recente del socio**,
+         che `assessmentMemberResponses` sa già dare leggendo anche l'archivio dei gettoni.
+         🚨 E l'«applicata» si giudica sulla scheda che si sta MOSTRANDO, non su `rec`: con il
+         ripiego le due possono essere gettoni diversi, e confrontare quello sbagliato
+         mostrerebbe «da validare» su una scheda già applicata.
+         📌 *Un dato visto non è ancora un dato TROVATO: fra i due c'è la chiave con cui lo si
+         cerca, e questa puntava a mezzo secondo di distanza.* */
+      const response = (rec?.token ? getAssessmentResponseByToken(rec.token) : null)
+        || assessmentMemberResponses(member)[0]
+        || null;
       const review = !!response && (response.consistency_status === 'low' || normalizeText(response.staff_status || '').includes('review') || normalizeText(response.staff_status || '').includes('attention'));
-      const applied = !!response && !!member?.selfAssessmentToken && normalizeText(member.selfAssessmentToken) === normalizeText(rec?.token || '');
+      const applied = !!response && !!member?.selfAssessmentToken && normalizeText(member.selfAssessmentToken) === normalizeText(response?.token || '');
       const ready = !!response && !review && !applied;
       let preStatus = 'ready';
       if (!member?.phone) preStatus = 'noPhone';
