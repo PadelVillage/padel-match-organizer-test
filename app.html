@@ -7964,7 +7964,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.265';
+    const APP_VERSION = '6.266';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16198,6 +16198,7 @@ Grazie.`
               <div class="member-source-line"><span>Dichiarato</span><strong>${escapeHtml(pmoLivelloEtichettaStaff(assessmentResponse.declared_level) || '-')}</strong></div>
               <div class="member-source-line"><span>Calcolato</span><strong>${escapeHtml(pmoLivelloEtichettaStaff(assessmentResponse.calculated_level || assessmentResponse.declared_level) || '-')}</strong></div>
               <div class="member-source-line"><span>Coerenza</span><strong>${escapeHtml(assessmentResponse.consistency_status || '-')}</strong></div>
+              ${assessmentReviewReasonLabel(assessmentResponse) ? `<div class="member-source-line"><span>Perché è da controllare</span><strong>${escapeHtml(assessmentReviewReasonLabel(assessmentResponse))}</strong></div>` : ''}
               ${assessKnowledgeRiepilogo(assessmentKnowledgeOf(assessmentResponse)) ? `<div class="member-source-line"><span>Conoscenza</span><strong>${escapeHtml(assessKnowledgeRiepilogo(assessmentKnowledgeOf(assessmentResponse)))}</strong></div>` : ''}
               ${assessmentGiocaRiepilogo(assessmentResponse) ? `<div class="member-source-line"><span>Gioca</span><strong>${escapeHtml(assessmentGiocaRiepilogo(assessmentResponse))}</strong></div>` : ''}
             </div>
