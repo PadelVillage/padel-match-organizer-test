@@ -4711,7 +4711,7 @@ body.assessment-public-mode .assessment-public-only-card {
        l'adattamento automatico va benissimo. Cambiarla lì riordinerebbe schermate che nessuno
        ha chiesto di toccare.
 
-       🔄 03/09/2026 — SECONDO GIRO, sua richiesta: *«Io metterei nome, cognome, sesso e livello
+       🔄 02/09/2026 — SECONDO GIRO, sua richiesta: *«Io metterei nome, cognome, sesso e livello
        di gioco tutto su una riga. E poi telefono, email, bot Telegram anche quello tutto su una
        riga. Lo spazio c'è.»* ⇒ Da tre righe (3+2+2) a **due**, da quattro e da tre.
 
@@ -8136,7 +8136,7 @@ body.assessment-public-mode .assessment-public-only-card {
        esisteva né in git né su Supabase. Il 404 non è mai arrivato a nessuno perché questo stesso
        flag, spento, impediva al bottone di comparire. */
     const PMO_PAYMENTS_VOID_ENABLED = true;
-    /* 🆕💶 03/09/2026 — QUARTO FLAG: l'INCASSO dalla scheda partita, separato dallo storno.
+    /* 🆕💶 02/09/2026 — QUARTO FLAG: l'INCASSO dalla scheda partita, separato dallo storno.
        🗣️ Sua richiesta: *«puoi procedere con l'accensione dei soldi nella scheda partita»*, e
        messo davanti alle strade ha scelto **solo l'incasso** — lo storno resta dov'è, nella
        scheda socio → tab Pagamenti, dove lo ha appena visto funzionare.
@@ -16524,7 +16524,7 @@ Grazie.`
                      abitudine o per sbaglio mentre si correggeva un telefono, non il cambio.
                      📌 Una protezione che toglie anche l'uso legittimo non è una protezione: è
                      un pezzo di funzionalità in meno con l'aspetto di una cautela.
-                     🔄 03/09/2026 — SALITO in prima riga, accanto a Nome/Cognome/Sesso (sua
+                     🔄 02/09/2026 — SALITO in prima riga, accanto a Nome/Cognome/Sesso (sua
                      richiesta). ⚖️ Cambia il POSTO, non il comportamento: nasce chiuso come
                      prima e si apre con lo stesso gesto, e la conferma resta dov'era. -->
                 <div class="c-terzo"><label>Livello di gioco</label><div class="member-livello-riga"><input type="number" step="0.5" min="0" max="7" id="cardLevel" value="${escapeHtml(g.level || 3)}" oninput="pmoCardLevelWord()" readonly title="Il livello è chiuso: si apre con «Cambia livello». Sopra Intermedio lo certifica il maestro guardando giocare."><small class="member-level-word" id="cardLevelWord">${escapeHtml(pmoLivelloDefinizione(g.level || 3) || '')}</small><button type="button" class="btn-secondary small-btn" id="cardLevelUnlock" onclick="pmoSbloccaLivello(this)">🔓 Cambia livello</button></div></div>
@@ -42965,7 +42965,7 @@ Per confermare scrivi ELIMINA.`);
       playersSec.setAttribute('data-feature', 'players-payments');
       const _payShow = PMO_PAYMENTS_UI_ENABLED && !st.isManut && Array.isArray(st.roster);
       // Incasso ATTIVO se write reale ON, oppure simulazione (TEST), oppure harness mockato.
-      /* 🚨⭐⭐ DUE variabili, non una: fino al 03/09/2026 qui ce n'era una sola, e accendeva
+      /* 🚨⭐⭐ DUE variabili, non una: fino al 02/09/2026 qui ce n'era una sola, e accendeva
          insieme l'INCASSO e lo STORNO di riga. Lui ha chiesto solo il primo ⇒ una variabile sola
          non sa dire di sì a uno e di no all'altro.
          ⛔ `_payVoidActive` resta legata al flag vecchio, cioè **spenta** su PROD: lo storno si fa
