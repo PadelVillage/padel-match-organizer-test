@@ -8053,7 +8053,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.280';
+    const APP_VERSION = '6.281';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16530,9 +16530,15 @@ Grazie.`
          stessa informazione — il denaro del socio — e chi vede il saldo vede da dove viene. */
       const _pagamentiBody = showSecBorsellino ? _pmoPagamentiBody(g) : '';
       const memberTabs = [
+        /* 🔀 02/09/2026 sera — ORDINE chiesto da lui: *«mettere pagamenti dopo anagrafica come tab
+           e l'ultima autovalutazione»*. ⚖️ L'ordine di questo array è anche quello del tab che si
+           apre per primo (`_firstTabKey` prende il primo visibile), quindi non è solo estetica:
+           chi non ha il permesso Anagrafica ora atterra su **Pagamenti** invece che su
+           Autovalutazione. 📌 *Riordinare una fila cambia anche dove si arriva quando la fila si
+           accorcia.* */
         { key:'anagrafica', label:'Anagrafica', visible:showSecAnagrafica, body:_anagraficaBody },
-        { key:'autoval', label:'Autovalutazione', visible:showSecAutoval, body:_autovalBody },
-        { key:'pagamenti', label:'Pagamenti', visible:(PMO_PAYMENTS_UI_ENABLED && showSecBorsellino), body:_pagamentiBody }
+        { key:'pagamenti', label:'Pagamenti', visible:(PMO_PAYMENTS_UI_ENABLED && showSecBorsellino), body:_pagamentiBody },
+        { key:'autoval', label:'Autovalutazione', visible:showSecAutoval, body:_autovalBody }
       ].filter(t => t.visible);
       const _firstTabKey = memberTabs.length ? memberTabs[0].key : '';
       const _memberTabsBar = memberTabs.map(t => `<button type="button" class="member-tab${t.key === _firstTabKey ? ' active' : ''}" data-mtab="${t.key}" onclick="pmoMemberTab('${t.key}', this)">${escapeHtml(t.label)}</button>`).join('');
