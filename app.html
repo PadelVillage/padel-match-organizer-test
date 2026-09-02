@@ -2646,6 +2646,25 @@
     .staff-cal-input-status.error { color:#dc2626; }
 
     /* ── Calendario Staff v3.6 — look griglia (scoped) ─────────── */
+    /* ⭐ v6.290 (voce 130) — L'ETICHETTA «aggiorno…» NON DEVE SPOSTARE IL CALENDARIO.
+       🚨 Il fatto, segnalato da lui («ogni tanto sembra che il calendario si sposta, sale e scende
+       velocemente, ma lo spostamento è molto piccolo») e poi MISURATO su TEST con la console remota:
+       `#staffCalCloudStatus` si accende e si spegne con `display`, **dentro il flusso**
+       dell'intestazione ⇒ l'intestazione passa da 56 a 80px e `#staffCalV36` da 189 a 213px.
+       📏 Lo strumento del browser (`PerformanceObserver` su `layout-shift`) ha registrato la coppia:
+       +24px e, 4 secondi dopo, −24px, con `div#staffCalV36` come unica sorgente. Sono i 24px che si
+       vedono come un saltello.
+       ⇒ Cura: l'etichetta esce dal flusso e si appoggia nei 16px di margine che l'intestazione ha
+       già sotto di sé (l'etichetta ne chiede 14) ⇒ appare e sparisce senza muovere una riga.
+       ⛔ `#staffCalSessionWarning` resta NEL FLUSSO di proposito, e non è una dimenticanza: quello
+       è uno stato che dura ed è un bersaglio da cliccare («tocca qui per uscire e rientrare»).
+       Una cosa che si deve notare ha diritto di spostare la pagina; una che lampeggia no.
+       📌 *Un avviso transitorio non ha diritto allo spazio di quello permanente.* */
+    #pmoCalendarioStaffPanel .admin-panel-head > div:first-child { position: relative; }
+    #pmoCalendarioStaffPanel #staffCalCloudStatus {
+      position: absolute; top: 100%; left: 0; margin-top: 0 !important;
+      white-space: nowrap; pointer-events: none;
+    }
     #staffCalV36 {
       --accent:#2563eb; --accent-light:rgba(37,99,235,0.10);
       --surface:#ffffff; --surface2:#f0eeea;
@@ -8112,7 +8131,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.289';
+    const APP_VERSION = '6.290';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -43441,7 +43460,7 @@ Per confermare scrivi ELIMINA.`);
     const st = staffCalPlayersState;
     const cont = document.getElementById('svcChatMessages');
     // WhatsApp: "in evidenza" = IN FONDO (ultimo, vicino all'input), non in cima.
-    if (st && st.box && cont && cont.contains(st.box)) { cont.appendChild(st.box); cont.scrollTop = cont.scrollHeight; }
+    if (st && st.box && cont && cont.contains(st.box)) { cont.appendChild(st.box); _svcAutoScroll(cont); }
   }
 
   // ⭐ Chi è GIÀ in questa prenotazione — chiesto dal committente il 2/08/2026 guardando
@@ -46138,6 +46157,60 @@ Per confermare scrivi ELIMINA.`);
     try { svcChatToggleAction(); } catch (e) {}
   }
 
+  // ⭐ v6.290 (voce 127) — IL TETTO DELL'AUTO-SCROLL: «in fondo, ma mai oltre la cima della scheda».
+  //
+  // 🚨 IL FATTO CHE LO FA NASCERE, misurato su PROD 6.276 il 02/09/2026 con la console remota, e
+  // segnalato da lui: «quando clicco dentro una partita si apre la scheda della partita in maniera
+  // sbagliata, non vedo la parte alta». Il titolo «Modifica prenotazione» finiva SOPRA il bordo.
+  // Non era tagliata: era SCROLLATA, dall'auto-scroll di questa chat.
+  //
+  // 📏 La misura, spazzando l'altezza del contenitore con la stessa scheda dentro (4 giocatori):
+  //     eccedenza 281px → titolo VISIBILE          eccedenza 231px → tagliato di 221px
+  //     eccedenza 181px → tagliato di 171px        eccedenza  81px → tagliato di  71px
+  //     eccedenza   0px → titolo VISIBILE (non c'è niente da scorrere)
+  // ⇒ Il difetto colpisce **solo quando la scheda sborda di POCO**, cioè sullo schermo normale, ed
+  // è il motivo per cui non capitava sempre e sembrava un mistero: la soglia dei 260px qui sotto
+  // dice «sei quasi in fondo, seguimi», e una scheda che sborda di meno ci cade dentro tutta intera.
+  // 🚨 E si ripeteva a raffica: la nota «⏳ Aggiorno la lista giocatori… (Ns)» riscrive il proprio
+  // testo OGNI SECONDO ⇒ l'observer ripartiva ogni secondo, per un minuto.
+  //
+  // ⚖️ La cura NON è togliere l'auto-scroll: in chat il messaggio nuovo DEVE andare in fondo, ed è
+  // una decisione presa («WhatsApp: il messaggio nuovo va IN FONDO»). Le due cose convivono con un
+  // TETTO: si scorre in fondo come sempre, ma **mai oltre la cima della scheda**. Una scheda è un
+  // modulo e si legge dall'alto; un messaggio è una riga e si legge dove capita.
+  //
+  // 📌 *Una regola che vale per i messaggi non vale per un modulo che sta nello stesso contenitore:
+  // il contenitore è lo stesso, il gesto di lettura no.*
+
+  /** Dove deve fermarsi lo scroll. Funzione PURA (nessun DOM): è ciò che il banco prova.
+   *  `cimaScheda` = offset di scroll a cui la scheda comincia, oppure null se scheda non c'è. */
+  function _svcTettoScroll(m) {
+    const fondo = Math.max(0, (m.scrollHeight || 0) - (m.clientHeight || 0));
+    if (m.cimaScheda == null || !isFinite(m.cimaScheda)) return fondo;
+    return Math.max(0, Math.min(fondo, m.cimaScheda));
+  }
+
+  /** Porta la chat dove serve. `soloInGiu` = non strappare MAI verso l'alto (per l'observer, che
+   *  scatta anche mentre l'operatore sta leggendo: il suo compito è seguire il contenuto nuovo,
+   *  non riportare indietro chi sta scorrendo). */
+  function _svcAutoScroll(cont, soloInGiu) {
+    if (!cont) return;
+    let cimaScheda = null;
+    try {
+      // `.svc-edit-box` e non `.svc-edit-host`: staffCalBringEditorToTop sposta il BOX in fondo al
+      // contenitore, fuori dalla sua bolla ⇒ una guardia agganciata all'host lo perderebbe proprio
+      // nel percorso dell'assistente (aggiunta/rimozione giocatore), che è uno di quelli che scrolla.
+      const scheda = cont.querySelector('.svc-edit-box');
+      if (scheda) {
+        const pad = parseFloat(getComputedStyle(cont).paddingTop) || 0;
+        cimaScheda = cont.scrollTop + (scheda.getBoundingClientRect().top - cont.getBoundingClientRect().top) - pad;
+      }
+    } catch (e) { cimaScheda = null; }
+    const meta = _svcTettoScroll({ scrollHeight: cont.scrollHeight, clientHeight: cont.clientHeight, cimaScheda: cimaScheda });
+    if (soloInGiu && meta <= cont.scrollTop) return;
+    cont.scrollTop = meta;
+  }
+
   // Auto-scroll ROBUSTO: i pulsanti vengono aggiunti DOPO il messaggio da funzioni diverse
   // (svcMakeStepButtons, _appendOspiteButtons/_appendCourtButtons/_appendMaestroButtons/…), quindi
   // un singolo scroll nel punto-messaggio non basta. Un MutationObserver sul contenitore riporta la
@@ -46149,7 +46222,7 @@ Per confermare scrivi ELIMINA.`);
     try {
       const obs = new MutationObserver(function () {
         if (container.scrollHeight - container.scrollTop - container.clientHeight < 260) {
-          container.scrollTop = container.scrollHeight;
+          _svcAutoScroll(container, true);
         }
       });
       obs.observe(container, { childList: true, subtree: true });
@@ -46172,7 +46245,7 @@ Per confermare scrivi ELIMINA.`);
     // WhatsApp: il messaggio nuovo va IN FONDO (ultimo), subito sopra la barra di scrittura,
     // e si scrolla in basso così resta visibile. Coerente in tutta la web app.
     container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
+    _svcAutoScroll(container);
     // Auto-pulizia: il timer parte SOLO alla conferma reale di Matchpoint
     // (svcMpSyncConfirmed) o a fine di un'operazione sincrona; qui ogni nuovo
     // messaggio annulla un eventuale timer pendente, così un errore tardivo o una
@@ -46208,7 +46281,7 @@ Per confermare scrivi ELIMINA.`);
     // I pulsanti vengono inseriti DOPO il messaggio: senza ri-scroll resterebbero sotto il bordo
     // visibile (l'autoscroll di svcAddMessage è già scattato sul solo testo). Dopo che il chiamante
     // li ha appesi al DOM (rAF), riporta la chat in fondo così la domanda e le scelte si vedono.
-    try { requestAnimationFrame(function () { const c = document.getElementById('svcChatMessages'); if (c) c.scrollTop = c.scrollHeight; }); } catch (e) {}
+    try { requestAnimationFrame(function () { _svcAutoScroll(document.getElementById('svcChatMessages')); }); } catch (e) {}
     return wrap;
   }
 
@@ -47019,7 +47092,7 @@ Per confermare scrivi ELIMINA.`);
       const _cont = document.getElementById('svcChatMessages');
       if (_cont && svcFlowState && svcFlowState.stepMsg && _cont.contains(svcFlowState.stepMsg)) {
         _cont.appendChild(svcFlowState.stepMsg);
-        _cont.scrollTop = _cont.scrollHeight;
+        _svcAutoScroll(_cont);
       }
       const inp = document.getElementById('svcChatInput');
       if (inp && !inp.disabled) inp.focus();
