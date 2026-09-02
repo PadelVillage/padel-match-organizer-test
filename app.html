@@ -4585,9 +4585,20 @@ body.assessment-public-mode .assessment-public-only-card {
       border-radius:10px;
       padding:12px 14px;
     }
-    .member-hero-wallet { display:flex; flex-direction:column; min-width:0; }
+    /* 🆕 02/09/2026 — LA FASCIA È UNA RIGA SOLA (sua richiesta: «sistema anche il borsellino»).
+       Prima occupava una banda intera per un numero solo. Ora: etichetta, cifra, quando è stata
+       aggiornata e i due gesti, tutto in linea. */
+    .member-hero-wallet { display:flex; align-items:baseline; gap:8px; min-width:0; flex-wrap:wrap; }
     .member-hero-wallet-label { font-size:12px; color:#667085; font-weight:bold; }
-    .member-hero-wallet-amount { font-size:26px; line-height:1.1; color:var(--primary); overflow-wrap:anywhere; }
+    .member-hero-wallet-amount { font-size:20px; line-height:1.2; color:var(--primary); overflow-wrap:anywhere; font-weight:700; }
+    .member-hero-quando { font-size:11.5px; color:#8a93a5; }
+    /* Il livello su UNA riga: cifra, parola e lucchetto in linea. Prima erano impilati, e la
+       casella cresceva tanto da lasciare un buco sotto «Bot Telegram» che le sta a fianco.
+       📌 Uno spazio vuoto in una griglia non è quasi mai colpa della casella vuota: è l'altezza
+       della sua vicina. */
+    .member-livello-riga { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .member-livello-riga input { max-width:96px; }
+    .member-livello-riga .member-level-word { color:#8a93a5; font-size:12px; }
     .member-hero-actions { display:flex; gap:8px; flex-wrap:wrap; }
     .member-acc {
       border:1px solid #dce5f2;
@@ -7995,7 +8006,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.271';
+    const APP_VERSION = '6.272';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16378,7 +16389,7 @@ Grazie.`
                      abitudine o per sbaglio mentre si correggeva un telefono, non il cambio.
                      📌 Una protezione che toglie anche l'uso legittimo non è una protezione: è
                      un pezzo di funzionalità in meno con l'aspetto di una cautela. -->
-                <div class="c3"><label>Livello di gioco</label><input type="number" step="0.5" min="0" max="7" id="cardLevel" value="${escapeHtml(g.level || 3)}" oninput="pmoCardLevelWord()" readonly title="Il livello è chiuso: si apre con «Cambia livello». Sopra Intermedio lo certifica il maestro guardando giocare."><small class="member-level-word" id="cardLevelWord">${escapeHtml(pmoLivelloDefinizione(g.level || 3) || '')}</small><button type="button" class="btn-secondary small-btn" id="cardLevelUnlock" style="margin-top:6px;" onclick="pmoSbloccaLivello(this)">🔓 Cambia livello</button></div>
+                <div class="c3"><label>Livello di gioco</label><div class="member-livello-riga"><input type="number" step="0.5" min="0" max="7" id="cardLevel" value="${escapeHtml(g.level || 3)}" oninput="pmoCardLevelWord()" readonly title="Il livello è chiuso: si apre con «Cambia livello». Sopra Intermedio lo certifica il maestro guardando giocare."><small class="member-level-word" id="cardLevelWord">${escapeHtml(pmoLivelloDefinizione(g.level || 3) || '')}</small><button type="button" class="btn-secondary small-btn" id="cardLevelUnlock" onclick="pmoSbloccaLivello(this)">🔓 Cambia livello</button></div></div>
               </div>
 
               <details class="member-piega">
@@ -16528,6 +16539,11 @@ Grazie.`
             <div class="member-hero-wallet">
               <span class="member-hero-wallet-label">Borsellino</span>
               <strong class="member-hero-wallet-amount">${escapeHtml(_walletBalanceLabel(g))}</strong>
+              <span class="member-hero-quando">aggiornato ${escapeHtml(_walletUpdatedLabel(g))}</span>
+            </div>
+            <div class="member-hero-actions">
+              ${/^\d{1,8}$/.test(String(_walletClientId(g) || '').trim()) ? `<button class="btn-secondary small-btn" onclick="setActionAnchor(this); pmoWalletRefresh('${escapeHtml(String(g.id))}', this)">↻ Aggiorna</button>` : ''}
+              <button class="btn-primary small-btn" onclick="setActionAnchor(this); pmoVaiARicarica()">＋ Ricarica</button>
             </div>
           </div>` : ''}
           </div>
@@ -24699,6 +24715,31 @@ Grazie!`
       return _pmoVoidWallet({ memberId: String(memberId), idInterno: String(_walletClientId(g) || ''), subtractCents: sub, currentCents: cur, sourceBtns: [btn] });
     }
     // Ricarica borsellino (Fase 2b write): legge l'importo (obbligatorio) e lancia _pmoRechargeWallet.
+    /* 🆕 02/09/2026 — «＋ Ricarica» dalla fascia in cima (sua richiesta: «per ricaricarlo
+       utilizziamo questa pagina»).
+       🚨⭐ NON porta il bottone di scrittura in cima, e la ragione è misurata: la ricarica vera
+       (`_pmoRechargeWallet` → edge `matchpoint-wallet-correct`) scrive **davvero** sul Matchpoint
+       del circolo e **non chiede nessuna conferma**. Oggi la protegge solo il fatto che devi
+       aprire apposta il tab Borsellino e digitare una cifra.
+       ⇒ Questo bottone apre quel riquadro e mette il cursore nell'importo: non esci dalla
+       scheda, ma i soldi si scrivono dove si digita la cifra.
+       📌 *Avvicinare un gesto senza conferma al posto più battuto equivale a togliergliela.* È
+       la stessa ragione per cui «Disattiva», salendo in cima, una conferma se l'è dovuta
+       guadagnare.
+       ⛔ E se il riquadro non c'è (scrittura spenta, o socio senza riferimento Matchpoint) lo
+       DICE, invece di non fare niente: un bottone che tace è indistinguibile da uno rotto. */
+    function pmoVaiARicarica() {
+      if (typeof pmoMemberTab === 'function') pmoMemberTab('borsellino');
+      setTimeout(() => {
+        const campo = document.getElementById('pmoWalletRechargeAmt');
+        if (!campo) {
+          showAlert('⚠️ Per questo socio la ricarica non è disponibile: manca il riferimento Matchpoint del borsellino.', 'warning');
+          return;
+        }
+        campo.scrollIntoView({ behavior:'smooth', block:'center' });
+        campo.focus();
+      }, 120);
+    }
     function pmoWalletRechargeClick(memberId, btn) {
       const g = (typeof giocatori !== 'undefined') ? giocatori.find(p => String(p.id) === String(memberId)) : null;
       if (!g) return;
