@@ -4627,6 +4627,24 @@ body.assessment-public-mode .assessment-public-only-card {
        è chiuso e si apre con un click di freccetta». Stessa forma per i riferimenti tecnici.
        📏 Perché di suo: su 5766 schede di PROD le preferenze sono compilate in 11 (0,19%) ⇒ per
        999 soci su 1000 quei sette campi sono spazio occupato da niente. */
+    /* 🆕 02/09/2026 — RIGHE FISSE in «Dati socio» (sua richiesta: nome, cognome e sesso sulla
+       stessa riga; telefono ed email insieme; bot Telegram e livello insieko).
+       ⚖️ Classe SUA e non modifica di `.member-form-grid`: quella griglia la usano anche le
+       pieghe e altre sezioni, dove l'adattamento automatico va benissimo. Cambiarla lì avrebbe
+       riordinato schermate che nessuno ha chiesto di toccare.
+       📐 Sei colonne, così 3+3 e 2+2 tornano esatte; sotto i 760px si torna a una colonna, o su
+       un telefono i campi diventerebbero illeggibili. */
+    .member-form-grid.member-griglia-fissa { grid-template-columns:repeat(6, 1fr); }
+    .member-griglia-fissa > .c2 { grid-column:span 2; }
+    .member-griglia-fissa > .c3 { grid-column:span 3; }
+    @media (max-width: 760px) {
+      .member-form-grid.member-griglia-fissa { grid-template-columns:1fr; }
+      .member-griglia-fissa > .c2, .member-griglia-fissa > .c3 { grid-column:auto; }
+    }
+    /* I due bottoni che cambiano lo stato del socio stanno con gli altri, ma STACCATI: la
+       conferma protegge dal gesto sbagliato, il distacco protegge dal prenderlo per un altro. */
+    .member-azioni-divisorio { display:inline-block; width:1px; align-self:stretch; min-height:20px; background:#d7dee9; margin:0 4px; }
+    .member-card-actions-top { flex-wrap:wrap; }
     .member-piega { margin-top:20px; padding-top:18px; border-top:1px solid #edf1f7; }
     .member-piega > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:8px; color:var(--primary); font-size:14px; font-weight:700; padding:2px 0; }
     .member-piega > summary::-webkit-details-marker { display:none; }
@@ -7977,7 +7995,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.270';
+    const APP_VERSION = '6.271';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16295,11 +16313,9 @@ Grazie.`
          ⚖️ Il titoletto non è più «Azioni operative»: quel nome copriva quattro bottoni che
          facevano cose diverse, questi due fanno la stessa — cambiano lo stato di questa persona. */
       const _azioniSulSocio = showSecAttivita ? `
-              <div class="member-tab-subhead has-divider">Azioni sul socio</div>
-              <div class="member-card-action-row">
-                <button class="btn-warning" onclick="setActionAnchor(this); toggleMemberActive('${escapeHtml(String(g.id))}')">${g.active !== false ? 'Disattiva' : 'Riattiva'}</button>
-                <button class="btn-danger" onclick="setActionAnchor(this); deleteMemberCard('${escapeHtml(String(g.id))}')">Cancella socio</button>
-              </div>` : '';
+                <span class="member-azioni-divisorio" aria-hidden="true"></span>
+                <button class="btn-warning small-btn" onclick="setActionAnchor(this); toggleMemberActive('${escapeHtml(String(g.id))}')">${g.active !== false ? 'Disattiva' : 'Riattiva'}</button>
+                <button class="btn-danger small-btn" onclick="setActionAnchor(this); deleteMemberCard('${escapeHtml(String(g.id))}')">Cancella socio</button>` : '';
       const _prefCampi = [
         { et:'Giorni preferiti',        id:'cardPrefDays',           v:(g.prefDays || []).join(', ') },
         { et:'Orari preferiti',         id:'cardPrefHours',          v:(g.prefHours || []).join(', ') },
@@ -16332,12 +16348,12 @@ Grazie.`
       const _nIdTecnici = (_idTecniciHtml.match(/<label>/g) || []).length;
       const _anagraficaBody = showSecAnagrafica ? `
               <div class="member-tab-subhead">Dati socio</div>
-              <div class="member-form-grid">
-                <div><label>Nome</label><input id="cardFirstName" value="${escapeHtml(g.firstName || '')}"></div>
-                <div><label>Cognome</label><input id="cardSurname" value="${escapeHtml(g.surname || '')}"></div>
-                <div><label>Sesso</label><select id="cardGender"><option value="NA" ${g.gender === 'NA' ? 'selected' : ''}>Da completare</option><option value="M" ${g.gender === 'M' ? 'selected' : ''}>M</option><option value="F" ${g.gender === 'F' ? 'selected' : ''}>F</option></select></div>
-                <div><label>Telefono</label><input id="cardPhone" value="${escapeHtml(g.phone || '')}"></div>
-                <div class="full"><label>Email</label><input id="cardEmail" value="${escapeHtml(g.email || '')}"></div>
+              <div class="member-form-grid member-griglia-fissa">
+                <div class="c2"><label>Nome</label><input id="cardFirstName" value="${escapeHtml(g.firstName || '')}"></div>
+                <div class="c2"><label>Cognome</label><input id="cardSurname" value="${escapeHtml(g.surname || '')}"></div>
+                <div class="c2"><label>Sesso</label><select id="cardGender"><option value="NA" ${g.gender === 'NA' ? 'selected' : ''}>Da completare</option><option value="M" ${g.gender === 'M' ? 'selected' : ''}>M</option><option value="F" ${g.gender === 'F' ? 'selected' : ''}>F</option></select></div>
+                <div class="c3"><label>Telefono</label><input id="cardPhone" value="${escapeHtml(g.phone || '')}"></div>
+                <div class="c3"><label>Email</label><input id="cardEmail" value="${escapeHtml(g.email || '')}"></div>
                 <!-- Bot Telegram (voce B6, idea sua del 31/07): «sì, dal … — su invito di …».
                      🚨 Nasce NASCOSTA e resta nascosta finché non c'è qualcosa di vero da dire.
                      Il dato vive sul database del BOT, non qui, e ci si arriva dal ponte
@@ -16351,7 +16367,7 @@ Grazie.`
                      ai nomi — come si fa in tutti gli altri commenti di questo file — l'app
                      intera smetteva di partire con «Unexpected identifier». Visto aprendo la
                      pagina, non leggendo il codice. -->
-                <div class="full" id="cardBotTelegramRow" hidden><label>Bot Telegram</label><input id="cardBotTelegramValue" value="" readonly title="Se questa persona usa il bot Telegram del circolo, da quando, e chi l'ha invitata. Il dato arriva dal bot; qui non si modifica."></div>
+                <div class="c3" id="cardBotTelegramRow" hidden><label>Bot Telegram</label><input id="cardBotTelegramValue" value="" readonly title="Se questa persona usa il bot Telegram del circolo, da quando, e chi l'ha invitata. Il dato arriva dal bot; qui non si modifica."></div>
               
                 <!-- 🔒 IL LIVELLO NASCE CHIUSO (26/08/2026, sua richiesta: «nella tab anagrafica
                      metti il livello non editabile»).
@@ -16362,7 +16378,7 @@ Grazie.`
                      abitudine o per sbaglio mentre si correggeva un telefono, non il cambio.
                      📌 Una protezione che toglie anche l'uso legittimo non è una protezione: è
                      un pezzo di funzionalità in meno con l'aspetto di una cautela. -->
-                <div><label>Livello di gioco</label><input type="number" step="0.5" min="0" max="7" id="cardLevel" value="${escapeHtml(g.level || 3)}" oninput="pmoCardLevelWord()" readonly title="Il livello è chiuso: si apre con «Cambia livello». Sopra Intermedio lo certifica il maestro guardando giocare."><small class="member-level-word" id="cardLevelWord">${escapeHtml(pmoLivelloDefinizione(g.level || 3) || '')}</small><button type="button" class="btn-secondary small-btn" id="cardLevelUnlock" style="margin-top:6px;" onclick="pmoSbloccaLivello(this)">🔓 Cambia livello</button></div>
+                <div class="c3"><label>Livello di gioco</label><input type="number" step="0.5" min="0" max="7" id="cardLevel" value="${escapeHtml(g.level || 3)}" oninput="pmoCardLevelWord()" readonly title="Il livello è chiuso: si apre con «Cambia livello». Sopra Intermedio lo certifica il maestro guardando giocare."><small class="member-level-word" id="cardLevelWord">${escapeHtml(pmoLivelloDefinizione(g.level || 3) || '')}</small><button type="button" class="btn-secondary small-btn" id="cardLevelUnlock" style="margin-top:6px;" onclick="pmoSbloccaLivello(this)">🔓 Cambia livello</button></div>
               </div>
 
               <details class="member-piega">
@@ -16377,8 +16393,7 @@ Grazie.`
                 <div class="member-form-grid">
                   ${_prefCampi.map(c => `<div${c.largo ? ' class="full"' : ''}><label>${escapeHtml(c.et)}</label><input id="${c.id}" value="${escapeHtml(c.v)}"></div>`).join('')}
                 </div>
-              </details>
-              ${_azioniSulSocio}` : '';
+              </details>` : '';
       const _borsellinoBody = tabBorsellino ? `
               <div class="member-status-grid">
                 <div class="member-status-stat"><span>Saldo attuale</span><strong id="cardWalletBalance">${escapeHtml(_walletBalanceLabel(g))}</strong></div>
@@ -16493,7 +16508,7 @@ Grazie.`
           </div>
           <div class="member-card-actions-top">
             <button class="btn-secondary small-btn" onclick="closeMemberCard()">Chiudi</button>
-            <button class="btn-primary small-btn" onclick="setActionAnchor(this); saveMemberCard('${escapeHtml(String(g.id))}')">Salva</button>
+            <button class="btn-primary small-btn" onclick="setActionAnchor(this); saveMemberCard('${escapeHtml(String(g.id))}')">Salva</button>${_azioniSulSocio}
           </div>
         </div>
         <div class="member-card-body member-card-flow">
@@ -16522,8 +16537,13 @@ Grazie.`
         <div class="member-card-footer">
           <span class="member-panel-hint">Scheda ottimizzata: dati operativi visibili, dettagli tecnici richiudibili.</span>
           <div class="member-card-footer-actions">
-            <button class="btn-secondary" onclick="closeMemberCard()">Annulla</button>
-            <button class="btn-primary" onclick="setActionAnchor(this); saveMemberCard('${escapeHtml(String(g.id))}')">Salva scheda</button>
+            <!-- 🆕 02/09/2026 — VIA I DUE BOTTONI IN FONDO (sua richiesta: «mettere quelli
+                 essenziali, cioè chiudi e salva»).
+                 📏 Misurato prima di toglierli, non supposto: «Annulla» chiamava closeMemberCard()
+                 e «Salva scheda» saveMemberCard(id) — le STESSE identiche funzioni di «Chiudi» e
+                 «Salva» in alto. Erano una coppia sola scritta due volte con due nomi diversi,
+                 e due nomi per lo stesso gesto fanno credere che i gesti siano due.
+                 ⇒ Non si perde nessuna azione. -->
           </div>
         </div>
       `;
@@ -16756,6 +16776,17 @@ Grazie.`
     function toggleMemberActive(memberId) {
       const idx = giocatori.findIndex(p => String(p.id) === String(memberId));
       if (idx < 0) return;
+      /* 🆕🔒 02/09/2026 — LA CONFERMA NASCE INSIEME ALLO SPOSTAMENTO, non dopo.
+         Il bottone stava in fondo a un tab, cioè lontano da tutto; su sua richiesta è salito
+         accanto a «Salva», che è il bottone più premuto della scheda.
+         📏 Misurato prima di spostarlo: `deleteMemberCard` una conferma ce l'aveva già
+         («Cancellare X dalla lista soci?»), `toggleMemberActive` NO — agiva al primo click.
+         ⇒ Avvicinare un gesto senza domanda al gesto più frequente è come toglierla, quella
+         domanda: la distanza era la sua unica protezione.
+         ⚖️ Si chiede solo per DISATTIVARE: riattivare non toglie niente a nessuno, e una
+         conferma su un gesto innocuo è la strada per farle ignorare tutte. */
+      const staDisattivando = giocatori[idx].active !== false;
+      if (staDisattivando && !confirm(`Disattivare ${playerFullName(giocatori[idx])}? Non comparirà più nelle liste finché non lo riattivi.`)) return;
       giocatori[idx].active = giocatori[idx].active === false;
       giocatori[idx].updatedAt = new Date().toISOString();
       save('giocatori', giocatori); const keepOpenMemberId = String(memberId); displayMembers(); openMemberCard(keepOpenMemberId, { force:true });
