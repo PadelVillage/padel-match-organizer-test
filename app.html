@@ -8057,7 +8057,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.282';
+    const APP_VERSION = '6.283';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -25107,7 +25107,21 @@ Grazie!`
         window.__pmoPagamentiCache.set(chiave, { errore: (e && e.message) ? e.message : String(e), at: Date.now() });
       } finally {
         _pmoPagamentiInCorso.delete(chiave);
+        /* 🚨⭐⭐ IL TAB SI RIMETTE DOV'ERA, e senza questo la sezione era INUTILIZZABILE.
+           📏 Misurato aprendola su TEST, e nessuna delle 22 guardie lo vedeva: si clicca
+           «Pagamenti», parte il caricamento (3,6 s per 9.507 righe — non è lentezza), i dati
+           arrivano, `renderOpenMemberCard` ridisegna la scheda **da capo** e il tab attivo torna
+           al primo. ⇒ L'operatore clicca Pagamenti, aspetta, e **si ritrova su Anagrafica**: i 42
+           movimenti erano disegnati, in un pannello nascosto.
+           📌 *Ridisegnare non è aggiornare: chi ridisegna eredita anche il compito di rimettere
+           le cose dove chi guarda le aveva lasciate.*
+           ⚖️ La cura è **mirata** e non tocca `renderOpenMemberCard`: quella funzione serve a
+           mezza scheda, e cambiarle il comportamento per un caso solo sposterebbe il rischio
+           altrove. Qui so quale tab era aperto perché sono io ad averlo fatto ridisegnare. */
+        let _tabAperto = '';
+        try { _tabAperto = document.querySelector('.member-tab.active')?.getAttribute('data-mtab') || ''; } catch (e2) {}
         try { if (typeof renderOpenMemberCard === 'function') renderOpenMemberCard(); } catch (e2) {}
+        try { if (_tabAperto && typeof pmoMemberTab === 'function') pmoMemberTab(_tabAperto); } catch (e2) {}
       }
     }
 
