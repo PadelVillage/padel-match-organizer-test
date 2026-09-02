@@ -7977,7 +7977,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.269';
+    const APP_VERSION = '6.270';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16497,20 +16497,24 @@ Grazie.`
           </div>
         </div>
         <div class="member-card-body member-card-flow">
-          <div class="member-hero">
-            ${(PMO_PAYMENTS_UI_ENABLED && showSecBorsellino) ? `<div class="member-hero-wallet">
+          <!-- 🆕 02/09/2026 — LA FASCIA ESISTE SOLO SE HA QUALCOSA DENTRO.
+               🚨 Conseguenza del togliere il WhatsApp, e non si vedeva nel mockup: la fascia era
+               «borsellino a sinistra, azioni a destra», e per chi NON ha il permesso Borsellino il
+               lato sinistro era già un div vuoto. Tolto il bottone restava una scatola bordata
+               con dentro NIENTE — una cornice attorno al nulla, che sembra un guasto.
+               ⇒ Se il borsellino non si vede, la fascia non si disegna proprio.
+               📌 *Togliere un elemento non è solo togliere lui: è chiedersi cosa reggeva il
+               contenitore che lo teneva.*
+               🔪 ⚠️ In questo commento NON si usano apici inversi: sta dentro una stringa
+               template, e un apice inverso la CHIUDE. Sbagliato due volte oggi, nello stesso
+               file e nello stesso giro — preso tutte e due le volte da controlla-sintassi.mjs,
+               mai rileggendo. -->
+          ${(PMO_PAYMENTS_UI_ENABLED && showSecBorsellino) ? `<div class="member-hero">
+            <div class="member-hero-wallet">
               <span class="member-hero-wallet-label">Borsellino</span>
               <strong class="member-hero-wallet-amount">${escapeHtml(_walletBalanceLabel(g))}</strong>
-            </div>` : '<div></div>'}
-            <!-- 🆕 02/09/2026 — VIA IL BOTTONE WHATSAPP, qui e nel tab Attività (sua richiesta,
-                 messo davanti alle tre strade: «tutti e due»). ⚠️ Detto per intero: WhatsApp
-                 sparisce DEL TUTTO dalla scheda socio — non è un bottone spostato, è una via in
-                 meno per scrivere a un socio da qui. La funzione openMemberWhatsApp resta
-                 definita e non la chiama più nessuno: NON è stata cancellata perché toglierla è
-                 un'altra decisione, e rimetterla è un onclick.
-                 🔪 E questo commento aveva gli apici inversi attorno al nome: dentro una stringa
-                 template quell'apice la CHIUDE. Preso dal controllo sintassi, non a occhio. -->
-            <div class="member-hero-actions"></div>
+            </div>
+          </div>` : ''}
           </div>
           ${memberTabs.length ? `<div class="member-tabs" role="tablist">${_memberTabsBar}</div>
           <div class="member-tab-panels">${_memberTabsPanels}</div>` : '<div style="padding:18px 2px;color:#667085;">Nessuna sezione visibile per il tuo profilo.</div>'}
