@@ -8006,7 +8006,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.272';
+    const APP_VERSION = '6.273';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16508,10 +16508,22 @@ Grazie.`
             <div class="member-card-avatar">${escapeHtml(initials)}</div>
             <div>
               <div class="member-card-name">${escapeHtml(playerFullName(g))}</div>
+              <!-- 🆕 02/09/2026 — VIA LE TRE ETICHETTE DELL'INTESTAZIONE (sua richiesta:
+                   «ci sono queste 3 label che non servono a nulla, levale»).
+                   ⚖️ Due erano DOPPIONI e sono uscite senza discussione: l'ID sta nei
+                   «Riferimenti tecnici», il livello nel campo «Livello di gioco» — e da questo
+                   giro tutti e due si leggono nella stessa schermata, quindi ripeterli in cima
+                   non aggiungeva niente.
+                   🚨 LA TERZA NO, e la differenza è misurata: «Attivo/Inattivo» era l'unico
+                   posto che diceva se il socio è disattivato. 📏 Su 5766 schede di PROD **2001
+                   sono disattivate (35%)** ⇒ «Attivo» è il caso normale, cioè rumore su due
+                   schede su tre; «Inattivo» è l'eccezione, cioè informazione.
+                   ⇒ L'etichetta resta, ma **solo quando è inattivo**. Toglierla del tutto
+                   avrebbe reso una scheda disattivata indistinguibile da una viva.
+                   📌 *Un'etichetta che dice sempre la stessa cosa non informa; la stessa
+                   etichetta, quando dice l'eccezione, è l'unica cosa da leggere.* -->
               <div class="member-card-badges">
-                <span class="badge badge-muted">ID ${escapeHtml(formatMemberIdLabel(g.memberId) || '-')}</span>
-                <span class="badge ${g.active !== false ? 'badge-success' : 'badge-danger'}">${g.active !== false ? 'Attivo' : 'Inattivo'}</span>
-                <span class="badge badge-info">Livello ${escapeHtml(pmoLivelloEtichettaStaff(g.level) || (g.level ?? 3))}</span>
+                ${g.active === false ? '<span class="badge badge-danger">Inattivo</span>' : ''}
                 ${cardMatchpointBadge}
                 ${notificationText ? `<span class="badge ${notificationClass}">${escapeHtml(notificationText)}</span>` : ''}
               </div>
