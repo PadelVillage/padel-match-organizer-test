@@ -8057,7 +8057,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.284';
+    const APP_VERSION = '6.285';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16215,13 +16215,34 @@ Grazie.`
       card.querySelectorAll('.member-tab').forEach(b => b.classList.toggle('active', b.getAttribute('data-mtab') === key));
       card.querySelectorAll('.member-tab-panel').forEach(p => { p.hidden = (p.getAttribute('data-mtab') !== key); });
     }
+    /* 🚨⭐⭐ 02/09/2026 — IL RIDISEGNO CONSERVA IL TAB APERTO, e la cura sta QUI perché qui ci
+       passano TUTTI i ridisegni.
+       🩹 **Seconda versione: la prima era nel posto sbagliato e lui l'ha vista saltare ancora.**
+       L'avevo messa dentro `pmoCaricaPagamenti`, cioè su UN ridisegno solo — quello del
+       caricamento — «per non toccare `renderOpenMemberCard`, che serve a mezza scheda». 📏 La
+       misura che smonta quella prudenza: **`displayMembers()` chiama `renderOpenMemberCard()` in
+       coda** (fine della funzione), e `displayMembers` lo chiamano molti punti, compresi i
+       rinfreschi di sfondo. ⇒ Bastava che la lista soci si ridisegnasse per qualunque motivo, e la
+       scheda tornava al primo tab mentre l'operatore stava leggendo i Pagamenti.
+       📌 *Curare un difetto nel punto in cui l'ho visto, invece che nel punto da cui nasce, lo
+       lascia vivo in tutti gli altri — e la seconda volta lo trova l'utente.*
+       ⚖️ E la cura è **sicura proprio qui**: `renderOpenMemberCard` è il RI-disegno della scheda
+       già aperta, dove conservare il tab è sempre giusto. Non tocca `openMemberCard` chiamata per
+       aprirne una nuova, dove il tab deve partire dal primo. */
     function renderOpenMemberCard() {
       if (!memberInlineOpenId) {
         const overlay = document.getElementById('memberCardOverlay');
         if (overlay) { overlay.classList.remove('open'); overlay.innerHTML = ''; overlay.scrollTop = 0; }
         return;
       }
+      let _tabAperto = '';
+      try { _tabAperto = document.querySelector('#memberCard .member-tab.active')?.getAttribute('data-mtab') || ''; } catch (e) {}
       openMemberCard(memberInlineOpenId, { force:true });
+      /* ⛔ Solo se quel tab esiste ANCORA: se i permessi sono cambiati e la fila si è accorciata,
+         riattivare un tab sparito nasconderebbe tutti i pannelli e la scheda resterebbe bianca. */
+      try {
+        if (_tabAperto && document.querySelector(`#memberCard .member-tab[data-mtab="${_tabAperto}"]`)) pmoMemberTab(_tabAperto);
+      } catch (e) {}
     }
     function openMemberCard(memberId, options={}) {
       if (!options.force && String(memberInlineOpenId) === String(memberId)) {
@@ -25113,21 +25134,12 @@ Grazie!`
         window.__pmoPagamentiCache.set(chiave, { errore: (e && e.message) ? e.message : String(e), at: Date.now() });
       } finally {
         _pmoPagamentiInCorso.delete(chiave);
-        /* 🚨⭐⭐ IL TAB SI RIMETTE DOV'ERA, e senza questo la sezione era INUTILIZZABILE.
-           📏 Misurato aprendola su TEST, e nessuna delle 22 guardie lo vedeva: si clicca
-           «Pagamenti», parte il caricamento (3,6 s per 9.507 righe — non è lentezza), i dati
-           arrivano, `renderOpenMemberCard` ridisegna la scheda **da capo** e il tab attivo torna
-           al primo. ⇒ L'operatore clicca Pagamenti, aspetta, e **si ritrova su Anagrafica**: i 42
-           movimenti erano disegnati, in un pannello nascosto.
-           📌 *Ridisegnare non è aggiornare: chi ridisegna eredita anche il compito di rimettere
-           le cose dove chi guarda le aveva lasciate.*
-           ⚖️ La cura è **mirata** e non tocca `renderOpenMemberCard`: quella funzione serve a
-           mezza scheda, e cambiarle il comportamento per un caso solo sposterebbe il rischio
-           altrove. Qui so quale tab era aperto perché sono io ad averlo fatto ridisegnare. */
-        let _tabAperto = '';
-        try { _tabAperto = document.querySelector('.member-tab.active')?.getAttribute('data-mtab') || ''; } catch (e2) {}
+        /* Il tab aperto lo conserva `renderOpenMemberCard` da sé, per OGNI ridisegno: qui c'era
+           una cura mirata al solo caricamento, e lui l'ha vista saltare lo stesso — perché a
+           ridisegnare la scheda è anche `displayMembers()`, in coda, da mezza applicazione.
+           📌 *Due cure per lo stesso fatto non sommano protezione: nascondono quale delle due
+           non funziona.* */
         try { if (typeof renderOpenMemberCard === 'function') renderOpenMemberCard(); } catch (e2) {}
-        try { if (_tabAperto && typeof pmoMemberTab === 'function') pmoMemberTab(_tabAperto); } catch (e2) {}
       }
     }
 
