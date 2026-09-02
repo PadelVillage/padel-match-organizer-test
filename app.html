@@ -4623,6 +4623,19 @@ body.assessment-public-mode .assessment-public-only-card {
     .member-tab-panel[hidden] { display:none; }
     .member-tab-subhead { color:var(--primary); font-size:14px; font-weight:700; margin:0 0 10px; }
     .member-tab-subhead.has-divider { margin-top:20px; padding-top:18px; border-top:1px solid #edf1f7; }
+    /* 🆕 02/09/2026 — LA PIEGA. Sua richiesta: «le preferenze operative quando si apre la scheda
+       è chiuso e si apre con un click di freccetta». Stessa forma per i riferimenti tecnici.
+       📏 Perché di suo: su 5766 schede di PROD le preferenze sono compilate in 11 (0,19%) ⇒ per
+       999 soci su 1000 quei sette campi sono spazio occupato da niente. */
+    .member-piega { margin-top:20px; padding-top:18px; border-top:1px solid #edf1f7; }
+    .member-piega > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:8px; color:var(--primary); font-size:14px; font-weight:700; padding:2px 0; }
+    .member-piega > summary::-webkit-details-marker { display:none; }
+    .member-piega > summary:focus-visible { outline:3px solid rgba(31,71,136,.35); outline-offset:3px; border-radius:3px; }
+    .member-piega-freccia { color:#7a869c; font-size:12px; transition:transform .18s ease; }
+    .member-piega[open] .member-piega-freccia { transform:rotate(90deg); }
+    .member-piega-conta { font-weight:400; font-size:12.5px; color:#8a93a5; }
+    .member-piega .member-form-grid { margin-top:14px; }
+    @media (prefers-reduced-motion: reduce) { .member-piega-freccia { transition:none; } }
     .member-panel {
       border:1px solid #dce5f2;
       border-radius:10px;
@@ -7964,7 +7977,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.268';
+    const APP_VERSION = '6.269';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16179,8 +16192,18 @@ Grazie.`
       const levelEmailButton = levelEmailSentAt ? 'Reinvia conferma email' : 'Invia conferma email';
       const levelRestoreInfo = assessmentLatestAppliedLevelInfo(g);
       const needsLevelRestore = assessmentMemberNeedsLevelRestore(g);
-      const notificationText = needsLevelRestore ? 'Livello validato da ripristinare' : (g.selfAssessmentToken ? (levelEmailSentAt ? 'Conferma email inviata' : 'Conferma email da inviare') : 'Autovalutazione non applicata');
-      const notificationClass = needsLevelRestore ? 'badge-danger' : (g.selfAssessmentToken ? (levelEmailSentAt ? 'badge-success' : 'badge-warning') : 'badge-muted');
+      /* 🆕 02/09/2026 — VIA LE DUE SCRITTE SULLA CONFERMA EMAIL (sua richiesta: «anche la
+         scritta conferma email da inviare va levata»).
+         ⚖️ Il canale email è DISMESSO dal 13/08: un badge che sollecita un invio che nessuno fa
+         più è rumore su ogni scheda che abbia un gettone.
+         🚨 MA NON SI TOGLIE IL BADGE: sotto lo stesso `notificationText` viveva anche
+         «Livello validato da ripristinare», che è ROSSO e segnala un socio il cui livello
+         certificato è ricaduto a 0,5. Toglierlo insieme avrebbe spento un allarme diverso,
+         capitato lì per condivisione di riga.
+         📌 *Due avvisi che dividono lo stesso posto non sono lo stesso avviso: si toglie quello
+         che è stato chiesto, non il posto.* */
+      const notificationText = needsLevelRestore ? 'Livello validato da ripristinare' : (g.selfAssessmentToken ? '' : 'Autovalutazione non applicata');
+      const notificationClass = needsLevelRestore ? 'badge-danger' : 'badge-muted';
       const restoreLevelLine = needsLevelRestore && levelRestoreInfo
         ? `<div class="member-source-line"><span>Attenzione</span><strong>Livello validato ${escapeHtml(String(levelRestoreInfo.level))}, scheda ora a 0.5</strong></div>`
         : '';
@@ -16259,22 +16282,57 @@ Grazie.`
       //    Autovalutazione · Attività), hero Borsellino+WhatsApp fisso sopra. Ogni tab è
       //    gestito da un'unica chiave permesso (vedi PMO_SECTION_TREE.view_members). ──
       const tabBorsellino = (PMO_PAYMENTS_UI_ENABLED && showSecBorsellino);
+      /* 🆕 02/09/2026 — «DISATTIVA» E «CANCELLA SOCIO» SCENDONO NELLA SCHEDA DEL SOCIO.
+         🗣️ Sua richiesta: «Disattiva e cancella socio li porterei dentro la tab anagrafica».
+         🚨⭐⭐ E LA COSA CHE LA RICHIESTA NON POTEVA PREVEDERE: spostare un bottone sposta anche
+         il PERMESSO che lo nasconde. 📏 Misurato su `pmo_staff_profiles` di PROD — 4 profili, e
+         uno è `staff` con `view_members_anagrafica` = true e `view_members_attivita` = FALSE.
+         ⇒ Legandole alla sezione che le ospita, quella persona guadagnerebbe la cancellazione di
+         un socio: in silenzio, e su un gesto che non si disfa.
+         ⇒ Perciò restano legate a `showSecAttivita`: cambia DOVE si vedono, non CHI le vede.
+         📌 *Un riordino grafico non deve allargare un permesso di passaggio: allargarlo è una
+         decisione, e una decisione si prende, non capita.*
+         ⚖️ Il titoletto non è più «Azioni operative»: quel nome copriva quattro bottoni che
+         facevano cose diverse, questi due fanno la stessa — cambiano lo stato di questa persona. */
+      const _azioniSulSocio = showSecAttivita ? `
+              <div class="member-tab-subhead has-divider">Azioni sul socio</div>
+              <div class="member-card-action-row">
+                <button class="btn-warning" onclick="setActionAnchor(this); toggleMemberActive('${escapeHtml(String(g.id))}')">${g.active !== false ? 'Disattiva' : 'Riattiva'}</button>
+                <button class="btn-danger" onclick="setActionAnchor(this); deleteMemberCard('${escapeHtml(String(g.id))}')">Cancella socio</button>
+              </div>` : '';
+      const _prefCampi = [
+        { et:'Giorni preferiti',        id:'cardPrefDays',           v:(g.prefDays || []).join(', ') },
+        { et:'Orari preferiti',         id:'cardPrefHours',          v:(g.prefHours || []).join(', ') },
+        { et:'Disponibilità giorni',    id:'cardAvailabilityDays',   v:(memberAvailabilityProfile.days || (g.prefDays || []).join(', ')) },
+        { et:'Disponibilità fascia',    id:'cardAvailabilityTime',   v:(memberAvailabilityProfile.time || (g.prefHours || []).join(', ')) },
+        { et:'Frequenza desiderata',    id:'cardDesiredFrequency',   v:(memberAvailabilityProfile.frequency || g.desiredFrequency || '') },
+        { et:'Preavviso minimo',        id:'cardNotice',             v:(memberAvailabilityProfile.notice || g.notice || '') },
+        { et:'Tipo partita preferita',  id:'cardPreferredMatchType', v:(memberAvailabilityProfile.matchType || g.preferredMatchType || ''), largo:true }
+      ];
+      /* 🆕 02/09/2026 — IL RIASSUNTO DELLA PIEGA SI CALCOLA DAGLI STESSI VALORI CHE DISEGNA.
+         ⚖️ Nel mockup c'era scritto «7 campi», ed era la cosa sbagliata: 7 è sempre 7, quindi
+         non informa. 📏 Misurato su 5766 schede di PROD: le preferenze sono compilate in **11**
+         (0,19%) ⇒ per 999 soci su 1000 aprire la piega è un click sprecato, e chi la apre deve
+         poter sapere PRIMA se dentro c'è qualcosa.
+         📌 *Un contatore che non cambia mai non è un'informazione: è decorazione con l'aspetto
+         di un dato.*
+         🔒 Il conto nasce dallo stesso array che disegna gli input: due elenchi separati
+         divergono al primo che ne tocca uno, e a divergere sarebbe il numero — cioè la parte
+         che nessuno va a ricontrollare. */
+      const _prefPiene = _prefCampi.filter(c => cleanCell(c.v) !== '').length;
+      const _prefRiassunto = _prefPiene ? `${_prefPiene} su ${_prefCampi.length} compilate` : 'vuote';
+      /* 🆕 02/09/2026 — I RIFERIMENTI TECNICI SCENDONO SOTTO UNA PIEGA (sua richiesta).
+         🎯 L'argomento non è mio: la scheda lo promette già di sé in fondo a sé stessa —
+         «dati operativi visibili, dettagli tecnici richiudibili». I tre codici erano i PRIMI
+         tre campi, cioè davanti al nome della persona, e il nome sta già nell'intestazione.
+         ⇒ Un documento che dichiara una cosa di sé deve farla, o quella riga mente. */
+      const _idTecniciHtml = `<div><label>ID giocatore Padel Village</label><input value="${escapeHtml(pmoIdPadelVillage(g) || '-')}" readonly title="Il nostro identificatore. È il riferimento del gestionale e del bot, e resta valido anche senza Matchpoint."></div>
+                <div><label>ID giocatore Matchpoint</label><input value="${escapeHtml(pmoIdMatchpoint(g) || '-')}" readonly title="Il codice cliente di Matchpoint (quello della tendina «000140-Nome»). Vuoto per chi non è cliente del circolo."></div>
+                ${pmoIdInternoMatchpoint(g) ? `<div><label>ID interno Matchpoint</label><input value="${escapeHtml(pmoIdInternoMatchpoint(g))}" readonly title="Il numero con cui Matchpoint identifica il socio nelle sue pagine. È DIVERSO dal codice cliente qui sopra e non si può calcolare: se lo prende da solo quando il socio entra in una prenotazione. Serve a riconoscerlo senza passare dal nome (gli omonimi)."></div>` : ''}`;
+      const _nIdTecnici = (_idTecniciHtml.match(/<label>/g) || []).length;
       const _anagraficaBody = showSecAnagrafica ? `
               <div class="member-tab-subhead">Dati socio</div>
               <div class="member-form-grid">
-                <div><label>ID giocatore Padel Village</label><input value="${escapeHtml(pmoIdPadelVillage(g) || '-')}" readonly title="Il nostro identificatore. È il riferimento del gestionale e del bot, e resta valido anche senza Matchpoint."></div>
-                <div><label>ID giocatore Matchpoint</label><input value="${escapeHtml(pmoIdMatchpoint(g) || '-')}" readonly title="Il codice cliente di Matchpoint (quello della tendina «000140-Nome»). Vuoto per chi non è cliente del circolo."></div>
-                ${pmoIdInternoMatchpoint(g) ? `<div><label>ID interno Matchpoint</label><input value="${escapeHtml(pmoIdInternoMatchpoint(g))}" readonly title="Il numero con cui Matchpoint identifica il socio nelle sue pagine. È DIVERSO dal codice cliente qui sopra e non si può calcolare: se lo prende da solo quando il socio entra in una prenotazione. Serve a riconoscerlo senza passare dal nome (gli omonimi)."></div>` : ''}
-                <!-- 🔒 IL LIVELLO NASCE CHIUSO (26/08/2026, sua richiesta: «nella tab anagrafica
-                     metti il livello non editabile»).
-                     ⚖️ Chiuso, NON di sola lettura: bloccarlo e basta avrebbe tolto al maestro
-                     l'unico modo che ha di certificare chi sta sopra il tetto — cioè la cosa che
-                     la voce 98 ha appena promesso al socio. ⇒ Si apre con un gesto esplicito, e
-                     il gesto è la protezione: quello che si voleva evitare è il cambio per
-                     abitudine o per sbaglio mentre si correggeva un telefono, non il cambio.
-                     📌 Una protezione che toglie anche l'uso legittimo non è una protezione: è
-                     un pezzo di funzionalità in meno con l'aspetto di una cautela. -->
-                <div><label>Livello di gioco</label><input type="number" step="0.5" min="0" max="7" id="cardLevel" value="${escapeHtml(g.level || 3)}" oninput="pmoCardLevelWord()" readonly title="Il livello è chiuso: si apre con «Cambia livello». Sopra Intermedio lo certifica il maestro guardando giocare."><small class="member-level-word" id="cardLevelWord">${escapeHtml(pmoLivelloDefinizione(g.level || 3) || '')}</small><button type="button" class="btn-secondary small-btn" id="cardLevelUnlock" style="margin-top:6px;" onclick="pmoSbloccaLivello(this)">🔓 Cambia livello</button></div>
                 <div><label>Nome</label><input id="cardFirstName" value="${escapeHtml(g.firstName || '')}"></div>
                 <div><label>Cognome</label><input id="cardSurname" value="${escapeHtml(g.surname || '')}"></div>
                 <div><label>Sesso</label><select id="cardGender"><option value="NA" ${g.gender === 'NA' ? 'selected' : ''}>Da completare</option><option value="M" ${g.gender === 'M' ? 'selected' : ''}>M</option><option value="F" ${g.gender === 'F' ? 'selected' : ''}>F</option></select></div>
@@ -16294,17 +16352,33 @@ Grazie.`
                      intera smetteva di partire con «Unexpected identifier». Visto aprendo la
                      pagina, non leggendo il codice. -->
                 <div class="full" id="cardBotTelegramRow" hidden><label>Bot Telegram</label><input id="cardBotTelegramValue" value="" readonly title="Se questa persona usa il bot Telegram del circolo, da quando, e chi l'ha invitata. Il dato arriva dal bot; qui non si modifica."></div>
+              
+                <!-- 🔒 IL LIVELLO NASCE CHIUSO (26/08/2026, sua richiesta: «nella tab anagrafica
+                     metti il livello non editabile»).
+                     ⚖️ Chiuso, NON di sola lettura: bloccarlo e basta avrebbe tolto al maestro
+                     l'unico modo che ha di certificare chi sta sopra il tetto — cioè la cosa che
+                     la voce 98 ha appena promesso al socio. ⇒ Si apre con un gesto esplicito, e
+                     il gesto è la protezione: quello che si voleva evitare è il cambio per
+                     abitudine o per sbaglio mentre si correggeva un telefono, non il cambio.
+                     📌 Una protezione che toglie anche l'uso legittimo non è una protezione: è
+                     un pezzo di funzionalità in meno con l'aspetto di una cautela. -->
+                <div><label>Livello di gioco</label><input type="number" step="0.5" min="0" max="7" id="cardLevel" value="${escapeHtml(g.level || 3)}" oninput="pmoCardLevelWord()" readonly title="Il livello è chiuso: si apre con «Cambia livello». Sopra Intermedio lo certifica il maestro guardando giocare."><small class="member-level-word" id="cardLevelWord">${escapeHtml(pmoLivelloDefinizione(g.level || 3) || '')}</small><button type="button" class="btn-secondary small-btn" id="cardLevelUnlock" style="margin-top:6px;" onclick="pmoSbloccaLivello(this)">🔓 Cambia livello</button></div>
               </div>
-              <div class="member-tab-subhead has-divider">Preferenze operative</div>
-              <div class="member-form-grid">
-                <div><label>Giorni preferiti</label><input id="cardPrefDays" value="${escapeHtml((g.prefDays || []).join(', '))}"></div>
-                <div><label>Orari preferiti</label><input id="cardPrefHours" value="${escapeHtml((g.prefHours || []).join(', '))}"></div>
-                <div><label>Disponibilità giorni</label><input id="cardAvailabilityDays" value="${escapeHtml(memberAvailabilityProfile.days || (g.prefDays || []).join(', '))}"></div>
-                <div><label>Disponibilità fascia</label><input id="cardAvailabilityTime" value="${escapeHtml(memberAvailabilityProfile.time || (g.prefHours || []).join(', '))}"></div>
-                <div><label>Frequenza desiderata</label><input id="cardDesiredFrequency" value="${escapeHtml(memberAvailabilityProfile.frequency || g.desiredFrequency || '')}"></div>
-                <div><label>Preavviso minimo</label><input id="cardNotice" value="${escapeHtml(memberAvailabilityProfile.notice || g.notice || '')}"></div>
-                <div class="full"><label>Tipo partita preferita</label><input id="cardPreferredMatchType" value="${escapeHtml(memberAvailabilityProfile.matchType || g.preferredMatchType || '')}"></div>
-              </div>` : '';
+
+              <details class="member-piega">
+                <summary><span class="member-piega-freccia" aria-hidden="true">▶</span>Riferimenti tecnici<span class="member-piega-conta">— ${_nIdTecnici} ${_nIdTecnici === 1 ? 'codice' : 'codici'}</span></summary>
+                <div class="member-form-grid">
+                  ${_idTecniciHtml}
+                </div>
+              </details>
+
+              <details class="member-piega">
+                <summary><span class="member-piega-freccia" aria-hidden="true">▶</span>Preferenze operative<span class="member-piega-conta">— ${escapeHtml(_prefRiassunto)}</span></summary>
+                <div class="member-form-grid">
+                  ${_prefCampi.map(c => `<div${c.largo ? ' class="full"' : ''}><label>${escapeHtml(c.et)}</label><input id="${c.id}" value="${escapeHtml(c.v)}"></div>`).join('')}
+                </div>
+              </details>
+              ${_azioniSulSocio}` : '';
       const _borsellinoBody = tabBorsellino ? `
               <div class="member-status-grid">
                 <div class="member-status-stat"><span>Saldo attuale</span><strong id="cardWalletBalance">${escapeHtml(_walletBalanceLabel(g))}</strong></div>
@@ -16385,10 +16459,11 @@ Grazie.`
               ${renderPostMatchFeedbackMemberSummary(g)}
               <div class="member-tab-subhead has-divider">Azioni operative</div>
               <div class="member-card-action-row">
-                <button class="btn-success" onclick="setActionAnchor(this); openMemberWhatsApp('${escapeHtml(String(g.id))}')">WhatsApp</button>
+                <!-- 🆕 02/09/2026 — restano solo le azioni che riguardano il CONTATTO.
+                     «Disattiva» e «Cancella socio» sono scese nel tab Anagrafica (riguardano il
+                     socio, non l'attività) e il bottone WhatsApp è stato tolto su sua richiesta,
+                     qui e nell'intestazione. -->
                 <button class="btn-success" onclick="setActionAnchor(this); restartAssessmentForMember('${escapeHtml(String(g.id))}')">Nuova autovalutazione</button>
-                <button class="btn-warning" onclick="setActionAnchor(this); toggleMemberActive('${escapeHtml(String(g.id))}')">${g.active !== false ? 'Disattiva' : 'Riattiva'}</button>
-                <button class="btn-danger" onclick="setActionAnchor(this); deleteMemberCard('${escapeHtml(String(g.id))}')">Cancella socio</button>
               </div>` : '';
       const memberTabs = [
         { key:'anagrafica', label:'Anagrafica', visible:showSecAnagrafica, body:_anagraficaBody },
@@ -16412,7 +16487,7 @@ Grazie.`
                 <span class="badge ${g.active !== false ? 'badge-success' : 'badge-danger'}">${g.active !== false ? 'Attivo' : 'Inattivo'}</span>
                 <span class="badge badge-info">Livello ${escapeHtml(pmoLivelloEtichettaStaff(g.level) || (g.level ?? 3))}</span>
                 ${cardMatchpointBadge}
-                <span class="badge ${notificationClass}">${escapeHtml(notificationText)}</span>
+                ${notificationText ? `<span class="badge ${notificationClass}">${escapeHtml(notificationText)}</span>` : ''}
               </div>
             </div>
           </div>
@@ -16427,9 +16502,15 @@ Grazie.`
               <span class="member-hero-wallet-label">Borsellino</span>
               <strong class="member-hero-wallet-amount">${escapeHtml(_walletBalanceLabel(g))}</strong>
             </div>` : '<div></div>'}
-            <div class="member-hero-actions">
-              <button class="btn-success small-btn" onclick="setActionAnchor(this); openMemberWhatsApp('${escapeHtml(String(g.id))}')"><i class="ti ti-brand-whatsapp" style="font-size:15px;vertical-align:-2px;" aria-hidden="true"></i> WhatsApp</button>
-            </div>
+            <!-- 🆕 02/09/2026 — VIA IL BOTTONE WHATSAPP, qui e nel tab Attività (sua richiesta,
+                 messo davanti alle tre strade: «tutti e due»). ⚠️ Detto per intero: WhatsApp
+                 sparisce DEL TUTTO dalla scheda socio — non è un bottone spostato, è una via in
+                 meno per scrivere a un socio da qui. La funzione openMemberWhatsApp resta
+                 definita e non la chiama più nessuno: NON è stata cancellata perché toglierla è
+                 un'altra decisione, e rimetterla è un onclick.
+                 🔪 E questo commento aveva gli apici inversi attorno al nome: dentro una stringa
+                 template quell'apice la CHIUDE. Preso dal controllo sintassi, non a occhio. -->
+            <div class="member-hero-actions"></div>
           </div>
           ${memberTabs.length ? `<div class="member-tabs" role="tablist">${_memberTabsBar}</div>
           <div class="member-tab-panels">${_memberTabsPanels}</div>` : '<div style="padding:18px 2px;color:#667085;">Nessuna sezione visibile per il tuo profilo.</div>'}
