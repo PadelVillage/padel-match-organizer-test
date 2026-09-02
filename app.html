@@ -4314,6 +4314,25 @@
     .assessment-public-message { display:none; border-radius:14px; padding:14px; margin:14px 0; }
     .assessment-public-message.success { background:#eefaf0; border:1px solid #c8edcf; border-left:6px solid var(--success); color:#155724; }
     .assessment-public-message.error { background:#fff5f5; border:1px solid #ffd2d2; border-left:6px solid var(--danger); color:#7a1d1d; }
+    /* 🆕 02/09/2026 — LA FINESTRA DELLA RICARICA (sua idea: «quando tocco il bottone ricarica si
+       apre una tab sopra la scheda e lì puoi fare l'operazione»).
+       🚨 E non è solo comodità: la conferma della ricarica ESISTE già (`_pmoConfirmRecharge`) ma
+       compare nel pannello dell'**Assistente AI**, cioè in un'altra parte dello schermo rispetto
+       al bottone che si è premuto. 📌 *Una domanda fatta dove chi deve rispondere non sta
+       guardando è una domanda che non si vede.* ⇒ Questa finestra **sostituisce** quella
+       conferma, non se ne aggiunge una seconda. */
+    .pmo-ricarica-modal { display:none; position:fixed; inset:0; background:rgba(15,23,42,.45); z-index:10002; padding:18px; align-items:center; justify-content:center; }
+    .pmo-ricarica-modal.aperta { display:flex; }
+    .pmo-ricarica-inner { width:100%; max-width:420px; background:#fff; border-radius:16px; border:1px solid #dfe6ef; box-shadow:0 20px 60px rgba(0,0,0,.28); padding:20px; }
+    .pmo-ricarica-inner h3 { margin:0 0 4px; color:var(--primary); font-size:20px; }
+    .pmo-ricarica-socio { margin:0 0 14px; color:#667085; font-size:14px; }
+    .pmo-ricarica-saldo { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:10px 12px; background:#f8fbff; border:1px solid #dce5f2; border-radius:9px; margin-bottom:14px; }
+    .pmo-ricarica-saldo span { font-size:12.5px; color:#667085; }
+    .pmo-ricarica-saldo strong { font-size:19px; color:var(--primary); }
+    .pmo-ricarica-inner label { display:block; font-size:12px; color:#6b7688; margin-bottom:4px; }
+    .pmo-ricarica-inner input { width:100%; font-size:17px; padding:9px 11px; border:1px solid #cfd9e7; border-radius:8px; }
+    .pmo-ricarica-avviso { margin:12px 0 16px; font-size:12.5px; color:#8a5a00; background:#fff8e6; border:1px solid #f0dca6; border-left:4px solid #e8b64a; border-radius:6px; padding:9px 11px; line-height:1.45; }
+    .pmo-ricarica-azioni { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     .assessment-public-modal { display:none; position:fixed; inset:0; background:rgba(15,23,42,.45); z-index:10001; padding:18px; align-items:center; justify-content:center; }
     .assessment-public-modal .modal-inner { width:100%; max-width:380px; background:#fff; border-radius:18px; border:1px solid #dfe6ef; box-shadow:0 20px 60px rgba(0,0,0,.28); padding:18px; }
     .assessment-public-modal h3 { margin:0 0 12px; color:var(--primary); font-size:21px; }
@@ -6566,6 +6585,9 @@ body.assessment-public-mode .assessment-public-only-card {
         <div id="assessmentEditContent"></div>
       </div>
     </div>
+    <div class="pmo-ricarica-modal" id="pmoRicaricaModal" role="dialog" aria-modal="true" aria-labelledby="pmoRicaricaTitolo" onclick="if(event.target.id==='pmoRicaricaModal') pmoChiudiRicarica();">
+      <div class="pmo-ricarica-inner" id="pmoRicaricaInner"></div>
+    </div>
     <div class="assessment-public-modal" id="assessmentPublicConfirmModal" role="dialog" aria-modal="true" aria-labelledby="assessmentPublicModalTitle" onclick="if(event.target.id==='assessmentPublicConfirmModal') closeAssessmentPublicConfirm();">
       <div class="modal-inner">
         <h3 id="assessmentPublicModalTitle">Conferma invio</h3>
@@ -8006,7 +8028,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.274';
+    const APP_VERSION = '6.275';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16420,15 +16442,17 @@ Grazie.`
               <div style="margin-top:10px;font-size:12px;color:#6b7280;line-height:1.4;">
                 <div>💡 Il saldo si aggiorna dalla <strong>sincronizzazione generale</strong>: usa «↻ Aggiorna saldi borsellino» in cima all'Anagrafica, oppure l'aggiornamento automatico ogni 30 minuti.</div>
               </div>`}
-              ${(PMO_WALLET_WRITE_ENABLED && (/^\d{1,8}$/.test(String(_walletClientId(g) || '').trim()) || String((g.memberId || g.codice) || '').trim())) ? `
-              <div style="margin-top:10px;border-top:1px solid var(--border,#e5e7eb);padding-top:10px;">
-                <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;">＋ Ricarica saldo (Correzione del saldo)</div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                  <input id="pmoWalletRechargeAmt" type="text" inputmode="decimal" placeholder="Importo €" style="width:120px;padding:6px 8px;" title="Importo da aggiungere al borsellino">
-                  <button class="btn-primary small-btn" onclick="pmoWalletRechargeClick('${escapeHtml(String(g.id))}', this)">＋ Ricarica</button>
-                </div>
-                <div style="margin-top:6px;font-size:11px;color:#6b7280;">Aggiunge credito al borsellino su Matchpoint. Operazione reale. Non incide sugli incassi (l'incasso si conta quando il credito viene speso).</div>
-              </div>` : ''}
+              <!-- 🆕 02/09/2026 — IL RIQUADRO DELLA RICARICA NON STA PIÙ QUI (sua richiesta:
+                   prendila da dove ad oggi è nella sezione borsellino e portala qui dentro
+                   anagrafica… si apre una tab sopra la scheda»).
+                   ⇒ Vive nella finestra pmoApriRicarica(), che si apre dal ＋ Ricarica» della
+                   fascia in cima. Lasciarlo anche qui avrebbe fatto DUE porte per lo stesso
+                   gesto — e due caselle dell'importo con lo STESSO id nella stessa pagina,
+                   con la finestra che leggeva quella sbagliata.
+                   📌 *Quando si sposta un campo con un id, si sposta: duplicarlo è un guasto che
+                   si manifesta solo quando entrambe le copie sono a schermo.*
+                   ⚠️ Lo Storna» resta qui: non è stato chiesto di spostarlo, e muoverlo per
+                   simmetria sarebbe una decisione presa da me. -->
               ${(PMO_WALLET_WRITE_ENABLED && (function () { const w = _walletResolve(g); return w && typeof w.balance_cents === 'number' && w.balance_cents > 0; })()) ? `
               <div style="margin-top:10px;border-top:1px solid var(--border,#e5e7eb);padding-top:10px;">
                 <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;">↩︎ Storna saldo (Correzione del saldo)</div>
@@ -16556,7 +16580,7 @@ Grazie.`
             </div>
             <div class="member-hero-actions">
               ${/^\d{1,8}$/.test(String(_walletClientId(g) || '').trim()) ? `<button class="btn-secondary small-btn" onclick="setActionAnchor(this); pmoWalletRefresh('${escapeHtml(String(g.id))}', this)">↻ Aggiorna</button>` : ''}
-              <button class="btn-primary small-btn" onclick="setActionAnchor(this); pmoVaiARicarica()">＋ Ricarica</button>
+              <button class="btn-primary small-btn" onclick="setActionAnchor(this); pmoApriRicarica('${escapeHtml(String(g.id))}')">＋ Ricarica</button>
             </div>
           </div>` : ''}
           </div>
@@ -24728,30 +24752,54 @@ Grazie!`
       return _pmoVoidWallet({ memberId: String(memberId), idInterno: String(_walletClientId(g) || ''), subtractCents: sub, currentCents: cur, sourceBtns: [btn] });
     }
     // Ricarica borsellino (Fase 2b write): legge l'importo (obbligatorio) e lancia _pmoRechargeWallet.
-    /* 🆕 02/09/2026 — «＋ Ricarica» dalla fascia in cima (sua richiesta: «per ricaricarlo
-       utilizziamo questa pagina»).
-       🚨⭐ NON porta il bottone di scrittura in cima, e la ragione è misurata: la ricarica vera
-       (`_pmoRechargeWallet` → edge `matchpoint-wallet-correct`) scrive **davvero** sul Matchpoint
-       del circolo e **non chiede nessuna conferma**. Oggi la protegge solo il fatto che devi
-       aprire apposta il tab Borsellino e digitare una cifra.
-       ⇒ Questo bottone apre quel riquadro e mette il cursore nell'importo: non esci dalla
-       scheda, ma i soldi si scrivono dove si digita la cifra.
-       📌 *Avvicinare un gesto senza conferma al posto più battuto equivale a togliergliela.* È
-       la stessa ragione per cui «Disattiva», salendo in cima, una conferma se l'è dovuta
-       guadagnare.
-       ⛔ E se il riquadro non c'è (scrittura spenta, o socio senza riferimento Matchpoint) lo
-       DICE, invece di non fare niente: un bottone che tace è indistinguibile da uno rotto. */
-    function pmoVaiARicarica() {
-      if (typeof pmoMemberTab === 'function') pmoMemberTab('borsellino');
-      setTimeout(() => {
-        const campo = document.getElementById('pmoWalletRechargeAmt');
-        if (!campo) {
-          showAlert('⚠️ Per questo socio la ricarica non è disponibile: manca il riferimento Matchpoint del borsellino.', 'warning');
-          return;
-        }
-        campo.scrollIntoView({ behavior:'smooth', block:'center' });
-        campo.focus();
-      }, 120);
+    /* 🆕 02/09/2026 — LA RICARICA SI FA IN UNA FINESTRA SOPRA LA SCHEDA (sua idea).
+       🩹 E QUI CORREGGO UNA COSA CHE AVEVO SCRITTO IO POCHE ORE FA, in questo stesso file: che la
+       ricarica «non chiede nessuna conferma». **Era falso.** L'avevo cercata con un grep di
+       `confirm(` e non trovata, concludendo che non ci fosse — mentre la conferma è su misura
+       (`_pmoConfirmRecharge`) e ha perfino un bottone «＋ Sì, ricarica».
+       📌 *Non trovare una cosa cercandola in UN modo non è averla cercata: è aver provato una
+       forma sola.*
+       🚨 Il difetto vero, che quella misura sbagliata mi aveva nascosto, è un altro e più
+       insidioso: quella conferma compare nel pannello dell'**Assistente AI** (`svcAddMessage` →
+       `#svcChatMessages`), cioè in un'altra parte dello schermo rispetto al bottone premuto. Chi
+       ricarica dalla scheda socio preme «＋ Ricarica» e **nella scheda non succede niente**: la
+       domanda è altrove.
+       ⇒ Questa finestra **sostituisce** quella conferma (`giaConfermato: true`), non se ne
+       aggiunge una seconda: due domande per un gesto solo si imparano a saltare, e la seconda
+       sarebbe quella invisibile.
+       ⛔ Fallisce CHIUSA: senza scrittura abilitata o senza riferimento Matchpoint non apre e lo
+       DICE — un bottone che tace è indistinguibile da uno rotto. */
+    function pmoApriRicarica(memberId) {
+      const g = giocatori.find(p => String(p.id) === String(memberId));
+      if (!g) return showAlert('⚠️ Socio non trovato.', 'warning');
+      if (!PMO_WALLET_WRITE_ENABLED) return showAlert('ℹ️ La ricarica del borsellino non è attiva.', 'info');
+      const idInterno = String(_walletClientId(g) || '').trim();
+      const codice = String((g.memberId || g.codice) || '').trim();
+      if (!/^\d{1,8}$/.test(idInterno) && !codice) {
+        return showAlert('⚠️ Questo socio non ha né id interno né codice Matchpoint: la ricarica non è possibile.', 'warning');
+      }
+      const dentro = document.getElementById('pmoRicaricaInner');
+      const modale = document.getElementById('pmoRicaricaModal');
+      if (!dentro || !modale) return showAlert('⚠️ Finestra di ricarica non disponibile.', 'warning');
+      dentro.innerHTML = `
+        <h3 id="pmoRicaricaTitolo">Ricarica borsellino</h3>
+        <p class="pmo-ricarica-socio">${escapeHtml(playerFullName(g))}</p>
+        <div class="pmo-ricarica-saldo"><span>Saldo attuale</span><strong>${escapeHtml(_walletBalanceLabel(g))}</strong></div>
+        <label for="pmoWalletRechargeAmt">Importo da aggiungere</label>
+        <input id="pmoWalletRechargeAmt" type="text" inputmode="decimal" placeholder="€ 0,00" autocomplete="off">
+        <div class="pmo-ricarica-avviso">⚠️ <strong>Operazione reale.</strong> Aggiunge credito sul borsellino di Matchpoint. Non incide sugli incassi: l'incasso si riconosce quando il credito viene speso.</div>
+        <div class="pmo-ricarica-azioni">
+          <button type="button" class="btn-secondary" onclick="pmoChiudiRicarica()">Annulla</button>
+          <button type="button" class="btn-primary" onclick="pmoWalletRechargeClick('${escapeHtml(String(g.id))}', this)">＋ Ricarica</button>
+        </div>`;
+      modale.classList.add('aperta');
+      setTimeout(() => { const c = document.getElementById('pmoWalletRechargeAmt'); if (c) c.focus(); }, 60);
+    }
+    function pmoChiudiRicarica() {
+      const modale = document.getElementById('pmoRicaricaModal');
+      if (modale) { modale.classList.remove('aperta'); }
+      const dentro = document.getElementById('pmoRicaricaInner');
+      if (dentro) dentro.innerHTML = '';
     }
     function pmoWalletRechargeClick(memberId, btn) {
       const g = (typeof giocatori !== 'undefined') ? giocatori.find(p => String(p.id) === String(memberId)) : null;
@@ -24760,7 +24808,19 @@ Grazie!`
       const cur = (w && typeof w.balance_cents === 'number') ? w.balance_cents : null;
       const inp = document.getElementById('pmoWalletRechargeAmt');
       const add = inp ? _pmoEuroToCents(inp.value) : null;
-      return _pmoRechargeWallet({ memberId: String(memberId), idInterno: String(_walletClientId(g) || ''), addCents: add, currentCents: cur, sourceBtns: [btn] });
+      /* 🆕 02/09/2026 — `giaConfermato`: l'unico posto da cui si arriva qui è la finestra della
+         ricarica, che mostra socio, saldo, importo e avviso «operazione reale» ⇒ la domanda è
+         già stata fatta, e dove il gesto avviene. Ripeterla nel pannello dell'Assistente AI
+         sarebbe una seconda domanda, per giunta in un'altra parte dello schermo.
+         📌 *Due domande per un gesto solo si imparano a saltare, e a saltarsi è quella che si
+         vede meno.* */
+      const chiudiSeVa = (esito) => { try { if (esito && esito.ok) pmoChiudiRicarica(); } catch (e) {} return esito; };
+      /* 🔪 `chiudiSeVa` era stato dichiarato e NON agganciato: la finestra sarebbe rimasta
+         aperta sopra una ricarica riuscita. Preso rileggendo il proprio diff — è la stessa
+         trappola («una dichiarazione non è un uso») per cui oggi una guardia era passata verde.
+         ⛔ Si chiude SOLO se è andata: su un errore la finestra resta, con l'importo dentro, o
+         si perderebbe la cifra digitata proprio quando serve rifare il gesto. */
+      return _pmoRechargeWallet({ giaConfermato: true, memberId: String(memberId), idInterno: String(_walletClientId(g) || ''), addCents: add, currentCents: cur, sourceBtns: [btn] }).then(chiudiSeVa);
     }
     // Sincronizza i saldi borsellino di TUTTI i soci in un colpo (edge matchpoint-wallet-sync →
     // worker /export-wallet-report → report "Clienti con credito residuo"). Popola wallet_balance
@@ -40939,7 +40999,13 @@ Per confermare scrivi ELIMINA.`);
       try { svcAddMessage('system', '⚠️ Importo di ricarica non valido.', 'error'); } catch (e) {}
       return { ok: false, message: 'INVALID_AMOUNT' };
     }
-    const okGo = await _pmoConfirmRecharge(playerName, addCents);
+    /* 🆕 02/09/2026 — la conferma si salta SOLO se chi chiama l'ha già fatta esplicitamente e
+       DOVE avviene il gesto (la finestra della ricarica). Non è un indebolimento: `_pmoConfirmRecharge`
+       scrive nel pannello dell'Assistente AI, cioè lontano dal bottone premuto — la finestra
+       chiede la stessa cosa, sotto gli occhi di chi preme.
+       ⛔ Il valore dev'essere `true` esatto: qualunque altra cosa (undefined, 'si', 1) fa la
+       domanda. Una scorciatoia sulla conferma di un movimento di denaro non si apre per distrazione. */
+    const okGo = (opts.giaConfermato === true) ? true : await _pmoConfirmRecharge(playerName, addCents);
     if (!okGo) return { ok: false, message: 'CANCELLED' };
     btns.forEach(function (b) { try { b.disabled = true; } catch (e) {} });
     const note = svcAddMessage('system', '↻ Ricarica borsellino di ' + esc(playerName) + '… (non chiudere)');
