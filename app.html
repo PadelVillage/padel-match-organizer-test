@@ -2664,6 +2664,12 @@
     #pmoCalendarioStaffPanel #staffCalCloudStatus {
       position: absolute; top: 100%; left: 0; margin-top: 0 !important;
       white-space: nowrap; pointer-events: none;
+      /* 📏 `line-height:1` NON è ornamentale, ed è stato MISURATO guardando la pagina viva: con
+         l'interlinea ereditata la riga dell'etichetta è alta **17px** contro i **16** di margine, e
+         sbordava di 1px sul bordo del calendario. Il numero «14» che avevo in mente veniva da una
+         misura fatta quando l'etichetta era ancora NEL flusso — cioè da un'altra pagina.
+         Con `line-height:1` la riga scende a ~11px e restano ~5px di aria. */
+      line-height: 1;
     }
     #staffCalV36 {
       --accent:#2563eb; --accent-light:rgba(37,99,235,0.10);
