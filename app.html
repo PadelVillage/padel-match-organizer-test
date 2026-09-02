@@ -4717,8 +4717,17 @@ body.assessment-public-mode .assessment-public-only-card {
 
        📐 **DODICI colonne, e il numero non è estetico: è l'unico che fa tornare esatte tutt'e
        due le righe.** Con sei, quattro campi non si dividono (6/4 = 1,5) e il quarto andrebbe a
-       capo da solo. Con dodici: 3+3+3+3 e 4+4+4.
+       capo da solo. Con dodici: **3+3+2+4** e **4+4+4**.
        📌 *Una riga che «quasi» torna non è una riga: è una riga più un campo orfano.*
+
+       🩹 **E la prima riga NON è 3+3+3+3, che era la divisione ovvia — corretta APRENDOLA, non
+       rileggendola.** A quarti esatti il campo del livello è largo ~271px e dentro ci stanno un
+       numero, la parola («Avanzato») e il bottone «🔓 Cambia livello»: ~292px, cioè 21 di troppo.
+       Il bottone andava a capo e lasciava un gradino sotto gli altri tre, alto una trentina di
+       pixel. ⇒ Il **Sesso** è una tendina con tre voci corte e si accontenta di 2/12; il livello
+       prende 4/12 e ci sta in una riga sola.
+       📌 *Quattro campi su una riga non sono quattro quarti: sono quattro campi che chiedono
+       spazi diversi, e quanto chiedono lo dice la pagina aperta, non il codice.* 
 
        🔤 E le classi sono state RINOMINATE, non riusate: `c2`/`c3` volevano dire «due colonne su
        sei» e «tre su sei», cioè un terzo e una metà. Tenendo quei nomi su una griglia da dodici,
@@ -4732,14 +4741,17 @@ body.assessment-public-mode .assessment-public-only-card {
        il bottone «🔓 Cambia livello»: si sfilaccerebbe su tre righe. Lì si va a **due campi per
        riga**. Sotto i 760px, una colonna sola: su un telefono i campi diventerebbero illeggibili. */
     .member-form-grid.member-griglia-fissa { grid-template-columns:repeat(12, 1fr); }
+    .member-griglia-fissa > .c-sesto  { grid-column:span 2; }
     .member-griglia-fissa > .c-quarto { grid-column:span 3; }
     .member-griglia-fissa > .c-terzo  { grid-column:span 4; }
     @media (max-width: 1024px) {
+      .member-griglia-fissa > .c-sesto,
       .member-griglia-fissa > .c-quarto,
       .member-griglia-fissa > .c-terzo { grid-column:span 6; }
     }
     @media (max-width: 760px) {
       .member-form-grid.member-griglia-fissa { grid-template-columns:1fr; }
+      .member-griglia-fissa > .c-sesto,
       .member-griglia-fissa > .c-quarto,
       .member-griglia-fissa > .c-terzo { grid-column:auto; }
     }
@@ -8100,7 +8112,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.288';
+    const APP_VERSION = '6.289';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16502,7 +16514,7 @@ Grazie.`
               <div class="member-form-grid member-griglia-fissa">
                 <div class="c-quarto"><label>Nome</label><input id="cardFirstName" value="${escapeHtml(g.firstName || '')}"></div>
                 <div class="c-quarto"><label>Cognome</label><input id="cardSurname" value="${escapeHtml(g.surname || '')}"></div>
-                <div class="c-quarto"><label>Sesso</label><select id="cardGender"><option value="NA" ${g.gender === 'NA' ? 'selected' : ''}>Da completare</option><option value="M" ${g.gender === 'M' ? 'selected' : ''}>M</option><option value="F" ${g.gender === 'F' ? 'selected' : ''}>F</option></select></div>
+                <div class="c-sesto"><label>Sesso</label><select id="cardGender"><option value="NA" ${g.gender === 'NA' ? 'selected' : ''}>Da completare</option><option value="M" ${g.gender === 'M' ? 'selected' : ''}>M</option><option value="F" ${g.gender === 'F' ? 'selected' : ''}>F</option></select></div>
                 <!-- 🔒 IL LIVELLO NASCE CHIUSO (26/08/2026, sua richiesta: «nella tab anagrafica
                      metti il livello non editabile»).
                      ⚖️ Chiuso, NON di sola lettura: bloccarlo e basta avrebbe tolto al maestro
@@ -16515,7 +16527,7 @@ Grazie.`
                      🔄 03/09/2026 — SALITO in prima riga, accanto a Nome/Cognome/Sesso (sua
                      richiesta). ⚖️ Cambia il POSTO, non il comportamento: nasce chiuso come
                      prima e si apre con lo stesso gesto, e la conferma resta dov'era. -->
-                <div class="c-quarto"><label>Livello di gioco</label><div class="member-livello-riga"><input type="number" step="0.5" min="0" max="7" id="cardLevel" value="${escapeHtml(g.level || 3)}" oninput="pmoCardLevelWord()" readonly title="Il livello è chiuso: si apre con «Cambia livello». Sopra Intermedio lo certifica il maestro guardando giocare."><small class="member-level-word" id="cardLevelWord">${escapeHtml(pmoLivelloDefinizione(g.level || 3) || '')}</small><button type="button" class="btn-secondary small-btn" id="cardLevelUnlock" onclick="pmoSbloccaLivello(this)">🔓 Cambia livello</button></div></div>
+                <div class="c-terzo"><label>Livello di gioco</label><div class="member-livello-riga"><input type="number" step="0.5" min="0" max="7" id="cardLevel" value="${escapeHtml(g.level || 3)}" oninput="pmoCardLevelWord()" readonly title="Il livello è chiuso: si apre con «Cambia livello». Sopra Intermedio lo certifica il maestro guardando giocare."><small class="member-level-word" id="cardLevelWord">${escapeHtml(pmoLivelloDefinizione(g.level || 3) || '')}</small><button type="button" class="btn-secondary small-btn" id="cardLevelUnlock" onclick="pmoSbloccaLivello(this)">🔓 Cambia livello</button></div></div>
                 <div class="c-terzo"><label>Telefono</label><input id="cardPhone" value="${escapeHtml(g.phone || '')}"></div>
                 <div class="c-terzo"><label>Email</label><input id="cardEmail" value="${escapeHtml(g.email || '')}"></div>
                 <!-- Bot Telegram (voce B6, idea sua del 31/07): «sì, dal … — su invito di …».
