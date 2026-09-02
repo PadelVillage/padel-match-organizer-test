@@ -4644,6 +4644,26 @@ body.assessment-public-mode .assessment-public-only-card {
        casella cresceva tanto da lasciare un buco sotto «Bot Telegram» che le sta a fianco.
        📌 Uno spazio vuoto in una griglia non è quasi mai colpa della casella vuota: è l'altezza
        della sua vicina. */
+    /* 🚨⭐⭐ 02/09/2026 — LA CELLA CHE ASPETTA TIENE IL SUO POSTO.
+       🗣️ Lui: *«la parte del livello di gioco prima va a sinistra e poi va a destra. Poi torna a
+       sinistra e poi va a destra. Sembra un interruttore che si sposta.»*
+       📏 Misurato frame per frame e confermato da due sue schermate: **non è il livello a
+       muoversi, è la cella «Bot Telegram» che appare**. Quella riga nasce vuota e si riempie DOPO,
+       con una chiamata di rete a un altro database (il ponte del bot); finché era `hidden` non
+       occupava spazio, e il livello scivolava al suo posto per poi essere ricacciato indietro
+       quando la risposta arrivava.
+       ⚖️ **Il difetto esisteva già, ma oggi l'ho RADDOPPIATO**: il caricamento dei Pagamenti
+       ridisegna la scheda dopo ~5 secondi, e il ciclo riparte da capo — con l'occhio ormai fermo
+       lì, quindi molto più visibile. I quattro movimenti che lui descrive sono esattamente i
+       quattro misurati (23ms, 48ms, 5498ms, 5519ms).
+       ⇒ La cella diventa **invisibile ma presente**: `visibility:hidden` invece di `display:none`.
+       Lo spazio è riservato dal primo istante, e quando il dato arriva compare **senza spostare
+       nulla**.
+       📌 *Un elemento che arriva in ritardo deve occupare il suo posto da subito: chi legge non
+       distingue «non c'è» da «non c'è ancora», e intanto tutto il resto gli balla sotto gli occhi.*
+       ⛔ Resta `hidden` — cioè via del tutto — solo dove la riga NON deve esistere: il 403 di chi
+       non ha il permesso, dove l'assenza è la risposta. */
+    .member-cella-in-attesa { visibility:hidden; }
     .member-livello-riga { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .member-livello-riga input { max-width:96px; }
     .member-livello-riga .member-level-word { color:#8a93a5; font-size:12px; }
@@ -8057,7 +8077,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.285';
+    const APP_VERSION = '6.286';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16460,7 +16480,7 @@ Grazie.`
                      ai nomi — come si fa in tutti gli altri commenti di questo file — l'app
                      intera smetteva di partire con «Unexpected identifier». Visto aprendo la
                      pagina, non leggendo il codice. -->
-                <div class="c3" id="cardBotTelegramRow" hidden><label>Bot Telegram</label><input id="cardBotTelegramValue" value="" readonly title="Se questa persona usa il bot Telegram del circolo, da quando, e chi l'ha invitata. Il dato arriva dal bot; qui non si modifica."></div>
+                <div class="c3 member-cella-in-attesa" id="cardBotTelegramRow"><label>Bot Telegram</label><input id="cardBotTelegramValue" value="" readonly title="Se questa persona usa il bot Telegram del circolo, da quando, e chi l'ha invitata. Il dato arriva dal bot; qui non si modifica."></div>
               
                 <!-- 🔒 IL LIVELLO NASCE CHIUSO (26/08/2026, sua richiesta: «nella tab anagrafica
                      metti il livello non editabile»).
@@ -16704,6 +16724,7 @@ Grazie.`
         if (!document.body.contains(campo)) return;
         campo.value = testo;
         riga.hidden = false;
+        riga.classList.remove('member-cella-in-attesa');
       };
       try {
         const r = await pmoTelegramChiama({ action:'stato_bot', persona_id: schedaId, member_id: codice });
@@ -16722,8 +16743,10 @@ Grazie.`
         if (chi) testo += ` — su invito di ${chi}`;
         mostra(testo);
       } catch (e) {
-        // 403: non ha il permesso ⇒ la riga non esiste per lui, e non si spiega perché.
-        if (e && (e.stato === 403 || e.codice === 'FORBIDDEN')) return;
+        /* 403: non ha il permesso ⇒ la riga non esiste per lui, e non si spiega perché.
+           ⇒ È l'UNICO caso in cui la cella sparisce davvero (`hidden`), liberando il posto: qui
+           l'assenza è la risposta, non l'attesa. In tutti gli altri la cella resta dov'è. */
+        if (e && (e.stato === 403 || e.codice === 'FORBIDDEN')) { riga.hidden = true; return; }
         // 404: la scheda non è (ancora) nel cloud. Non è «non è nel bot»: è «non lo so».
         if (e && (e.stato === 404 || e.codice === 'SOCIO_IGNOTO')) { mostra('Non lo so dire per questa scheda'); return; }
         if (e && e.codice === 'BOT_DB_DISARMED') { mostra('Non lo so dire: collegamento col bot non configurato'); return; }
