@@ -4616,7 +4616,7 @@ body.assessment-public-mode .assessment-public-only-card {
     /* 💳 L'elenco dei movimenti: quattro colonne che si impilano sullo stretto. La riga di uno
        storno è barrata E rossa: il segno meno da solo si legge male su uno schermo piccolo. */
     .pmo-pag-elenco { display:flex; flex-direction:column; gap:2px; margin-top:6px; }
-    .pmo-pag-riga { display:grid; grid-template-columns:82px 1fr 84px 92px; gap:10px; align-items:baseline;
+    .pmo-pag-riga { display:grid; grid-template-columns:82px 1fr 84px 92px 34px; gap:10px; align-items:baseline;
       padding:7px 8px; border-bottom:1px solid #eef2f7; font-size:13px; }
     .pmo-pag-riga:hover { background:#f8fbff; }
     .pmo-pag-data { color:#667085; font-size:12.5px; white-space:nowrap; }
@@ -4625,10 +4625,14 @@ body.assessment-public-mode .assessment-public-only-card {
     .pmo-pag-imp { text-align:right; font-weight:700; color:#1f2937; white-space:nowrap; }
     .pmo-pag-riga.annullata .pmo-pag-cosa, .pmo-pag-riga.annullata .pmo-pag-data { text-decoration:line-through; color:#98a2b3; }
     .pmo-pag-riga.annullata .pmo-pag-imp { color:#b42318; }
+    /* Il bottone dello storno resta discreto finché non serve: è un gesto reale su denaro,
+       non una scorciatoia da premere per curiosità. */
+    .pmo-pag-storna { padding:2px 7px; font-size:12px; line-height:1.5; opacity:.55; }
+    .pmo-pag-riga:hover .pmo-pag-storna { opacity:1; }
     .pmo-pag-avviso { margin-top:12px; font-size:12px; color:#8a5a00; background:#fff8e6; border:1px solid #f0dca6;
       border-left:4px solid #e8b64a; border-radius:6px; padding:9px 11px; line-height:1.45; }
     @media (max-width: 760px) {
-      .pmo-pag-riga { grid-template-columns:1fr auto; row-gap:2px; }
+      .pmo-pag-riga { grid-template-columns:1fr auto auto; row-gap:2px; }
       .pmo-pag-cosa { grid-column:1 / -1; order:3; }
       .pmo-pag-come { order:4; }
       .pmo-pag-imp { order:2; }
@@ -8053,7 +8057,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.281';
+    const APP_VERSION = '6.282';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -8066,6 +8070,17 @@ body.assessment-public-mode .assessment-public-only-card {
     //    via window.__pmoPayHarness (gate solo-TEST).
     const PMO_PAYMENTS_WRITE_ENABLED = false;
     const PMO_WALLET_WRITE_ENABLED = true;
+    /* 🆕 02/09/2026 — TERZO FLAG: lo STORNO di un pagamento, SEPARATO dall'incasso.
+       🗣️ Sua richiesta: *«voglio avere la possibilità di stornare un pagamento fatto per errore»*.
+       Gli ho detto che `PMO_PAYMENTS_WRITE_ENABLED` accende **anche l'incasso** dalla scheda
+       partita — un cambio che si vede in segreteria e che lui non aveva chiesto — e ha risposto di
+       accendere **solo lo storno**. ⇒ Un flag in più invece di uno acceso a metà.
+       📌 *Due gesti dietro lo stesso interruttore sono un gesto solo: chi vuole il primo si porta
+       via il secondo senza averlo chiesto.*
+       🚨 E l'edge `matchpoint-payment-void` **nasce oggi**: l'app la chiamava da mesi ma non
+       esisteva né in git né su Supabase. Il 404 non è mai arrivato a nessuno perché questo stesso
+       flag, spento, impediva al bottone di comparire. */
+    const PMO_PAYMENTS_VOID_ENABLED = true;
     function pmoShowVersionOverlay() {
       var o = document.getElementById('pmoVersionOverlay');
       if (o) o.classList.add('is-open');
@@ -25008,10 +25023,31 @@ Grazie!`
         const g = giocatori.find(p => String(p.id) === chiave);
         if (!g) return;
         const idInterno = String(_walletClientId(g) || '').trim();
+        /* 🚨⭐⭐ SI CHIEDONO ANCHE LE PRENOTAZIONI, e non è ridondanza — è la misura che ha
+           salvato il bottone dello storno. 📏 Su PROD, nel browser, `storicoPrenotazioni` è
+           **VUOTO**: l'app non lo idrata all'avvio (le prenotazioni future sì, 303 righe; lo
+           storico no). ⇒ Cercare l'idReserva in quella variabile avrebbe trovato **niente** per
+           ogni partita passata, e il bottone avrebbe detto «non risale» sempre — su una funzione
+           appena costruita, con le guardie tutte verdi.
+           📌 *Una funzione che legge una variabile globale sta scommettendo che qualcun altro
+           l'abbia riempita: se le importa davvero, se la carica.* */
         const rows = await pmoStaffRpcPaged('pmo_get_records_admin',
-          { p_record_types: ['payment', 'wallet_txn'], p_since: null }, 'cloud_sync', 'leggere i pagamenti del socio');
+          { p_record_types: ['payment', 'wallet_txn', 'booking', 'booking_history'], p_since: null },
+          'cloud_sync', 'leggere i pagamenti del socio');
+        // Mappa giorno|campo|ora → numero di prenotazione (che è l'idReserva: misurato identico
+        // su 158 righe su 158 dove ci sono entrambi i nomi).
+        const mappaSlot = new Map();
+        for (const r of (rows || [])) {
+          if (r.record_type !== 'booking' && r.record_type !== 'booking_history') continue;
+          const b = r.payload || {};
+          const num = String(b.idReserva || b.numero || '').trim();
+          if (!num) continue;
+          const k = String(b.data || '').slice(0, 10) + '|' + String(b.campo || '').replace(/\D/g, '') + '|' + String(b.ora || '').slice(0, 5);
+          if (!mappaSlot.has(k)) mappaSlot.set(k, num);
+        }
         const righe = [];
         for (const r of (rows || [])) {
+          if (r.record_type !== 'payment' && r.record_type !== 'wallet_txn') continue;
           const pl = r && r.payload;
           if (!_pmoPagRigaSocio(pl, g, idInterno)) continue;
           if (r.record_type === 'wallet_txn') {
@@ -25049,6 +25085,16 @@ Grazie!`
             cents: stornato ? -Math.abs(cents) : cents,
             tipo: stornato ? 'storno' : 'spesa',
             annullato: stornato,
+            // Quello che serve per stornarla: lo slot, il nome, il cliente e l'idReserva —
+            // risolto QUI col resto, non al click: la mappa delle prenotazioni è viva solo adesso.
+            campoNum: String(pl.campo || '').replace(/\D/g, ''),
+            oraHm: String(pl.ora || '').slice(0, 5),
+            idReserva: mappaSlot.get(
+              String(pl.booking_data || pl.data || '').slice(0, 10) + '|'
+              + String(pl.campo || '').replace(/\D/g, '') + '|' + String(pl.ora || '').slice(0, 5)) || '',
+            nome: String(pl.player_name || ''),
+            idCliente: String(pl.id_cliente || pl.id_cliente_mp || ''),
+            stornabile: !stornato && pl.method !== 'gift' && cents > 0,   // + idReserva, sotto
           });
         }
         righe.sort((a, b) => String(b.data).localeCompare(String(a.data)) || String(b.quando).localeCompare(String(a.quando)));
@@ -25065,6 +25111,37 @@ Grazie!`
       }
     }
 
+    /* 🔎 02/09/2026 — DA UN PAGAMENTO ALLA SUA PRENOTAZIONE.
+       🚨 Il record del pagamento **non contiene l'identificatore della prenotazione**: la sua
+       chiave è `pay|idClienteMp|codice|giorno|importo|metodo|seq`, e `mp_payment_ref` è vuoto su
+       tutte le righe. Lo storno invece l'idReserva **lo pretende**.
+       🩹 **E avevo concluso che fosse impossibile**: cercavo un campo `idReserva` nello storico,
+       trovato **zero**, e detto che solo 2 pagamenti su 3124 erano stornabili. **Falso.** Nello
+       storico quel campo **si chiama `numero`** — e sono la stessa cosa: identici su 158 righe su
+       158 dove ci sono entrambi.
+       📏 La misura vera: **2796 su 3126 (89%) risalgono, e ZERO sono ambigui** — ogni slot punta a
+       una sola partita.
+       📌 *Cercare un campo per nome è cercarlo in una forma sola: lo stesso errore del `grep
+       confirm(` di stamattina, a dieci ore di distanza e con lo stesso esito — «non c'è» detto di
+       una cosa che c'era.*
+       ⇒ L'abbinamento si fa **al caricamento** (mappa giorno|campo|ora → numero) e viaggia con la
+       riga: il bottone compare **solo** dove la prenotazione è stata trovata, invece di comparire
+       sempre e fallire su una su dieci. */
+    async function pmoStornaPagamentoDaScheda(memberId, idReserva, dataIso, campoNum, oraHm, nome, idCliente, btn) {
+      // ⛔ Il bottone esiste solo con un idReserva risolto, ma la guardia resta: una riga vecchia
+      // rimasta a schermo dopo un ricaricamento non deve poter partire senza.
+      if (!idReserva) {
+        return showAlert('⚠️ Di questa partita il gestionale non ha più il numero di prenotazione, e senza quello Matchpoint non sa quale pagamento annullare.', 'warning');
+      }
+      const esito = await _pmoVoidPayment({
+        idReserva: idReserva, idCliente: String(idCliente || ''), playerName: String(nome || ''),
+        campo: String(campoNum || ''), data: String(dataIso || ''), ora: String(oraHm || ''),
+        sourceBtns: [btn],
+      });
+      // Andata? l'elenco si rilegge, così la riga compare barrata senza aspettare il sync.
+      if (esito && esito.ok) pmoAggiornaPagamenti(memberId, null);
+      return esito;
+    }
     function pmoAggiornaPagamenti(memberId, btn) {
       window.__pmoPagamentiCache.delete(String(memberId));
       if (btn) { btn.disabled = true; btn.innerHTML = '<span class="pmo-spin">↻</span> Aggiorno…'; }
@@ -25104,6 +25181,7 @@ Grazie!`
                 <span class="pmo-pag-cosa">${escapeHtml(r.cosa)}</span>
                 <span class="pmo-pag-come">${escapeHtml(r.come)}</span>
                 <span class="pmo-pag-imp">${r.cents < 0 ? '−' : ''}${escapeHtml(_incassiEuro(Math.abs(r.cents)))}</span>
+                ${(PMO_PAYMENTS_VOID_ENABLED && r.stornabile && r.idReserva) ? `<button class="btn-danger small-btn pmo-pag-storna" title="Storna questo pagamento su Matchpoint" onclick="pmoStornaPagamentoDaScheda('${escapeHtml(chiave)}','${escapeHtml(r.idReserva)}','${escapeHtml(r.data)}','${escapeHtml(r.campoNum)}','${escapeHtml(r.oraHm)}','${escapeHtml(r.nome)}','${escapeHtml(r.idCliente)}', this)">↩︎</button>` : `<span class="pmo-pag-nostorno" title="${(PMO_PAYMENTS_VOID_ENABLED && r.stornabile) ? 'Di questa partita il gestionale non ha più il numero di prenotazione: senza, Matchpoint non sa quale pagamento annullare.' : ''}">${(PMO_PAYMENTS_VOID_ENABLED && r.stornabile) ? '—' : ''}</span>`}
               </div>`).join('')}</div>`
         : '<div style="padding:10px 2px;color:#667085;font-size:13px;">Nessun movimento registrato per questo socio.</div>';
       return `
@@ -41040,7 +41118,8 @@ Per confermare scrivi ELIMINA.`);
     const _simulate = PMO_PAYMENTS_SIMULATE && !_harness;
     const esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return String(s == null ? '' : s); };
     const _setMsg = function (n, html) { try { const last = n && n.querySelector(':scope > div:last-child'); if (last) last.innerHTML = html; } catch (e) {} };
-    if (!PMO_PAYMENTS_WRITE_ENABLED && !_harness && !_simulate) {
+    // 🔀 Lo storno ha il SUO flag: acceso su sua richiesta, mentre l'incasso resta spento.
+    if (!PMO_PAYMENTS_VOID_ENABLED && !_harness && !_simulate) {
       try { svcAddMessage('system', 'ℹ️ Storno non attivo: la scrittura pagamenti (Fase 2b) non è abilitata.'); } catch (e) {}
       return { ok: false, message: 'WRITE_DISABLED' };
     }
@@ -41094,6 +41173,9 @@ Per confermare scrivi ELIMINA.`);
       const resp = await fetch(supabaseUrl + '/functions/v1/matchpoint-payment-void', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': supabaseKey, 'Authorization': 'Bearer ' + staff.accessToken },
+        /* `campo`, `data` e `ora` c'erano già e servivano al worker; da oggi servono ANCHE
+           all'edge, che senza di essi non sa QUALE riga marcare stornata nella copia locale e
+           preferisce non marcarne nessuna (`SLOT_INCOMPLETO`) piuttosto che marcarle tutte. */
         body: JSON.stringify({
           idReserva: idReserva, idCliente: idCliente, idx: (opts.idx != null ? String(opts.idx) : ''),
           playerName: playerName, campo: opts.campo, data: opts.data, ora: opts.ora,
