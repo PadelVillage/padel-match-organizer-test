@@ -8028,7 +8028,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.275';
+    const APP_VERSION = '6.276';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -24740,16 +24740,86 @@ Grazie!`
         inp.value = (w.balance_cents / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       }
     }
-    // Storno borsellino: legge importo (vuoto = totale) e lancia _pmoVoidWallet.
+    /* 🆕 02/09/2026 sera — LO STORNO CHIEDE CONFERMA NELLA SUA FINESTRA, non nel pannello AI.
+       🗣️ Sua richiesta, nata dalla domanda *«se sbaglio a fare una ricarica come la correggo?»*:
+       lo strumento c'era già (questo storno), ma aveva **lo stesso difetto** appena curato sulla
+       ricarica — `_pmoConfirmVoidWallet` scrive la domanda con `svcAddMessage` nel pannello
+       dell'**Assistente AI**, cioè lontano dal bottone premuto. Chi stornava dal tab Borsellino
+       premeva «↩︎ Storna» e **nella scheda non succedeva niente**.
+       ⇒ Gemello di `pmoApriRicarica`: la finestra **sostituisce** quella conferma
+       (`giaConfermato: true`), non se ne aggiunge una seconda.
+
+       ⚖️ TRE scelte di disegno, dichiarate perché nessuna era obbligata:
+       ① **il riquadro NON si sposta** nella finestra come fu fatto per la ricarica: lì lo spostamento
+          era una sua richiesta, qui muoverlo *per simmetria* sarebbe una decisione mia. Resta nel tab
+          Borsellino con la sua casella; la finestra è **solo la conferma**.
+       ② ⇒ E per questo la finestra **non ha una seconda casella dell'importo**: due caselle con lo
+          stesso id a schermo sono il guasto già pagato il 02/09 con la ricarica.
+       ③ 🚨 **L'importo confermato è quello CONGELATO all'apertura** (`_pmoStornoInCorso`), non
+          riletto dalla casella al momento del sì. La casella resta viva dietro la finestra: rileggerla
+          vorrebbe dire far confermare una cifra e stornarne un'altra.
+       📌 *Una conferma vale solo se ciò che si conferma è ciò che si è visto.* */
+    let _pmoStornoInCorso = null;
+    // Storno borsellino: legge importo (vuoto = totale), valida, e APRE la finestra di conferma.
+    // ⛔ Fallisce CHIUSA e lo DICE: un bottone che tace è indistinguibile da uno rotto.
     function pmoWalletVoidClick(memberId, btn) {
       const g = (typeof giocatori !== 'undefined') ? giocatori.find(p => String(p.id) === String(memberId)) : null;
-      if (!g) return;
+      if (!g) return showAlert('⚠️ Socio non trovato.', 'warning');
+      if (!PMO_WALLET_WRITE_ENABLED) return showAlert('ℹ️ Lo storno del borsellino non è attivo.', 'info');
+      const idInterno = String(_walletClientId(g) || '').trim();
+      const codice = String((g.memberId || g.codice) || '').trim();
+      if (!/^\d{1,8}$/.test(idInterno) && !codice) {
+        return showAlert('⚠️ Questo socio non ha né id interno né codice Matchpoint: lo storno non è possibile.', 'warning');
+      }
       const w = _walletResolve(g);
       const cur = (w && typeof w.balance_cents === 'number') ? w.balance_cents : null;
       const inp = document.getElementById('pmoWalletVoidAmt');
       let sub = inp ? _pmoEuroToCents(inp.value) : null;
       if ((sub == null || sub <= 0) && cur != null) sub = cur; // input vuoto = storno TOTALE
-      return _pmoVoidWallet({ memberId: String(memberId), idInterno: String(_walletClientId(g) || ''), subtractCents: sub, currentCents: cur, sourceBtns: [btn] });
+      if (sub == null || sub <= 0) return showAlert('⚠️ Importo di storno non valido.', 'warning');
+      if (cur != null && sub > cur) {
+        return showAlert('⚠️ L\'importo da stornare (' + _incassiEuro(sub) + ') supera il saldo del borsellino (' + _incassiEuro(cur) + ').', 'warning');
+      }
+      return pmoApriStorno(String(memberId), sub, cur);
+    }
+    // La finestra di conferma dello storno. Riusa il guscio `pmoRicaricaModal`: è il contenitore
+    // modale della SCHEDA SOCIO, non della ricarica — rinominarlo toccherebbe CSS, markup e banco
+    // per un guadagno di sola etichetta.
+    function pmoApriStorno(memberId, subtractCents, currentCents) {
+      const g = giocatori.find(p => String(p.id) === String(memberId));
+      if (!g) return showAlert('⚠️ Socio non trovato.', 'warning');
+      const dentro = document.getElementById('pmoRicaricaInner');
+      const modale = document.getElementById('pmoRicaricaModal');
+      if (!dentro || !modale) return showAlert('⚠️ Finestra di storno non disponibile.', 'warning');
+      const isTotal = (currentCents != null && subtractCents === currentCents);
+      const post = (currentCents != null) ? Math.max(0, currentCents - subtractCents) : null;
+      _pmoStornoInCorso = { memberId: String(memberId), subtractCents: subtractCents, currentCents: currentCents };
+      dentro.innerHTML = `
+        <h3 id="pmoRicaricaTitolo">Storna borsellino</h3>
+        <p class="pmo-ricarica-socio">${escapeHtml(playerFullName(g))}</p>
+        <div class="pmo-ricarica-saldo"><span>Saldo attuale</span><strong>${escapeHtml(_walletBalanceLabel(g))}</strong></div>
+        <div class="pmo-ricarica-saldo"><span>Da stornare${isTotal ? ' (intero saldo)' : ''}</span><strong style="color:#b42318;">− ${escapeHtml(_incassiEuro(subtractCents))}</strong></div>
+        ${post != null ? `<div class="pmo-ricarica-saldo"><span>Saldo dopo lo storno</span><strong>${escapeHtml(_incassiEuro(post))}</strong></div>` : ''}
+        <div class="pmo-ricarica-avviso">⚠️ <strong>Operazione reale.</strong> Sottrae il credito dal borsellino su Matchpoint («Correzione del saldo»). Da qui non si annulla: per rimettere il credito serve una ricarica.</div>
+        <div class="pmo-ricarica-azioni">
+          <button type="button" class="btn-secondary" onclick="pmoChiudiStorno()">Annulla</button>
+          <button type="button" class="btn-danger" onclick="pmoConfermaStorno('${escapeHtml(String(g.id))}', this)">↩︎ Sì, storna</button>
+        </div>`;
+      modale.classList.add('aperta');
+    }
+    function pmoChiudiStorno() { _pmoStornoInCorso = null; pmoChiudiRicarica(); }
+    function pmoConfermaStorno(memberId, btn) {
+      const inCorso = _pmoStornoInCorso;
+      // 🔒 Si conferma SOLO ciò che la finestra ha mostrato, e solo per il socio che ha mostrato.
+      if (!inCorso || inCorso.memberId !== String(memberId)) {
+        pmoChiudiStorno();
+        return showAlert('⚠️ Storno non confermabile: riapri il riquadro e ripeti.', 'warning');
+      }
+      const g = (typeof giocatori !== 'undefined') ? giocatori.find(p => String(p.id) === String(memberId)) : null;
+      if (!g) return;
+      return _pmoFinestraEsito(btn, '<span class="pmo-spin">↻</span> Storno in corso…', function () {
+        return _pmoVoidWallet({ giaConfermato: true, memberId: String(memberId), idInterno: String(_walletClientId(g) || ''), subtractCents: inCorso.subtractCents, currentCents: inCorso.currentCents });
+      });
     }
     // Ricarica borsellino (Fase 2b write): legge l'importo (obbligatorio) e lancia _pmoRechargeWallet.
     /* 🆕 02/09/2026 — LA RICARICA SI FA IN UNA FINESTRA SOPRA LA SCHEDA (sua idea).
@@ -24795,11 +24865,53 @@ Grazie!`
       modale.classList.add('aperta');
       setTimeout(() => { const c = document.getElementById('pmoWalletRechargeAmt'); if (c) c.focus(); }, 60);
     }
+    /* 🆕 02/09/2026 sera — L'ESITO TORNA DOVE SI È PREMUTO, non solo nel pannello dell'Assistente AI.
+       ⚖️ Curare la **domanda** e lasciare la **risposta** altrove sarebbe mezza cura: il difetto di
+       partenza non è «manca una conferma», è *«il dialogo avviene in un punto dello schermo diverso
+       da quello dove sta chi agisce»*. Vale identico per lo storno e per la ricarica ⇒ un solo
+       helper, usato da entrambe.
+       ⏳ E copre anche l'ATTESA, che può durare a lungo (il worker apre Matchpoint con un browser
+       vero): senza, la finestra restava ferma e senza segni per decine di secondi, che è il modo
+       più sicuro per far premere due volte un bottone che muove denaro.
+       ⛔ La finestra si chiude SOLO se è andata: su un errore resta, con il motivo scritto dentro. */
+    function _pmoFinestraEsito(btn, testoAttesa, avvia) {
+      const dentro = document.getElementById('pmoRicaricaInner');
+      const orig = btn ? btn.innerHTML : '';
+      const vecchio = dentro ? dentro.querySelector('.pmo-finestra-errore') : null;
+      if (vecchio) vecchio.remove();
+      if (btn) { btn.disabled = true; btn.innerHTML = testoAttesa; }
+      const ripristina = function () { if (btn) { btn.disabled = false; btn.innerHTML = orig; } };
+      const mostraErrore = function (testo) {
+        if (!dentro) return;
+        const box = document.createElement('div');
+        box.className = 'pmo-finestra-errore';
+        box.style.cssText = 'margin:12px 0 0;font-size:12.5px;color:#912018;background:#fef3f2;border:1px solid #fda29b;border-left:4px solid #d92d20;border-radius:6px;padding:9px 11px;line-height:1.45;';
+        box.innerHTML = testo;
+        dentro.appendChild(box);
+      };
+      return Promise.resolve().then(avvia).then(function (esito) {
+        // pmoChiudiRicarica azzera già lo storno congelato: è il guscio della scheda socio, condiviso.
+        if (esito && esito.ok) { pmoChiudiRicarica(); return esito; }
+        ripristina();
+        // 'CANCELLED' non è un errore: è l'utente che ha detto no in una conferma a valle.
+        const m = (esito && esito.message) ? String(esito.message) : 'esito non confermato';
+        if (m !== 'CANCELLED') mostraErrore('⚠️ <strong>Non riuscito.</strong> ' + escapeHtml(m) + '<br><span style="font-size:11.5px;">Controlla su Matchpoint prima di ripetere: questa operazione non si ritenta da sola.</span>');
+        return esito;
+      }).catch(function (e) {
+        ripristina();
+        mostraErrore('⚠️ <strong>Errore.</strong> ' + escapeHtml((e && e.message) ? e.message : String(e)));
+        return { ok: false, message: (e && e.message) ? e.message : String(e) };
+      });
+    }
     function pmoChiudiRicarica() {
       const modale = document.getElementById('pmoRicaricaModal');
       if (modale) { modale.classList.remove('aperta'); }
       const dentro = document.getElementById('pmoRicaricaInner');
       if (dentro) dentro.innerHTML = '';
+      // 🔒 Lo storno congelato muore con la finestra, QUALUNQUE sia la via di chiusura — compreso
+      // il click sullo sfondo, che chiama questa funzione direttamente dal markup del modale.
+      // 📌 *Una guardia messa su una sola delle porte non è una guardia.*
+      _pmoStornoInCorso = null;
     }
     function pmoWalletRechargeClick(memberId, btn) {
       const g = (typeof giocatori !== 'undefined') ? giocatori.find(p => String(p.id) === String(memberId)) : null;
@@ -24814,13 +24926,15 @@ Grazie!`
          sarebbe una seconda domanda, per giunta in un'altra parte dello schermo.
          📌 *Due domande per un gesto solo si imparano a saltare, e a saltarsi è quella che si
          vede meno.* */
-      const chiudiSeVa = (esito) => { try { if (esito && esito.ok) pmoChiudiRicarica(); } catch (e) {} return esito; };
+
       /* 🔪 `chiudiSeVa` era stato dichiarato e NON agganciato: la finestra sarebbe rimasta
          aperta sopra una ricarica riuscita. Preso rileggendo il proprio diff — è la stessa
          trappola («una dichiarazione non è un uso») per cui oggi una guardia era passata verde.
          ⛔ Si chiude SOLO se è andata: su un errore la finestra resta, con l'importo dentro, o
          si perderebbe la cifra digitata proprio quando serve rifare il gesto. */
-      return _pmoRechargeWallet({ giaConfermato: true, memberId: String(memberId), idInterno: String(_walletClientId(g) || ''), addCents: add, currentCents: cur, sourceBtns: [btn] }).then(chiudiSeVa);
+      return _pmoFinestraEsito(btn, '<span class="pmo-spin">↻</span> Ricarica in corso…', function () {
+        return _pmoRechargeWallet({ giaConfermato: true, memberId: String(memberId), idInterno: String(_walletClientId(g) || ''), addCents: add, currentCents: cur });
+      });
     }
     // Sincronizza i saldi borsellino di TUTTI i soci in un colpo (edge matchpoint-wallet-sync →
     // worker /export-wallet-report → report "Clienti con credito residuo"). Popola wallet_balance
@@ -40894,7 +41008,13 @@ Per confermare scrivi ELIMINA.`);
       return { ok: false, message: 'EXCEEDS_BALANCE' };
     }
     const isTotal = (currentCents != null && subtractCents === currentCents);
-    const okGo = await _pmoConfirmVoidWallet(playerName, subtractCents, isTotal);
+    /* 🆕 02/09/2026 sera — `giaConfermato`: chi arriva dalla finestra dello storno ha già visto
+       socio, saldo, importo, saldo risultante e l'avviso «operazione reale», nel punto dello schermo
+       dove ha premuto. Ripetere la domanda nel pannello dell'Assistente AI sarebbe una SECONDA
+       domanda, in un altro posto — e a saltarsi è sempre quella che si vede meno.
+       ⛔ Deve essere `true` ESATTO: una scorciatoia sulla conferma di un movimento di denaro non si
+       apre per distrazione (stessa regola del gemello `_pmoRechargeWallet`). */
+    const okGo = (opts.giaConfermato === true) ? true : await _pmoConfirmVoidWallet(playerName, subtractCents, isTotal);
     if (!okGo) return { ok: false, message: 'CANCELLED' };
     btns.forEach(function (b) { try { b.disabled = true; } catch (e) {} });
     const note = svcAddMessage('system', '↻ Storno borsellino di ' + esc(playerName) + '… (non chiudere)');
