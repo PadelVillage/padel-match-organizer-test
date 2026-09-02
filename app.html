@@ -8057,7 +8057,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.283';
+    const APP_VERSION = '6.284';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -25076,7 +25076,13 @@ Grazie!`
           const stornato = !!(pl.voided_at || (pl.status && pl.status !== 'paid'));
           if (r.deleted && !stornato) continue;
           const cents = Number(pl.amount_cents) || 0;
-          const dove = [pl.campo ? ('campo ' + pl.campo) : '', pl.ora ? ('ore ' + String(pl.ora).slice(0, 5)) : ''].filter(Boolean).join(' · ');
+          /* 🩹 «Partita — campo Campo 2»: il payload porta già «Campo 2», e anteporre «campo »
+             raddoppiava la parola. Visto solo guardando la schermata — nel codice
+             `'campo ' + pl.campo` sembra giusto finché non sai cosa c'è dentro `pl.campo`.
+             📌 *Un'etichetta si scrive sul DATO che arriva, non su come lo si immagina.* */
+          const _campoTxt = String(pl.campo || '').trim();
+          const _campoLbl = _campoTxt ? (/^campo\b/i.test(_campoTxt) ? _campoTxt : ('campo ' + _campoTxt)) : '';
+          const dove = [_campoLbl, pl.ora ? ('ore ' + String(pl.ora).slice(0, 5)) : ''].filter(Boolean).join(' · ');
           righe.push({
             data: String(pl.booking_data || pl.data || '').slice(0, 10),
             quando: pl.recorded_at || pl.synced_at || '',
