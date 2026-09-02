@@ -4613,6 +4613,26 @@ body.assessment-public-mode .assessment-public-only-card {
        finirebbe schiacciata in fondo a una riga di bottoni. 📌 *Chiudere una stanza non è
        cancellarne il contenuto: è chiedersi dove va a stare ogni cosa che ci viveva.* */
     .member-hero-nota { flex-basis:100%; font-size:12px; color:#6b7280; line-height:1.4; margin-top:2px; }
+    /* 💳 L'elenco dei movimenti: quattro colonne che si impilano sullo stretto. La riga di uno
+       storno è barrata E rossa: il segno meno da solo si legge male su uno schermo piccolo. */
+    .pmo-pag-elenco { display:flex; flex-direction:column; gap:2px; margin-top:6px; }
+    .pmo-pag-riga { display:grid; grid-template-columns:82px 1fr 84px 92px; gap:10px; align-items:baseline;
+      padding:7px 8px; border-bottom:1px solid #eef2f7; font-size:13px; }
+    .pmo-pag-riga:hover { background:#f8fbff; }
+    .pmo-pag-data { color:#667085; font-size:12.5px; white-space:nowrap; }
+    .pmo-pag-cosa { color:#1f2937; overflow-wrap:anywhere; }
+    .pmo-pag-come { color:#667085; font-size:12px; text-transform:capitalize; }
+    .pmo-pag-imp { text-align:right; font-weight:700; color:#1f2937; white-space:nowrap; }
+    .pmo-pag-riga.annullata .pmo-pag-cosa, .pmo-pag-riga.annullata .pmo-pag-data { text-decoration:line-through; color:#98a2b3; }
+    .pmo-pag-riga.annullata .pmo-pag-imp { color:#b42318; }
+    .pmo-pag-avviso { margin-top:12px; font-size:12px; color:#8a5a00; background:#fff8e6; border:1px solid #f0dca6;
+      border-left:4px solid #e8b64a; border-radius:6px; padding:9px 11px; line-height:1.45; }
+    @media (max-width: 760px) {
+      .pmo-pag-riga { grid-template-columns:1fr auto; row-gap:2px; }
+      .pmo-pag-cosa { grid-column:1 / -1; order:3; }
+      .pmo-pag-come { order:4; }
+      .pmo-pag-imp { order:2; }
+    }
     .member-hero-wallet-label { font-size:12px; color:#667085; font-weight:bold; }
     .member-hero-wallet-amount { font-size:20px; line-height:1.2; color:var(--primary); overflow-wrap:anywhere; font-weight:700; }
     .member-hero-quando { font-size:11.5px; color:#8a93a5; }
@@ -8033,7 +8053,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.277';
+    const APP_VERSION = '6.278';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16479,28 +16499,40 @@ Grazie.`
           </section>`;
         }
       }
-      const _autovalBody = showSecAutoval ? `${_maestroBox}${assessmentMeta}${assessmentHistoryBox || `<details class="assessment-member-history"><summary>Storico invii, token e risposte</summary><div class="assessment-member-history-list">Nessuno storico autovalutazione disponibile.</div></details>`}` : '';
-      const _attivitaBody = showSecAttivita ? `
-              <div class="member-tab-subhead">Stato rapido</div>
-              <div class="member-status-grid">
-                <div class="member-status-stat"><span>Messaggi inviati totali</span><strong>${escapeHtml(String(getTotalContactCount(g.id)))}</strong></div>
-                <div class="member-status-stat"><span>Messaggi inviati questa settimana</span><strong>${escapeHtml(String(getWeeklyContactCount(g.id)))}</strong></div>
-                <div class="member-status-stat"><span>Ultimo messaggio inviato</span><strong>-</strong></div>
-              </div>
-              <div class="member-tab-subhead has-divider">Feedback post-partita</div>
-              ${renderPostMatchFeedbackMemberSummary(g)}
-              <div class="member-tab-subhead has-divider">Azioni operative</div>
-              <div class="member-card-action-row">
-                <!-- 🆕 02/09/2026 — restano solo le azioni che riguardano il CONTATTO.
-                     «Disattiva» e «Cancella socio» sono scese nel tab Anagrafica (riguardano il
-                     socio, non l'attività) e il bottone WhatsApp è stato tolto su sua richiesta,
-                     qui e nell'intestazione. -->
-                <button class="btn-success" onclick="setActionAnchor(this); restartAssessmentForMember('${escapeHtml(String(g.id))}')">Nuova autovalutazione</button>
-              </div>` : '';
+      /* 🚚 02/09/2026 — «Nuova autovalutazione» ARRIVA QUI dal tab «Attività», eliminato.
+         Era l'unico posto da cui si lanciava: perderlo avrebbe tolto una funzione, non una
+         decorazione. ⚖️ Resta legato a `showSecAttivita` — è un'AZIONE sul socio, e il permesso
+         che la governa non cambia perché cambia la stanza. 📌 *Spostare un bottone non deve
+         spostare il permesso che lo nasconde.* */
+      const _nuovaAutovalBtn = showSecAttivita ? `
+            <div class="member-tab-subhead has-divider">Azioni</div>
+            <div class="member-card-action-row">
+              <button class="btn-success" onclick="setActionAnchor(this); restartAssessmentForMember('${escapeHtml(String(g.id))}')">Nuova autovalutazione</button>
+            </div>` : '';
+      const _autovalBody = showSecAutoval ? `${_maestroBox}${assessmentMeta}${assessmentHistoryBox || `<details class="assessment-member-history"><summary>Storico invii, token e risposte</summary><div class="assessment-member-history-list">Nessuno storico autovalutazione disponibile.</div></details>`}${_nuovaAutovalBtn}` : '';
+      /* 🗑️ 02/09/2026 — IL TAB «ATTIVITÀ» NON C'È PIÙ, E AL SUO POSTO C'È «PAGAMENTI».
+         🗣️ Sua richiesta: *«mettiamolo al posto di attività che non serve più»*.
+         📏 **Controllato voce per voce prima di eliminarlo — la lezione del Borsellino, dove
+         «non serve più» si era rivelato falso.** Conteneva tre blocchi:
+           · **Feedback post-partita** → 📏 **0 soci su 2823** hanno un profilo o uno storico ⇒
+             quel riquadro diceva sempre e solo «Nessun feedback ricevuto»;
+           · **Stato rapido** → «Ultimo messaggio inviato» era **scritto fisso a `-`** nel codice
+             (decorazione con l'aspetto di un dato); i due contatori dei messaggi sono vivi ma
+             stanno in `localStorage` — il browser di chi ha inviato — quindi da un altro computer
+             valgono zero comunque. 🗣️ Perdita **dichiarata prima** di farla, e non contestata;
+           · **«Nuova autovalutazione»** → 🚨 **serviva davvero, ed era l'unico posto da cui si
+             lanciava** ⇒ traslocato nel tab «Autovalutazione», che è casa sua.
+         ⛔ **Il permesso `view_members_attivita` NON si tocca**: gated anche «Disattiva» e
+         «Cancella socio» nella fascia in alto (`_azioniSulSocio`). Toglierlo avrebbe regalato la
+         cancellazione di un socio al profilo `staff`, che non ce l'ha. È la trappola del mattino,
+         e stavolta **scatta**.
+         ⚖️ Il nuovo tab sta sotto `view_members_borsellino` e non sotto un permesso nuovo: è la
+         stessa informazione — il denaro del socio — e chi vede il saldo vede da dove viene. */
+      const _pagamentiBody = showSecBorsellino ? _pmoPagamentiBody(g) : '';
       const memberTabs = [
         { key:'anagrafica', label:'Anagrafica', visible:showSecAnagrafica, body:_anagraficaBody },
         { key:'autoval', label:'Autovalutazione', visible:showSecAutoval, body:_autovalBody },
-        { key:'attivita', label:'Attività', visible:showSecAttivita, body:_attivitaBody }
+        { key:'pagamenti', label:'Pagamenti', visible:(PMO_PAYMENTS_UI_ENABLED && showSecBorsellino), body:_pagamentiBody }
       ].filter(t => t.visible);
       const _firstTabKey = memberTabs.length ? memberTabs[0].key : '';
       const _memberTabsBar = memberTabs.map(t => `<button type="button" class="member-tab${t.key === _firstTabKey ? ' active' : ''}" data-mtab="${t.key}" onclick="pmoMemberTab('${t.key}', this)">${escapeHtml(t.label)}</button>`).join('');
@@ -24937,6 +24969,129 @@ Grazie!`
         return _pmoRechargeWallet({ giaConfermato: true, memberId: String(memberId), idInterno: String(_walletClientId(g) || ''), addCents: add, currentCents: cur });
       });
     }
+    /* 💳 02/09/2026 — LA SEZIONE PAGAMENTI (sua richiesta).
+       🗣️ *«devi crearmi la sezione pagamenti, dove uno vede tutti i pagamenti che ha fatto: sia le
+       ricariche che i pagamenti delle partite e i rimborsi, tutto quanto. Quindi la propria
+       situazione di pagamenti.»*
+       ⚖️ Legge DUE tipi di record, perché sono due cose diverse e mescolarle romperebbe i conti:
+         · `payment`   → quello che il socio ha SPESO (partite: carta, contanti, borsellino; omaggi);
+         · `wallet_txn`→ quello che ha VERSATO o si è visto togliere dal borsellino (ricariche, storni).
+       Una ricarica non è un incasso del circolo: l'incasso nasce quando quel credito viene speso, e
+       quella riga esiste già. Sommarle insieme conterebbe lo stesso denaro due volte.
+       🚨 **Gli storni si leggono SOLO chiedendo i `deleted`**: le 20 righe stornate su PROD sono
+       marcate `deleted: true`, quindi la lettura ovvia — quella che salta i deleted, come fa
+       `_incassiFetch` — le farebbe sparire proprio dall'elenco che deve mostrarle.
+       📌 *Un rimborso cancellato dalla vista è un rimborso che il socio non può verificare.* */
+    window.__pmoPagamentiCache = window.__pmoPagamentiCache || new Map();
+    const _pmoPagamentiInCorso = new Set();
+
+    function _pmoPagRigaSocio(payload, g, idInterno) {
+      if (!payload) return false;
+      const mid = String(payload.member_local_id || '').trim();
+      if (mid) return mid === String(g.id);
+      const idc = String(payload.id_cliente || payload.id_cliente_mp || '').trim();
+      if (idc && idInterno) return idc === String(idInterno);
+      return false;
+    }
+
+    async function pmoCaricaPagamenti(memberId) {
+      const chiave = String(memberId);
+      if (_pmoPagamentiInCorso.has(chiave)) return;
+      _pmoPagamentiInCorso.add(chiave);
+      try {
+        const g = giocatori.find(p => String(p.id) === chiave);
+        if (!g) return;
+        const idInterno = String(_walletClientId(g) || '').trim();
+        const rows = await pmoStaffRpcPaged('pmo_get_records_admin',
+          { p_record_types: ['payment', 'wallet_txn'], p_since: null }, 'cloud_sync', 'leggere i pagamenti del socio');
+        const righe = [];
+        for (const r of (rows || [])) {
+          const pl = r && r.payload;
+          if (!_pmoPagRigaSocio(pl, g, idInterno)) continue;
+          if (r.record_type === 'wallet_txn') {
+            const cents = Number(pl.amount_cents) || 0;
+            righe.push({
+              data: String(pl.data || '').slice(0, 10),
+              quando: pl.recorded_at || '',
+              cosa: cents >= 0 ? 'Ricarica borsellino' : 'Storno borsellino',
+              come: 'borsellino', cents, tipo: 'wallet', annullato: false,
+            });
+            continue;
+          }
+          // ── payment: lo STORNO è una riga marcata deleted con `voided_at`. Non si salta:
+          //    si mostra col segno meno, che è quello che il socio deve poter verificare.
+          const stornato = !!(r.deleted || pl.voided_at || (pl.status && pl.status !== 'paid'));
+          const cents = Number(pl.amount_cents) || 0;
+          const dove = [pl.campo ? ('campo ' + pl.campo) : '', pl.ora ? ('ore ' + String(pl.ora).slice(0, 5)) : ''].filter(Boolean).join(' · ');
+          righe.push({
+            data: String(pl.booking_data || pl.data || '').slice(0, 10),
+            quando: pl.recorded_at || pl.synced_at || '',
+            cosa: (pl.method === 'gift' ? 'Quota offerta' : 'Partita') + (dove ? (' — ' + dove) : ''),
+            come: pl.method === 'gift' ? 'omaggio' : (pl.method === 'card' ? 'carta' : pl.method === 'cash' ? 'contanti' : pl.method === 'wallet' ? 'borsellino' : (pl.method || '—')),
+            cents: stornato ? -Math.abs(cents) : cents,
+            tipo: stornato ? 'storno' : 'spesa',
+            annullato: stornato,
+          });
+        }
+        righe.sort((a, b) => String(b.data).localeCompare(String(a.data)) || String(b.quando).localeCompare(String(a.quando)));
+        window.__pmoPagamentiCache.set(chiave, { righe, at: Date.now() });
+      } catch (e) {
+        console.warn('pmoCaricaPagamenti:', e);
+        // ⛔ Si registra ANCHE il fallimento: senza, il disegno rilancerebbe il caricamento a ogni
+        // ridisegno e la scheda girerebbe a vuoto per sempre. Un errore ricordato è ciò che
+        // trasforma un ciclo in un messaggio.
+        window.__pmoPagamentiCache.set(chiave, { errore: (e && e.message) ? e.message : String(e), at: Date.now() });
+      } finally {
+        _pmoPagamentiInCorso.delete(chiave);
+        try { if (typeof renderOpenMemberCard === 'function') renderOpenMemberCard(); } catch (e2) {}
+      }
+    }
+
+    function pmoAggiornaPagamenti(memberId, btn) {
+      window.__pmoPagamentiCache.delete(String(memberId));
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span class="pmo-spin">↻</span> Aggiorno…'; }
+      return pmoCaricaPagamenti(memberId);
+    }
+
+    // Il corpo della sezione. Disegna dalla cache; se non c'è, dice che sta caricando e lo avvia.
+    function _pmoPagamentiBody(g) {
+      const chiave = String(g.id);
+      const c = window.__pmoPagamentiCache.get(chiave);
+      if (!c) {
+        setTimeout(() => pmoCaricaPagamenti(chiave), 0);
+        return '<div class="member-source-line"><span>Movimenti</span><strong><span class="pmo-spin">↻</span> Carico…</strong></div>';
+      }
+      if (c.errore) {
+        return '<div class="member-source-line"><span>Movimenti</span><strong>Non caricati</strong></div>'
+          + '<div style="margin-top:6px;font-size:12px;color:#b42318;">⚠️ ' + escapeHtml(c.errore) + '</div>'
+          + '<div style="margin-top:8px;"><button class="btn-secondary small-btn" onclick="pmoAggiornaPagamenti(\'' + escapeHtml(chiave) + '\', this)">↻ Riprova</button></div>';
+      }
+      const righe = c.righe || [];
+      const speso = righe.filter(r => r.tipo === 'spesa').reduce((t, r) => t + r.cents, 0);
+      const rimborsato = righe.filter(r => r.tipo === 'storno').reduce((t, r) => t + Math.abs(r.cents), 0);
+      const ricaricato = righe.filter(r => r.tipo === 'wallet' && r.cents > 0).reduce((t, r) => t + r.cents, 0);
+      const dataIt = (d) => { if (!d) return '—'; const p = String(d).split('-'); return p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : String(d); };
+      const elenco = righe.length ? `<div class="pmo-pag-elenco">${righe.map(r => `
+              <div class="pmo-pag-riga${r.annullato ? ' annullata' : ''}">
+                <span class="pmo-pag-data">${escapeHtml(dataIt(r.data))}</span>
+                <span class="pmo-pag-cosa">${escapeHtml(r.cosa)}</span>
+                <span class="pmo-pag-come">${escapeHtml(r.come)}</span>
+                <span class="pmo-pag-imp">${r.cents < 0 ? '−' : ''}${escapeHtml(_incassiEuro(Math.abs(r.cents)))}</span>
+              </div>`).join('')}</div>`
+        : '<div style="padding:10px 2px;color:#667085;font-size:13px;">Nessun movimento registrato per questo socio.</div>';
+      return `
+              <div class="member-status-grid">
+                <div class="member-status-stat"><span>Saldo borsellino</span><strong>${escapeHtml(_walletBalanceLabel(g))}</strong></div>
+                <div class="member-status-stat"><span>Speso in partite</span><strong>${escapeHtml(_incassiEuro(speso))}</strong></div>
+                <div class="member-status-stat"><span>Ricaricato</span><strong>${escapeHtml(_incassiEuro(ricaricato))}</strong></div>
+                ${rimborsato ? `<div class="member-status-stat"><span>Rimborsato</span><strong>${escapeHtml(_incassiEuro(rimborsato))}</strong></div>` : ''}
+              </div>
+              <div class="member-tab-subhead has-divider">Movimenti — ${righe.length}</div>
+              ${elenco}
+              <div class="pmo-pag-avviso">💡 <strong>Le ricariche si registrano dal 2 settembre 2026.</strong> Prima di quel giorno il gestionale non le annotava: quelle già fatte non si possono recuperare, e in questo elenco non ci sono. Il <strong>saldo</strong> qui sopra è invece quello vero, letto da Matchpoint.</div>
+              <div style="margin-top:10px;"><button class="btn-secondary small-btn" onclick="pmoAggiornaPagamenti('${escapeHtml(chiave)}', this)">↻ Aggiorna movimenti</button></div>`;
+    }
+
     // Sincronizza i saldi borsellino di TUTTI i soci in un colpo (edge matchpoint-wallet-sync →
     // worker /export-wallet-report → report "Clienti con credito residuo"). Popola wallet_balance
     // in cloud; la colonna Borsellino si ridisegna dai dati cloud. SOLA LETTURA su Matchpoint.
@@ -41028,7 +41183,7 @@ Per confermare scrivi ELIMINA.`);
       const resp = await fetch(supabaseUrl + '/functions/v1/matchpoint-wallet-correct', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': supabaseKey, 'Authorization': 'Bearer ' + staff.accessToken },
-        body: JSON.stringify({ idInterno: idInterno, codice: codice, nome: idNome, cognome: idCognome, email: idEmail, telefono: idTelefono, subtractCents: subtractCents }),
+        body: JSON.stringify({ idInterno: idInterno, codice: codice, nome: idNome, cognome: idCognome, email: idEmail, telefono: idTelefono, memberLocalId: memberId, playerName: playerName, subtractCents: subtractCents }),
         signal: ctrl.signal,
       });
       const txt = await resp.text();
@@ -41139,7 +41294,7 @@ Per confermare scrivi ELIMINA.`);
       const resp = await fetch(supabaseUrl + '/functions/v1/matchpoint-wallet-correct', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': supabaseKey, 'Authorization': 'Bearer ' + staff.accessToken },
-        body: JSON.stringify({ idInterno: idInterno, codice: codice, nome: idNome, cognome: idCognome, email: idEmail, telefono: idTelefono, addCents: addCents }),
+        body: JSON.stringify({ idInterno: idInterno, codice: codice, nome: idNome, cognome: idCognome, email: idEmail, telefono: idTelefono, memberLocalId: memberId, playerName: playerName, addCents: addCents }),
         signal: ctrl.signal,
       });
       const txt = await resp.text();
