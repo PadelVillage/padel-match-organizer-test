@@ -8077,7 +8077,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.286';
+    const APP_VERSION = '6.287';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -8101,6 +8101,21 @@ body.assessment-public-mode .assessment-public-only-card {
        esisteva né in git né su Supabase. Il 404 non è mai arrivato a nessuno perché questo stesso
        flag, spento, impediva al bottone di comparire. */
     const PMO_PAYMENTS_VOID_ENABLED = true;
+    /* 🆕💶 03/09/2026 — QUARTO FLAG: l'INCASSO dalla scheda partita, separato dallo storno.
+       🗣️ Sua richiesta: *«puoi procedere con l'accensione dei soldi nella scheda partita»*, e
+       messo davanti alle strade ha scelto **solo l'incasso** — lo storno resta dov'è, nella
+       scheda socio → tab Pagamenti, dove lo ha appena visto funzionare.
+       🚨⭐⭐ E il flag è NUOVO invece che `PMO_PAYMENTS_WRITE_ENABLED = true` per una ragione
+       misurata, non per simmetria: quel flag accende **due** cose, e la seconda — il bottone
+       ↩︎ sulla riga del giocatore già pagato — lui ha chiesto di non accenderla.
+       ⚖️ Ed è servito anche a fermare un guasto: l'edge `matchpoint-payment-write` che l'incasso
+       chiama **non esisteva su PROD** (stava in `supabase/functions/_archive/`, che i deploy
+       saltano di proposito). Accendere il flag vecchio avrebbe fatto comparire tre bottoni che
+       rispondevano **404** a ogni click. La funzione è stata portata fuori dall'archivio e messa
+       nel recinto `scrittura-al-circolo.ts` — decima copia — nello stesso giro di questa riga.
+       📌 *Due gesti dietro lo stesso interruttore sono un gesto solo: chi vuole il primo si porta
+       via il secondo senza averlo chiesto.* */
+    const PMO_PAYMENTS_COLLECT_ENABLED = true;
     function pmoShowVersionOverlay() {
       var o = document.getElementById('pmoVersionOverlay');
       if (o) o.classList.add('is-open');
@@ -41046,7 +41061,7 @@ Per confermare scrivi ELIMINA.`);
     const esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return String(s == null ? '' : s); };
     const _setMsg = function (n, html) { try { const last = n && n.querySelector(':scope > div:last-child'); if (last) last.innerHTML = html; } catch (e) {} };
     // Gate di sicurezza: con write OFF, fuori harness e fuori simulazione non si incassa MAI.
-    if (!PMO_PAYMENTS_WRITE_ENABLED && !_harness && !_simulate) {
+    if (!PMO_PAYMENTS_COLLECT_ENABLED && !PMO_PAYMENTS_WRITE_ENABLED && !_harness && !_simulate) {
       try { svcAddMessage('system', 'ℹ️ Incasso non attivo: la scrittura pagamenti (Fase 2b) non è abilitata.'); } catch (e) {}
       return { ok: false, message: 'WRITE_DISABLED' };
     }
@@ -42913,7 +42928,17 @@ Per confermare scrivi ELIMINA.`);
       playersSec.setAttribute('data-feature', 'players-payments');
       const _payShow = PMO_PAYMENTS_UI_ENABLED && !st.isManut && Array.isArray(st.roster);
       // Incasso ATTIVO se write reale ON, oppure simulazione (TEST), oppure harness mockato.
-      const _payWriteActive = PMO_PAYMENTS_WRITE_ENABLED
+      /* 🚨⭐⭐ DUE variabili, non una: fino al 03/09/2026 qui ce n'era una sola, e accendeva
+         insieme l'INCASSO e lo STORNO di riga. Lui ha chiesto solo il primo ⇒ una variabile sola
+         non sa dire di sì a uno e di no all'altro.
+         ⛔ `_payVoidActive` resta legata al flag vecchio, cioè **spenta** su PROD: lo storno si fa
+         dalla scheda socio. Non è codice morto — su TEST la simulazione la accende, e il giorno in
+         cui lo storno di riga servisse davvero il posto in cui accenderlo è già scritto. */
+      const _payCollectActive = PMO_PAYMENTS_COLLECT_ENABLED
+        || PMO_PAYMENTS_WRITE_ENABLED
+        || PMO_PAYMENTS_SIMULATE
+        || (PMO_IS_TEST_ENV && typeof window !== 'undefined' && window.__pmoPayHarness === true);
+      const _payVoidActive = PMO_PAYMENTS_WRITE_ENABLED
         || PMO_PAYMENTS_SIMULATE
         || (PMO_IS_TEST_ENV && typeof window !== 'undefined' && window.__pmoPayHarness === true);
       const _paySimUi = PMO_PAYMENTS_SIMULATE && !PMO_PAYMENTS_WRITE_ENABLED;
@@ -43072,7 +43097,7 @@ Per confermare scrivi ELIMINA.`);
               : ((importoCents != null && importoCents > 0) ? _incassiEuro(importoCents) : 'Pagato');
             money.appendChild(paid);
             // Offerta = nessun cobro registrato in MP → non c'è niente da stornare.
-            if (_payWriteActive && !isGift) {
+            if (_payVoidActive && !isGift) {
               const sBtn = document.createElement('button');
               sBtn.type = 'button'; sBtn.className = 'svc-pl-iconbtn';
               sBtn.innerHTML = '<i class="ti ti-arrow-back-up" aria-hidden="true"></i>';
@@ -43102,7 +43127,7 @@ Per confermare scrivi ELIMINA.`);
             amt = document.createElement('input');
             amt.type = 'text'; amt.inputMode = 'decimal'; amt.className = 'svc-pl-eur-input';
             amt.value = ((dovutoCents || 0) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            amt.disabled = !_payWriteActive;
+            amt.disabled = !_payCollectActive;
             amt.setAttribute('aria-label', 'Importo a carico di ' + p.nome);
             eur.appendChild(sym); eur.appendChild(amt);
             money.appendChild(eur);
@@ -43162,7 +43187,7 @@ Per confermare scrivi ELIMINA.`);
             const kBtn = document.createElement('button'); kBtn.type = 'button'; kBtn.className = 'svc-pl-method'; kBtn.innerHTML = '<i class="ti ti-credit-card" aria-hidden="true"></i>Card';
             const wBtn = document.createElement('button'); wBtn.type = 'button'; wBtn.className = 'svc-pl-method'; wBtn.innerHTML = '<i class="ti ti-wallet" aria-hidden="true"></i>Wallet';
             const _syncWallet = function () {
-              if (!_payWriteActive) { wBtn.disabled = true; wBtn.title = 'Incasso dal borsellino disponibile dalla Fase 2b'; return; }
+              if (!_payCollectActive) { wBtn.disabled = true; wBtn.title = 'Incasso dal borsellino disponibile dalla Fase 2b'; return; }
               const a = _pmoEuroToCents(amt.value);
               const okSaldo = (saldoCents != null && a != null && a > 0 && saldoCents >= a);
               wBtn.disabled = !okSaldo;
@@ -43170,7 +43195,7 @@ Per confermare scrivi ELIMINA.`);
                 ? 'Incassa dal borsellino (saldo ' + _incassiEuro(saldoCents) + ')'
                 : (saldoCents == null ? 'Saldo borsellino non disponibile' : 'Saldo insufficiente (' + _incassiEuro(saldoCents || 0) + ')');
             };
-            if (!_payWriteActive) {
+            if (!_payCollectActive) {
               cBtn.disabled = true; cBtn.title = 'Incasso disponibile dalla Fase 2b';
               kBtn.disabled = true; kBtn.title = 'Incasso disponibile dalla Fase 2b';
               _syncWallet();
@@ -43239,7 +43264,7 @@ Per confermare scrivi ELIMINA.`);
       addBtn.addEventListener('click', function () { if (!st.busy) staffCalPlayersAdd(); });
       playersSec.appendChild(addBtn);
       // Totale live (somma dei "€ a carico") — solo con incasso attivo.
-      if (_payShow && _payWriteActive && _payAmtInputs.length) {
+      if (_payShow && _payCollectActive && _payAmtInputs.length) {
         const totWrap = document.createElement('div');
         totWrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;padding-top:8px;border-top:1px dashed #e3e6ea;font-size:.84rem;font-weight:700;';
         const totLbl = document.createElement('span'); totLbl.textContent = 'Totale da incassare';
@@ -43261,7 +43286,7 @@ Per confermare scrivi ELIMINA.`);
           ? 'Imposta il costo per ogni giocatore, poi incassa: in simulazione il pagamento appare solo in Incassi (non tocca Matchpoint).'
           : (_anyUnknown
               ? 'Lo stato dei pagamenti si aggiorna da Matchpoint appena la lista giocatori è letta.'
-              : (_payWriteActive
+              : (_payCollectActive
                   ? 'Modifica l’importo a carico se serve, poi incassa: il pagamento viene scritto su Matchpoint.'
                   : 'Stato letto da Matchpoint. L’incasso (Cash/Card/Wallet) è disattivato (si abilita nel test dal vivo).'));
         playersSec.appendChild(payHint);
