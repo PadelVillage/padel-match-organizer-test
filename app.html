@@ -4608,6 +4608,11 @@ body.assessment-public-mode .assessment-public-only-card {
        Prima occupava una banda intera per un numero solo. Ora: etichetta, cifra, quando è stata
        aggiornata e i due gesti, tutto in linea. */
     .member-hero-wallet { display:flex; align-items:baseline; gap:8px; min-width:0; flex-wrap:wrap; }
+    /* 🆕 02/09/2026 sera — la nota per i soci SENZA id Matchpoint: veniva dal tab Borsellino, che
+       da questo giro non c'è più. Prende la riga intera sotto la fascia (flex-basis:100%), o
+       finirebbe schiacciata in fondo a una riga di bottoni. 📌 *Chiudere una stanza non è
+       cancellarne il contenuto: è chiedersi dove va a stare ogni cosa che ci viveva.* */
+    .member-hero-nota { flex-basis:100%; font-size:12px; color:#6b7280; line-height:1.4; margin-top:2px; }
     .member-hero-wallet-label { font-size:12px; color:#667085; font-weight:bold; }
     .member-hero-wallet-amount { font-size:20px; line-height:1.2; color:var(--primary); overflow-wrap:anywhere; font-weight:700; }
     .member-hero-quando { font-size:11.5px; color:#8a93a5; }
@@ -8028,7 +8033,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.276';
+    const APP_VERSION = '6.277';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16332,7 +16337,6 @@ Grazie.`
       // ── Scheda a TAB (opzione A): 4 tab cliccabili in alto (Anagrafica · Borsellino ·
       //    Autovalutazione · Attività), hero Borsellino+WhatsApp fisso sopra. Ogni tab è
       //    gestito da un'unica chiave permesso (vedi PMO_SECTION_TREE.view_members). ──
-      const tabBorsellino = (PMO_PAYMENTS_UI_ENABLED && showSecBorsellino);
       /* 🆕 02/09/2026 — «DISATTIVA» E «CANCELLA SOCIO» SCENDONO NELLA SCHEDA DEL SOCIO.
          🗣️ Sua richiesta: «Disattiva e cancella socio li porterei dentro la tab anagrafica».
          🚨⭐⭐ E LA COSA CHE LA RICHIESTA NON POTEVA PREVEDERE: spostare un bottone sposta anche
@@ -16427,42 +16431,20 @@ Grazie.`
                   ${_prefCampi.map(c => `<div${c.largo ? ' class="full"' : ''}><label>${escapeHtml(c.et)}</label><input id="${c.id}" value="${escapeHtml(c.v)}"></div>`).join('')}
                 </div>
               </details>` : '';
-      const _borsellinoBody = tabBorsellino ? `
-              <div class="member-status-grid">
-                <div class="member-status-stat"><span>Saldo attuale</span><strong id="cardWalletBalance">${escapeHtml(_walletBalanceLabel(g))}</strong></div>
-                <div class="member-status-stat"><span>Ultimo aggiornamento</span><strong id="cardWalletUpdated">${escapeHtml(_walletUpdatedLabel(g))}</strong></div>
-              </div>
-              ${/^\d{1,8}$/.test(String(_walletClientId(g) || '').trim()) ? `
-              <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-                <button class="btn-secondary small-btn" onclick="pmoWalletRefresh('${escapeHtml(String(g.id))}', this)">↻ Aggiorna saldo</button>
-              </div>
-              <div style="margin-top:8px;font-size:12px;color:#6b7280;line-height:1.4;">
-                <div>💡 «Aggiorna saldo» legge il Portafoglio reale da Matchpoint (può richiedere qualche secondo).</div>
-              </div>` : `
-              <div style="margin-top:10px;font-size:12px;color:#6b7280;line-height:1.4;">
-                <div>💡 Il saldo si aggiorna dalla <strong>sincronizzazione generale</strong>: usa «↻ Aggiorna saldi borsellino» in cima all'Anagrafica, oppure l'aggiornamento automatico ogni 30 minuti.</div>
-              </div>`}
-              <!-- 🆕 02/09/2026 — IL RIQUADRO DELLA RICARICA NON STA PIÙ QUI (sua richiesta:
-                   prendila da dove ad oggi è nella sezione borsellino e portala qui dentro
-                   anagrafica… si apre una tab sopra la scheda»).
-                   ⇒ Vive nella finestra pmoApriRicarica(), che si apre dal ＋ Ricarica» della
-                   fascia in cima. Lasciarlo anche qui avrebbe fatto DUE porte per lo stesso
-                   gesto — e due caselle dell'importo con lo STESSO id nella stessa pagina,
-                   con la finestra che leggeva quella sbagliata.
-                   📌 *Quando si sposta un campo con un id, si sposta: duplicarlo è un guasto che
-                   si manifesta solo quando entrambe le copie sono a schermo.*
-                   ⚠️ Lo Storna» resta qui: non è stato chiesto di spostarlo, e muoverlo per
-                   simmetria sarebbe una decisione presa da me. -->
-              ${(PMO_WALLET_WRITE_ENABLED && (function () { const w = _walletResolve(g); return w && typeof w.balance_cents === 'number' && w.balance_cents > 0; })()) ? `
-              <div style="margin-top:10px;border-top:1px solid var(--border,#e5e7eb);padding-top:10px;">
-                <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;">↩︎ Storna saldo (Correzione del saldo)</div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                  <input id="pmoWalletVoidAmt" type="text" inputmode="decimal" placeholder="${escapeHtml(_walletBalanceLabel(g))}" style="width:120px;padding:6px 8px;" title="Importo da stornare (lascia vuoto = storno totale)">
-                  <button class="btn-secondary small-btn" onclick="pmoWalletVoidFill('${escapeHtml(String(g.id))}')" title="Riempi con l'intero saldo">Totale</button>
-                  <button class="btn-danger small-btn" onclick="pmoWalletVoidClick('${escapeHtml(String(g.id))}', this)">↩︎ Storna</button>
-                </div>
-                <div style="margin-top:6px;font-size:11px;color:#6b7280;">Sottrae dal borsellino su Matchpoint (totale o parziale). Operazione reale.</div>
-              </div>` : ''}` : '';
+      /* 🗑️ 02/09/2026 sera — IL TAB «BORSELLINO» NON C'È PIÙ (sua richiesta, dopo il controllo).
+         📏 Cosa conteneva, e dove è andato — verificato voce per voce prima di toglierlo:
+           · saldo · «ultimo aggiornamento» · «↻ Aggiorna saldo» → erano DOPPIONI della fascia in
+             cima al tab Anagrafica, che li mostra già;
+           · «↩︎ Storna saldo» → 🚨 viveva SOLO qui: è salito nella fascia, e apre la finestra
+             `pmoApriStorno` che porta con sé la casella dell'importo e il bottone «Totale»;
+           · la nota per i soci SENZA id Matchpoint → SOLO qui: è nella fascia (`member-hero-nota`).
+         ⇒ Nessuna funzione persa. Se avessi eliminato il tab al primo controllo — che era la
+         richiesta letterale — sarebbe sparito l'unico modo di correggere una ricarica sbagliata.
+         📌 *«L'abbiamo integrata totalmente» è un'ipotesi da verificare voce per voce, non una
+         premessa: si conta cosa c'era, non si guarda cosa somiglia.*
+         ✅ Il permesso `view_members_borsellino` RESTA e non si tocca: gated la fascia (stessa
+         condizione che gated il tab) e la colonna Borsellino nella lista soci.
+         🆓 E il posto che si libera nella fila dei tab è quello della sezione «Pagamenti». */
       /* 🎓 VOCE 98 — IL RIQUADRO DEL MAESTRO, nel tab «Autovalutazione» della scheda socio.
          🗣️ Sua richiesta del 26/08: *«nella scheda socio c'è un tab che si chiama
          autovalutazione, perché non la metti lì»*. Ed è il posto giusto: qui c'è la storia del
@@ -16517,7 +16499,6 @@ Grazie.`
               </div>` : '';
       const memberTabs = [
         { key:'anagrafica', label:'Anagrafica', visible:showSecAnagrafica, body:_anagraficaBody },
-        { key:'borsellino', label:'Borsellino', visible:tabBorsellino, body:_borsellinoBody },
         { key:'autoval', label:'Autovalutazione', visible:showSecAutoval, body:_autovalBody },
         { key:'attivita', label:'Attività', visible:showSecAttivita, body:_attivitaBody }
       ].filter(t => t.visible);
@@ -16581,7 +16562,9 @@ Grazie.`
             <div class="member-hero-actions">
               ${/^\d{1,8}$/.test(String(_walletClientId(g) || '').trim()) ? `<button class="btn-secondary small-btn" onclick="setActionAnchor(this); pmoWalletRefresh('${escapeHtml(String(g.id))}', this)">↻ Aggiorna</button>` : ''}
               <button class="btn-primary small-btn" onclick="setActionAnchor(this); pmoApriRicarica('${escapeHtml(String(g.id))}')">＋ Ricarica</button>
+              ${(PMO_WALLET_WRITE_ENABLED && _walletHaSaldo(g)) ? `<button class="btn-danger small-btn" onclick="setActionAnchor(this); pmoApriStorno('${escapeHtml(String(g.id))}')" title="Correggere una ricarica sbagliata: sottrae credito dal borsellino">↩︎ Storna</button>` : ''}
             </div>
+            ${/^\d{1,8}$/.test(String(_walletClientId(g) || '').trim()) ? '' : `<div class="member-hero-nota">💡 Questo socio non ha un id Matchpoint collegato: il saldo si aggiorna solo dalla <strong>sincronizzazione generale</strong> — «↻ Aggiorna saldi borsellino» in cima all'Anagrafica, o da sé ogni 30 minuti.</div>`}
           </div>` : ''}
           </div>
           ${memberTabs.length ? `<div class="member-tabs" role="tablist">${_memberTabsBar}</div>
@@ -24652,6 +24635,11 @@ Grazie!`
       catch (e) { return null; }
     }
     function _walletBalanceLabel(g) { const w = _walletResolve(g); return (w && typeof w.balance_cents === 'number') ? _incassiEuro(w.balance_cents) : '—'; }
+    // Ha davvero un saldo da stornare? Un «Storna» su un borsellino a zero è un gesto che non
+    // può riuscire: l'edge risponde NOTHING_TO_VOID. 📌 Un bottone che non può funzionare è
+    // peggio di un bottone che manca — promette e delude.
+    function _walletHaSaldo(g) { const w = _walletResolve(g); return !!(w && typeof w.balance_cents === 'number' && w.balance_cents > 0); }
+    function _walletCents(g) { const w = _walletResolve(g); return (w && typeof w.balance_cents === 'number') ? w.balance_cents : null; }
     function _walletUpdatedLabel(g) { const w = _walletResolve(g); if (!w || !w.synced_at) return '—'; try { return new Date(w.synced_at).toLocaleString('it-IT'); } catch (e) { return '—'; } }
     // ── Saldi da CLOUD (record `wallet_balance`, popolati dalla sync periodica matchpoint-wallet-sync)
     // Chiave = member_local_id (= giocatore.id). Persistono al refresh e si auto-popolano all'apertura.
@@ -24740,30 +24728,28 @@ Grazie!`
         inp.value = (w.balance_cents / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       }
     }
-    /* 🆕 02/09/2026 sera — LO STORNO CHIEDE CONFERMA NELLA SUA FINESTRA, non nel pannello AI.
-       🗣️ Sua richiesta, nata dalla domanda *«se sbaglio a fare una ricarica come la correggo?»*:
-       lo strumento c'era già (questo storno), ma aveva **lo stesso difetto** appena curato sulla
-       ricarica — `_pmoConfirmVoidWallet` scrive la domanda con `svcAddMessage` nel pannello
-       dell'**Assistente AI**, cioè lontano dal bottone premuto. Chi stornava dal tab Borsellino
-       premeva «↩︎ Storna» e **nella scheda non succedeva niente**.
-       ⇒ Gemello di `pmoApriRicarica`: la finestra **sostituisce** quella conferma
-       (`giaConfermato: true`), non se ne aggiunge una seconda.
-
-       ⚖️ TRE scelte di disegno, dichiarate perché nessuna era obbligata:
-       ① **il riquadro NON si sposta** nella finestra come fu fatto per la ricarica: lì lo spostamento
-          era una sua richiesta, qui muoverlo *per simmetria* sarebbe una decisione mia. Resta nel tab
-          Borsellino con la sua casella; la finestra è **solo la conferma**.
-       ② ⇒ E per questo la finestra **non ha una seconda casella dell'importo**: due caselle con lo
-          stesso id a schermo sono il guasto già pagato il 02/09 con la ricarica.
-       ③ 🚨 **L'importo confermato è quello CONGELATO all'apertura** (`_pmoStornoInCorso`), non
-          riletto dalla casella al momento del sì. La casella resta viva dietro la finestra: rileggerla
-          vorrebbe dire far confermare una cifra e stornarne un'altra.
-       📌 *Una conferma vale solo se ciò che si conferma è ciò che si è visto.* */
-    let _pmoStornoInCorso = null;
-    // Storno borsellino: legge importo (vuoto = totale), valida, e APRE la finestra di conferma.
-    // ⛔ Fallisce CHIUSA e lo DICE: un bottone che tace è indistinguibile da uno rotto.
-    function pmoWalletVoidClick(memberId, btn) {
-      const g = (typeof giocatori !== 'undefined') ? giocatori.find(p => String(p.id) === String(memberId)) : null;
+    /* 🆕 02/09/2026 sera — LO STORNO VIVE IN UNA FINESTRA, come la ricarica, e il tab Borsellino
+       NON C'È PIÙ.
+       🗣️ Sua richiesta: *«controllami che la tab borsellino non serve più perché l'abbiamo integrata
+       totalmente nella tab anagrafica. E se ti torna tutto, la puoi pure eliminare»*.
+       📏 **Controllato, e NON tornava**: saldo, «aggiornato» e «↻ Aggiorna» erano davvero doppioni
+       della fascia, ma **lo Storna e la nota per i soci senza id Matchpoint vivevano solo lì** ⇒
+       eliminare il tab avrebbe tolto l'unico modo di correggere una ricarica sbagliata, che è la
+       cosa da cui questo giro è partito. ⇒ Prima si trasloca, poi si chiude.
+       ✅ E una cosa è stata verificata prima di muovere qualcosa: il **permesso è lo stesso**
+       (`view_members_borsellino` gated il tab **e** la fascia) ⇒ nessuno guadagna o perde la vista
+       del borsellino. Era la trappola di stamattina — *spostare un bottone sposta anche il permesso
+       che lo nasconde* — e qui non scatta.
+       ⚖️ **Ora la casella dell'importo sta QUI DENTRO**, e sparisce il congelamento
+       (`_pmoStornoInCorso`) che serviva quando la casella viveva fuori dalla finestra: il fatto da
+       proteggere — *si conferma la cifra che si è vista* — adesso è garantito dalla struttura invece
+       che da una variabile. 📌 *Quando la struttura rende impossibile un errore, la guardia che lo
+       inseguiva si riscrive sulla struttura: non si tiene per affezione.*
+       🚨 Salire nella fascia è sicuro **solo perché** lo storno ha appena guadagnato la conferma:
+       stamattina, senza, sarebbe stato *avvicinare un gesto senza conferma al posto più battuto*.
+       ⛔ Fallisce CHIUSA e lo DICE: un bottone che tace è indistinguibile da uno rotto. */
+    function pmoApriStorno(memberId) {
+      const g = giocatori.find(p => String(p.id) === String(memberId));
       if (!g) return showAlert('⚠️ Socio non trovato.', 'warning');
       if (!PMO_WALLET_WRITE_ENABLED) return showAlert('ℹ️ Lo storno del borsellino non è attivo.', 'info');
       const idInterno = String(_walletClientId(g) || '').trim();
@@ -24771,54 +24757,65 @@ Grazie!`
       if (!/^\d{1,8}$/.test(idInterno) && !codice) {
         return showAlert('⚠️ Questo socio non ha né id interno né codice Matchpoint: lo storno non è possibile.', 'warning');
       }
-      const w = _walletResolve(g);
-      const cur = (w && typeof w.balance_cents === 'number') ? w.balance_cents : null;
-      const inp = document.getElementById('pmoWalletVoidAmt');
-      let sub = inp ? _pmoEuroToCents(inp.value) : null;
-      if ((sub == null || sub <= 0) && cur != null) sub = cur; // input vuoto = storno TOTALE
-      if (sub == null || sub <= 0) return showAlert('⚠️ Importo di storno non valido.', 'warning');
-      if (cur != null && sub > cur) {
-        return showAlert('⚠️ L\'importo da stornare (' + _incassiEuro(sub) + ') supera il saldo del borsellino (' + _incassiEuro(cur) + ').', 'warning');
-      }
-      return pmoApriStorno(String(memberId), sub, cur);
-    }
-    // La finestra di conferma dello storno. Riusa il guscio `pmoRicaricaModal`: è il contenitore
-    // modale della SCHEDA SOCIO, non della ricarica — rinominarlo toccherebbe CSS, markup e banco
-    // per un guadagno di sola etichetta.
-    function pmoApriStorno(memberId, subtractCents, currentCents) {
-      const g = giocatori.find(p => String(p.id) === String(memberId));
-      if (!g) return showAlert('⚠️ Socio non trovato.', 'warning');
+      const cur = _walletCents(g);
+      if (cur == null || cur <= 0) return showAlert('⚠️ Il borsellino è a zero: non c\'è niente da stornare.', 'warning');
       const dentro = document.getElementById('pmoRicaricaInner');
       const modale = document.getElementById('pmoRicaricaModal');
       if (!dentro || !modale) return showAlert('⚠️ Finestra di storno non disponibile.', 'warning');
-      const isTotal = (currentCents != null && subtractCents === currentCents);
-      const post = (currentCents != null) ? Math.max(0, currentCents - subtractCents) : null;
-      _pmoStornoInCorso = { memberId: String(memberId), subtractCents: subtractCents, currentCents: currentCents };
       dentro.innerHTML = `
         <h3 id="pmoRicaricaTitolo">Storna borsellino</h3>
         <p class="pmo-ricarica-socio">${escapeHtml(playerFullName(g))}</p>
-        <div class="pmo-ricarica-saldo"><span>Saldo attuale</span><strong>${escapeHtml(_walletBalanceLabel(g))}</strong></div>
-        <div class="pmo-ricarica-saldo"><span>Da stornare${isTotal ? ' (intero saldo)' : ''}</span><strong style="color:#b42318;">− ${escapeHtml(_incassiEuro(subtractCents))}</strong></div>
-        ${post != null ? `<div class="pmo-ricarica-saldo"><span>Saldo dopo lo storno</span><strong>${escapeHtml(_incassiEuro(post))}</strong></div>` : ''}
+        <div class="pmo-ricarica-saldo"><span>Saldo attuale</span><strong>${escapeHtml(_incassiEuro(cur))}</strong></div>
+        <label for="pmoWalletVoidAmt">Importo da stornare</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="pmoWalletVoidAmt" type="text" inputmode="decimal" placeholder="€ 0,00" autocomplete="off" oninput="pmoStornoAnteprima('${escapeHtml(String(g.id))}')">
+          <button type="button" class="btn-secondary small-btn" style="white-space:nowrap;" onclick="pmoWalletVoidFill('${escapeHtml(String(g.id))}')" title="Riempi con l'intero saldo">Totale</button>
+        </div>
+        <div class="pmo-ricarica-saldo" style="margin-top:12px;"><span>Saldo dopo lo storno</span><strong id="pmoStornoDopo">—</strong></div>
         <div class="pmo-ricarica-avviso">⚠️ <strong>Operazione reale.</strong> Sottrae il credito dal borsellino su Matchpoint («Correzione del saldo»). Da qui non si annulla: per rimettere il credito serve una ricarica.</div>
         <div class="pmo-ricarica-azioni">
-          <button type="button" class="btn-secondary" onclick="pmoChiudiStorno()">Annulla</button>
+          <button type="button" class="btn-secondary" onclick="pmoChiudiRicarica()">Annulla</button>
           <button type="button" class="btn-danger" onclick="pmoConfermaStorno('${escapeHtml(String(g.id))}', this)">↩︎ Sì, storna</button>
         </div>`;
       modale.classList.add('aperta');
+      setTimeout(() => { const c = document.getElementById('pmoWalletVoidAmt'); if (c) c.focus(); }, 60);
     }
-    function pmoChiudiStorno() { _pmoStornoInCorso = null; pmoChiudiRicarica(); }
-    function pmoConfermaStorno(memberId, btn) {
-      const inCorso = _pmoStornoInCorso;
-      // 🔒 Si conferma SOLO ciò che la finestra ha mostrato, e solo per il socio che ha mostrato.
-      if (!inCorso || inCorso.memberId !== String(memberId)) {
-        pmoChiudiStorno();
-        return showAlert('⚠️ Storno non confermabile: riapri il riquadro e ripeti.', 'warning');
+    /* Il saldo risultante si aggiorna mentre si digita: è l'unico numero che dice davvero cosa
+       sta per succedere, e leggerlo PRIMA di premere è ciò che rende la finestra una conferma e
+       non una formalità. Un importo impossibile lo dice qui, non dopo il click. */
+    function pmoStornoAnteprima(memberId) {
+      const g = (typeof giocatori !== 'undefined') ? giocatori.find(p => String(p.id) === String(memberId)) : null;
+      const dopo = document.getElementById('pmoStornoDopo');
+      const inp = document.getElementById('pmoWalletVoidAmt');
+      if (!g || !dopo || !inp) return;
+      const cur = _walletCents(g);
+      const sub = _pmoEuroToCents(inp.value);
+      if (sub == null || sub <= 0 || cur == null) { dopo.textContent = '—'; dopo.style.color = ''; return; }
+      if (sub > cur) { dopo.textContent = 'più del saldo'; dopo.style.color = '#b42318'; return; }
+      dopo.textContent = _incassiEuro(cur - sub); dopo.style.color = '';
+    }
+    // «Totale»: riempie con l'intero saldo e rinfresca l'anteprima.
+    function pmoWalletVoidFill(memberId) {
+      const g = (typeof giocatori !== 'undefined') ? giocatori.find(p => String(p.id) === String(memberId)) : null;
+      const cur = g ? _walletCents(g) : null;
+      const inp = document.getElementById('pmoWalletVoidAmt');
+      if (inp && cur != null) {
+        inp.value = (cur / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        pmoStornoAnteprima(memberId);
       }
+    }
+    function pmoConfermaStorno(memberId, btn) {
       const g = (typeof giocatori !== 'undefined') ? giocatori.find(p => String(p.id) === String(memberId)) : null;
       if (!g) return;
+      const cur = _walletCents(g);
+      const inp = document.getElementById('pmoWalletVoidAmt');
+      const sub = inp ? _pmoEuroToCents(inp.value) : null;
+      // ⛔ Le due validazioni stanno QUI e non solo nell'edge: un errore che torna dopo trenta
+      // secondi di browser remoto è un errore che si poteva dire subito.
+      if (sub == null || sub <= 0) return showAlert('⚠️ Scrivi l\'importo da stornare.', 'warning');
+      if (cur != null && sub > cur) return showAlert('⚠️ L\'importo da stornare (' + _incassiEuro(sub) + ') supera il saldo (' + _incassiEuro(cur) + ').', 'warning');
       return _pmoFinestraEsito(btn, '<span class="pmo-spin">↻</span> Storno in corso…', function () {
-        return _pmoVoidWallet({ giaConfermato: true, memberId: String(memberId), idInterno: String(_walletClientId(g) || ''), subtractCents: inCorso.subtractCents, currentCents: inCorso.currentCents });
+        return _pmoVoidWallet({ giaConfermato: true, memberId: String(memberId), idInterno: String(_walletClientId(g) || ''), subtractCents: sub, currentCents: cur });
       });
     }
     // Ricarica borsellino (Fase 2b write): legge l'importo (obbligatorio) e lancia _pmoRechargeWallet.
@@ -24908,10 +24905,14 @@ Grazie!`
       if (modale) { modale.classList.remove('aperta'); }
       const dentro = document.getElementById('pmoRicaricaInner');
       if (dentro) dentro.innerHTML = '';
-      // 🔒 Lo storno congelato muore con la finestra, QUALUNQUE sia la via di chiusura — compreso
-      // il click sullo sfondo, che chiama questa funzione direttamente dal markup del modale.
-      // 📌 *Una guardia messa su una sola delle porte non è una guardia.*
-      _pmoStornoInCorso = null;
+      /* 🔪 02/09 sera — qui c'era `_pmoStornoInCorso = null;`, e la variabile è sparita col giro
+         in cui la casella dell'importo è entrata nella finestra: restava un'ASSEGNAZIONE A UN
+         NOME CHE NON ESISTE PIÙ, cioè un ReferenceError a OGNI chiusura di finestra — ricarica
+         compresa, che con lo storno non c'entra niente.
+         🚨 Nessuna delle 17 guardie l'avrebbe preso: sono testuali, e il testo c'era. L'ho trovato
+         cercando i resti orfani DOPO aver tolto il pezzo, non rileggendo il diff.
+         📌 *Togliere una cosa vuol dire cercare chi la nominava ancora: il compilatore che avvisa,
+         qui, non c'è.* */
     }
     function pmoWalletRechargeClick(memberId, btn) {
       const g = (typeof giocatori !== 'undefined') ? giocatori.find(p => String(p.id) === String(memberId)) : null;
