@@ -8137,7 +8137,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.292';
+    const APP_VERSION = '6.293';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -24676,21 +24676,32 @@ Grazie!`
         if (!data || data < st.from || data > st.to) continue;
         const isGiftRec = /gift|omagg|offert/i.test(String(p.method || '')) || p.source === 'pmo_gift';
         const bucket = _incassiMethodBucket(p.method); const cents = Number(p.amount_cents) || 0;
-        if (!byDay.has(data)) byDay.set(data, { contanti: 0, carta: 0, borsellino: 0, altro: 0, totale: 0, n: 0, omaggi: 0, players: new Map() });
+        if (!byDay.has(data)) byDay.set(data, { contanti: 0, carta: 0, borsellino: 0, altro: 0, totale: 0, n: 0, omaggi: 0, movimenti: [] });
         const d = byDay.get(data);
         const pid = (p.id_cliente != null ? String(p.id_cliente) : '').trim();
         const pname = (p.player_name || '').trim();
-        // Una riga per giocatore E partita (campo+ora+giorno prenotazione nella chiave):
-        // un pagatore con più partite nel giorno (es. «Ospite») non collassa in una riga sola.
+        // v6.293 — la chiave per GIOCATORE non serve più: si disegna una riga per MOVIMENTO.
+        // Restano campo/ora normalizzati, che servono alla riga e all'apertura della partita.
         const campoN = (typeof _payCampoNum === 'function') ? _payCampoNum(p.campo) : String(p.campo || '').replace(/\D/g, '');
         const oraHm = (typeof _payOraHm === 'function') ? _payOraHm(p.ora) : String(p.ora || '');
         const bdata = String(p.booking_data || '').slice(0, 10);
-        const pkey = (pid || ('n:' + pname.toLowerCase()) || 'na') + '|' + campoN + '|' + oraHm + '|' + bdata;
-        if (!d.players.has(pkey)) d.players.set(pkey, { id: pid, name: pname, campo: campoN, ora: oraHm, bdata, contanti: 0, carta: 0, borsellino: 0, altro: 0, totale: 0, n: 0, omaggi: 0 });
-        const pl = d.players.get(pkey);
-        if (isGiftRec) { d.omaggi += 1; pl.omaggi += 1; sel.omaggi += 1; continue; }
+        /* ⭐ v6.293 (voce 133) — UNA RIGA PER MOVIMENTO, non più una per giocatore.
+           🗣️ Sua richiesta: *«lo storno logicamente nella sezione incassi per riga di movimento»*.
+           📏 E la misura dice che non è una preferenza: negli ultimi 7 giorni **38 righe aggregate
+           contenevano più di un movimento** (fino a 4) e **21 ne mescolavano due METODI diversi** —
+           parte Cash, parte Card, sommati in colonne diverse della stessa riga. ⇒ Una riga così
+           non è un fatto: è due fatti, e non ci si può appoggiare sopra un gesto.
+           📌 *Una riga su cui si vuole agire deve essere una cosa sola: finché ne contiene due,
+           qualunque bottone ci si metta sopra deve indovinare.*
+           ⚖️ Costo misurato: un giorno pieno passa da 35 righe a 49. */
+        d.movimenti.push({
+          id: pid, name: pname, campo: campoN, ora: oraHm, bdata,
+          memberLocalId: String(p.member_local_id || '').trim(),
+          bucket: bucket, cents: cents, gift: isGiftRec,
+          metodo: String(p.method || ''), quando: String(p.recorded_at || p.synced_at || ''),
+        });
+        if (isGiftRec) { d.omaggi += 1; sel.omaggi += 1; continue; }
         d[bucket] += cents; d.totale += cents; d.n += 1;
-        pl[bucket] += cents; pl.totale += cents; pl.n += 1;
         sel[bucket] += cents; sel.totale += cents; sel.n += 1;
       }
       const selKey = isToday ? `Oggi · ${st.from}` : `${st.from} → ${st.to}`;
@@ -24737,26 +24748,45 @@ Grazie!`
             <td style="text-align:right;font-weight:700;">${_incassiEuro(d.carta)}</td>
             <td style="text-align:right;font-weight:700;">${_incassiEuro(d.borsellino)}</td>
             <td style="text-align:right;font-weight:800;">${_incassiEuro(d.totale)}</td></tr>`;
-          // In ordine di PARTITA (ora → campo), poi importo: le righe della stessa partita
-          // restano vicine. Senza ora (record vecchi, pre campo/ora nel payload) in coda.
-          const players = Array.from(d.players.values()).sort((a, b) =>
+          /* In ordine di PARTITA (ora → campo), poi per nome: i movimenti della stessa partita
+             restano vicini, e i due movimenti della stessa persona uno sotto l'altro. Senza ora
+             (record vecchi) in coda. */
+          const movimenti = d.movimenti.slice().sort((a, b) =>
             (a.ora || '99:99').localeCompare(b.ora || '99:99')
             || String(a.campo || '').localeCompare(String(b.campo || ''), undefined, { numeric: true })
-            || b.totale - a.totale);
-          for (const pl of players) {
+            || String(a.name || '').localeCompare(String(b.name || ''))
+            || b.cents - a.cents);
+          for (const mv of movimenti) {
             // Ora della PRENOTAZIONE; se la partita è di un giorno diverso dal pagamento
             // (es. incasso oggi di una partita di ieri) il giorno compare accanto all'ora.
-            const bd = (pl.bdata && pl.ora && pl.bdata !== k)
-              ? `<span style="font-size:11px;color:#999;" title="Partita del ${esc(pl.bdata)}">${esc(pl.bdata.slice(8, 10))}/${esc(pl.bdata.slice(5, 7))} </span>` : '';
-            bodyRows += `<tr style="border-bottom:1px solid #f0f0f0;">
-              <td style="color:#999;white-space:nowrap;">${pl.id ? esc(pl.id) : '—'}</td>
-              <td>${esc(pl.name || '—')}${pl.omaggi ? ` <span title="Quota offerta (riscossa a 0 € su Matchpoint)">🎁</span>` : ''}</td>
-              <td style="text-align:center;white-space:nowrap;">${pl.campo ? esc(pl.campo) : '—'}</td>
-              <td style="text-align:center;white-space:nowrap;">${pl.ora ? bd + esc(pl.ora) : '—'}</td>
-              <td style="text-align:right;">${_incassiEuro(pl.contanti)}</td>
-              <td style="text-align:right;">${_incassiEuro(pl.carta)}</td>
-              <td style="text-align:right;">${_incassiEuro(pl.borsellino)}</td>
-              <td style="text-align:right;font-weight:700;">${_incassiEuro(pl.totale)}</td></tr>`;
+            const bd = (mv.bdata && mv.ora && mv.bdata !== k)
+              ? `<span style="font-size:11px;color:#999;" title="Partita del ${esc(mv.bdata)}">${esc(mv.bdata.slice(8, 10))}/${esc(mv.bdata.slice(5, 7))} </span>` : '';
+            /* 🚨⭐⭐ SI APRE LA PARTITA, NON LA SCHEDA SOCIO — ed è una scelta MISURATA, sua.
+               🗣️ La sua idea era *«si clicca sul nome del giocatore e si apre la scheda [socio], e
+               lì poi si va a fare lo storno… così lo storno si fa sempre nello stesso posto»*. Il
+               criterio è giusto e resta; quello che la misura ha cambiato è **quale** posto.
+               📏 Su 250 righe di movimento degli ultimi 7 giorni la scheda SOCIO ne apre **116
+               (46%)**: le altre sono **120 «Ospite»** — che una scheda socio non ce l'ha e non ce
+               l'avrà mai — più 14 soci non collegati. La scheda della PARTITA invece c'è per
+               tutte, perché ogni pagamento nasce da una prenotazione.
+               ⇒ Stesso principio suo («un posto solo»), applicato al posto che copre il 100%.
+               📌 *Quando una strada copre metà dei casi, la domanda non è come coprire l'altra
+               metà: è se esiste un'altra strada che le copre tutte.* */
+            const apribile = !!(mv.bdata && mv.campo && mv.ora);
+            const apri = apribile
+              ? `onclick="pmoIncassiApriPartita('${esc(mv.bdata)}','${esc(mv.campo)}','${esc(mv.ora)}','${esc((mv.name || '').replace(/'/g, ''))}')"`
+                + ` style="border-bottom:1px solid #f0f0f0;cursor:pointer;" title="Apri la partita: da lì si incassa e si storna"`
+              : `style="border-bottom:1px solid #f0f0f0;" title="Di questo pagamento il gestionale non ha campo/ora della partita: senza, non sa quale scheda aprire."`;
+            const cell = (b) => mv.bucket === b && !mv.gift
+              ? `<td style="text-align:right;">${_incassiEuro(mv.cents)}</td>`
+              : '<td style="text-align:right;color:#d5d9de;">·</td>';
+            bodyRows += `<tr ${apri}>
+              <td style="color:#999;white-space:nowrap;">${mv.id ? esc(mv.id) : '—'}</td>
+              <td>${esc(mv.name || '—')}${mv.gift ? ` <span title="Quota offerta (riscossa a 0 € su Matchpoint)">🎁</span>` : ''}${apribile ? ' <span style="color:#c3c8ce;font-size:11px;">›</span>' : ''}</td>
+              <td style="text-align:center;white-space:nowrap;">${mv.campo ? esc(mv.campo) : '—'}</td>
+              <td style="text-align:center;white-space:nowrap;">${mv.ora ? bd + esc(mv.ora) : '—'}</td>
+              ${cell('contanti')}${cell('carta')}${cell('borsellino')}
+              <td style="text-align:right;font-weight:700;">${mv.gift ? '<span style="color:#c98a04;">🎁</span>' : _incassiEuro(mv.cents)}</td></tr>`;
           }
         }
         table = `<div class="section" style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -24791,6 +24821,37 @@ Grazie!`
     }
     function _incassiSetFrom(d) { _incassiState.from = d || _incassiState.from; if (_incassiState.to && _incassiState.to < _incassiState.from) _incassiState.to = _incassiState.from; renderIncassi(); }
     function _incassiSetTo(d) { _incassiState.to = d || _incassiState.to; if (_incassiState.from && _incassiState.to < _incassiState.from) _incassiState.from = _incassiState.to; renderIncassi(); }
+    /* 🚪 Dalla riga di movimento alla scheda della PARTITA (voce 133).
+       ⚖️ Perché la partita e non il socio: la misura sta nel commento della riga che chiama questa
+       funzione — 46% contro 100%. Il criterio suo («lo storno si fa sempre nello stesso posto»)
+       resta intero: cambia solo quale posto lo onora per tutti.
+       🚨 Si passa dalla scheda del CALENDARIO, non si apre il pannello e basta: `staffCalEditPlayers`
+       disegna la scheda della prenotazione, e la lettura autorevole del worker le porta l'idReserva
+       — che è la cosa senza cui lo storno non parte (`NO_IDRESERVA`). Aprirla è ciò che la procura.
+       ⛔ NON si porta dietro l'importo né il metodo del movimento cliccato, ed è deliberato: lo
+       storno di Matchpoint annulla il **cobro del giocatore su quella partita**, non il singolo
+       movimento (misurato leggendo `marcaStornato` nell'edge: filtra per cliente/nome **e slot**,
+       non per metodo). Far credere il contrario con un importo precompilato sarebbe una promessa
+       che il circolo non mantiene. */
+    function pmoIncassiApriPartita(dataIso, campoNum, oraHm, nome) {
+      try {
+        const iso = String(dataIso || '').slice(0, 10);
+        const campo = String(campoNum || '').replace(/\D/g, '');
+        const ora = String(oraHm || '').slice(0, 5);
+        if (!iso || !campo || !ora) {
+          return showAlert('⚠️ Di questo pagamento il gestionale non ha campo e ora della partita: senza, non sa quale scheda aprire.', 'warning');
+        }
+        // Il calendario si porta sul giorno della PARTITA, così dietro la scheda c'è il contesto giusto.
+        if (typeof switchTab === 'function') switchTab('dashboard');
+        const inp = document.getElementById('staffCalDate');
+        if (inp && inp.value !== iso) { inp.value = iso; try { renderStaffCalendar(); } catch (e) {} }
+        if (typeof staffCalEditPlayers === 'function') staffCalEditPlayers(iso, campo, ora, String(nome || ''), 90, 'partita');
+      } catch (e) {
+        console.warn('pmoIncassiApriPartita:', e);
+        try { showAlert('⚠️ Non riesco ad aprire la partita di questo pagamento.', 'warning'); } catch (e2) {}
+      }
+    }
+
     async function _incassiReload() {
       _incassiState.loading = true; renderIncassi();
       const res = await _incassiFetch();
@@ -40881,7 +40942,7 @@ Per confermare scrivi ELIMINA.`);
   // 📏 La ragione è una MISURA, non un gusto: `Contanti`+`Carta`+`Borsellino` = 24 caratteri
   // contro `Cash`+`Card`+`Wallet` = 14, e nella scheda della partita la colonna è stretta.
   // 🚨⭐⭐ LE CHIAVI `contanti`/`carta`/`borsellino` NON SI TOCCANO: sono i nomi dei campi con cui
-  // la sezione Incassi aggrega (`sel.borsellino`, `d.carta`, `pl.contanti`) e il valore salvato
+  // la sezione Incassi aggrega (`sel.borsellino`, `d.carta`) e il valore salvato
   // in `come:`. Rinominarle manderebbe i totali per metodo a zero.
   // 📌 *In una stessa parola convivono l'etichetta e la chiave: la prima si traduce, la seconda no.*
   // ⛔ E il BOT resta in italiano, per sua decisione: *«nel bot si chiama Borsellino. Il bot lo
@@ -43006,14 +43067,28 @@ Per confermare scrivi ELIMINA.`);
       /* 🚨⭐⭐ DUE variabili, non una: fino al 02/09/2026 qui ce n'era una sola, e accendeva
          insieme l'INCASSO e lo STORNO di riga. Lui ha chiesto solo il primo ⇒ una variabile sola
          non sa dire di sì a uno e di no all'altro.
-         ⛔ `_payVoidActive` resta legata al flag vecchio, cioè **spenta** su PROD: lo storno si fa
-         dalla scheda socio. Non è codice morto — su TEST la simulazione la accende, e il giorno in
-         cui lo storno di riga servisse davvero il posto in cui accenderlo è già scritto. */
+         🔄 **ACCESA il 03/09/2026, e qui c'era scritto il contrario.** La riga vecchia diceva
+         «`_payVoidActive` resta spenta su PROD: lo storno si fa dalla scheda socio», e chiudeva
+         con *«il giorno in cui lo storno di riga servisse davvero, il posto in cui accenderlo è
+         già scritto»*. Quel giorno è arrivato, e ce l'ha portato una MISURA.
+         📏 **Il fatto**: nella sezione Incassi, sulle 250 righe di movimento degli ultimi 7 giorni,
+         **120 sono «Ospite»** — che una scheda socio non ce l'ha e non ce l'avrà mai — più 14 soci
+         non collegati. ⇒ Per **più della metà** delle righe di cassa lo storno **non esisteva in
+         nessun punto del gestionale**, ed erano proprio quelle di chi paga al banco senza essere
+         socio, cioè dove un errore di battitura è più probabile.
+         🗣️ Messo davanti alla scelta (solo soci · anche gli Ospiti · un terzo bottone negli
+         Incassi) ha scelto **anche gli Ospiti**: *«mi hai convinto, procediamo con la B»*.
+         ⚖️ Ora è legata a `PMO_PAYMENTS_VOID_ENABLED`, che è **lo stesso flag** che governa
+         `_pmoVoidPayment` e il ↩︎ della scheda socio: prima ne guardava un altro, e questo bottone
+         poteva restare spento mentre lo storno era acceso dappertutto.
+         📌 *Un gesto deve avere UN interruttore: due gesti con un interruttore solo non si sanno
+         separare, ma un gesto solo con due interruttori non si sa accendere.* */
       const _payCollectActive = PMO_PAYMENTS_COLLECT_ENABLED
         || PMO_PAYMENTS_WRITE_ENABLED
         || PMO_PAYMENTS_SIMULATE
         || (PMO_IS_TEST_ENV && typeof window !== 'undefined' && window.__pmoPayHarness === true);
-      const _payVoidActive = PMO_PAYMENTS_WRITE_ENABLED
+      const _payVoidActive = PMO_PAYMENTS_VOID_ENABLED
+        || PMO_PAYMENTS_WRITE_ENABLED
         || PMO_PAYMENTS_SIMULATE
         || (PMO_IS_TEST_ENV && typeof window !== 'undefined' && window.__pmoPayHarness === true);
       const _paySimUi = PMO_PAYMENTS_SIMULATE && !PMO_PAYMENTS_WRITE_ENABLED;
