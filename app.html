@@ -2834,6 +2834,11 @@
        riga in più della griglia ogni volta che la frase è lunga — cioè si mangerebbe il
        calendario proprio nel momento in cui c'è qualcosa da guardare. */
     .svc-semaforo-testo { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* 🚨 Il «chi» NON si tronca — `flex:0 0 auto`, come il conteggio della fila. È la cura di una
+       misura fatta sulla pagina viva di TEST: a 390px della frase intera entravano 43 caratteri
+       su 61, e a cadere era proprio questa metà. Su un telefono, «richiesta da un socio» vale
+       più di «· 16:30», perché l'ora la dice già la cella accesa. */
+    .svc-semaforo-chi { flex:0 0 auto; font-weight:700; opacity:.9; }
     .svc-semaforo-coda { flex:0 0 auto; font-weight:700; opacity:.75; }
     @media (prefers-reduced-motion: reduce) { .svc-semaforo-dot { animation:none; } }
     /* La CELLA accesa — la seconda metà della D: dice DOVE, quando lo slot è in vista.
@@ -8238,7 +8243,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.299';
+    const APP_VERSION = '6.300';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -47933,12 +47938,27 @@ Per confermare scrivi ELIMINA.`);
     dot.className = 'svc-semaforo-dot';
     dot.setAttribute('aria-hidden', 'true');
     el.appendChild(dot);
-    const testo = document.createElement('span');
-    testo.className = 'svc-semaforo-testo';
+    // 🚨⭐⭐ LE DUE METÀ SI DISEGNANO SEPARATE, e nasce da una MISURA sulla pagina viva di TEST:
+    //    a larghezza telefono (390px) della frase intera entrano **43 caratteri su 61**, e a
+    //    tagliarsi è la coda — cioè PROPRIO il «chi». Chi fa segreteria dal telefono perdeva
+    //    l'unica cosa che gli dice *se è stata lei o no*, e gli restava il dettaglio di campo e
+    //    ora che la cella accesa gli dice già.
+    //    ⇒ Si tronca SOLO il «che» (`flex:1 1 auto`); il «chi» sta su `flex:0 0 auto` e resta
+    //      intero, come il conteggio della fila.
+    //    📌 *Chi compone una frase a monte decide cosa si perde quando lo spazio finisce, e a
+    //       monte nessuno sa quanto spazio c'è.*
     // ⛔ `textContent` e non `innerHTML`: la frase viene dal gestionale ma attraversa la coda del
     //    worker, e un'etichetta non è un posto in cui si accetta del markup.
-    testo.textContent = sem.frase || 'operazione in corso';
+    const testo = document.createElement('span');
+    testo.className = 'svc-semaforo-testo';
+    testo.textContent = sem.che || sem.frase || 'operazione in corso';
     el.appendChild(testo);
+    if (sem.chi) {
+      const chi = document.createElement('span');
+      chi.className = 'svc-semaforo-chi';
+      chi.textContent = sem.chi;
+      el.appendChild(chi);
+    }
     const inAttesa = Number(sem.inAttesa) || 0;
     if (inAttesa > 0) {
       const coda = document.createElement('span');
