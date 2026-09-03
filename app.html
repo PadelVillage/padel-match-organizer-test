@@ -2800,7 +2800,50 @@
     #staffCalV36 .agenda-empty { padding:32px 16px; text-align:center; color:var(--text-muted); font-size:.85rem; line-height:1.6; }
     /* ── svc layout (Tappa A3a) ─────────────────────────────────── */
     .svc-layout { display:flex; flex-direction:column; }
-    .svc-grid-col { flex:1; min-width:0; overflow:hidden; }
+    /* 🚦 VOCE 137 — IL SEMAFORO DI MATCHPOINT SUL CALENDARIO, disposizione D.
+       🗣️ Sua richiesta: «avere sul gestionale la visione di quello che sta succedendo sul
+       Matchpoint NON legato alla scheda… tipo in sovrapposizione sul calendario», con il vincolo
+       «si utilizza la web app sia da mobile che da desktop».
+       ⚖️ Fra le quattro disposizioni disegnate ha scelto la **D**, ed è l'unica che tiene insieme
+       le due cose: NON sposta la griglia (la A e la B nemmeno, la C sì di ~22px — cioè riaprirebbe
+       il 3 giugno e la voce 130) E dice qualcosa **anche quando lo slot è fuori vista**, che è
+       dove la B da sola tace — e il suo silenzio è indistinguibile da «non sta succedendo nulla».
+       🚨 `position:relative` sulla colonna NON è ornamentale: senza, la barra si ancorerebbe alla
+       prima antenata posizionata, che qui è la pagina — e finirebbe in fondo allo schermo invece
+       che sul bordo basso della griglia. */
+    .svc-grid-col { flex:1; min-width:0; overflow:hidden; position:relative; }
+    .svc-semaforo {
+      position:absolute; left:0; right:0; bottom:0; z-index:30;
+      display:flex; align-items:center; gap:8px;
+      padding:7px 12px; box-sizing:border-box;
+      font-size:.76rem; font-weight:600; line-height:1.25;
+      color:#0c4a6e; background:rgba(224,242,254,.97);
+      border-top:1px solid #7dd3fc;
+      box-shadow:0 -2px 10px rgba(2,132,199,.16);
+      /* ⛔ Non intercetta i click: sta SOPRA la griglia, e uno slot coperto da una barra che si
+         accende per pochi secondi sarebbe uno slot che ogni tanto non si riesce a prenotare. */
+      pointer-events:none;
+    }
+    /* Il puntino che pulsa: dice «adesso», che è l'unica cosa che questa barra promette. */
+    .svc-semaforo-dot {
+      flex:0 0 auto; width:8px; height:8px; border-radius:50%; background:#0284c7;
+      animation:svcSemaforoBattito 1.1s ease-in-out infinite;
+    }
+    @keyframes svcSemaforoBattito { 0%,100% { opacity:1; } 50% { opacity:.25; } }
+    /* 🚨 Il testo si TRONCA e non va a capo: una barra che cresce in altezza coprirebbe una
+       riga in più della griglia ogni volta che la frase è lunga — cioè si mangerebbe il
+       calendario proprio nel momento in cui c'è qualcosa da guardare. */
+    .svc-semaforo-testo { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .svc-semaforo-coda { flex:0 0 auto; font-weight:700; opacity:.75; }
+    @media (prefers-reduced-motion: reduce) { .svc-semaforo-dot { animation:none; } }
+    /* La CELLA accesa — la seconda metà della D: dice DOVE, quando lo slot è in vista.
+       ⚠️ `outline` e non `border`: un bordo cambierebbe la scatola e sposterebbe di un pixel
+       tutto quello che sta intorno, che su una griglia si vede. */
+    #staffCalV36 .cell.svc-cella-attiva {
+      outline:2px solid #0284c7; outline-offset:-2px;
+      background:rgba(2,132,199,.10);
+      animation:svcSemaforoBattito 1.1s ease-in-out infinite;
+    }
     .svc-chat-panel { background:var(--surface); display:flex; flex-direction:column; overflow:hidden; min-height:0; border-top:1px solid var(--border); }
     .svc-chat-header { padding:8px 16px; display:flex; align-items:center; border-bottom:1px solid var(--border); flex-shrink:0; justify-content:flex-end; }
     .svc-chat-close-btn { background:none; border:none; cursor:pointer; font-size:1.2rem; color:var(--text-muted); padding:2px 6px; border-radius:var(--radius-sm); line-height:1; transition:color .15s; }
@@ -3087,6 +3130,10 @@
       .svc-pl-paidmeth { font-size:.85rem; padding:3px 10px; }
       .svc-pl-paidmeth i { font-size:15px; }
       .svc-pl-wallet { font-size:.9rem; }
+      /* 🚦 Semaforo su telefono: il testo è la cosa che va letta in un colpo d'occhio,
+         e a 12px non si legge camminando verso il banco. */
+      .svc-semaforo { font-size:.88rem; padding:9px 12px; }
+      .svc-semaforo-dot { width:9px; height:9px; }
       .svc-pl-wallet-ic { font-size:16px; }
       .svc-pl-iconbtn { width:34px; height:34px; font-size:19px; }
       .svc-chat-fab { display:flex; position:fixed; bottom:20px; right:20px; z-index:250; width:52px; height:52px; border-radius:50%; background:var(--accent); border:none; color:#fff; font-size:1.4rem; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 4px 16px rgba(37,99,235,.40); transition:background .15s,transform .15s; }
@@ -6801,6 +6848,11 @@ body.assessment-public-mode .assessment-public-only-card {
               <div class="svc-layout">
                 <div class="svc-grid-col">
                   <div class="grid-wrap" id="staffCalGridWrap"><div class="grid-table" id="staffCalGridTable"></div></div>
+                  <!-- 🚦 VOCE 137 — il semaforo di Matchpoint, disposizione D (sua scelta fra quattro).
+                       Sta QUI dentro, ultimo figlio di `.svc-grid-col`, perché è SOVRAPPOSTO: nel
+                       flusso sposterebbe la griglia di ~22px, che è il difetto per cui il banner del
+                       3 giugno fu tolto (v5.627) e la ragione della voce 130. Nasce nascosto. -->
+                  <div id="svcQueueStatus" class="svc-semaforo" role="status" aria-live="polite" hidden></div>
                   <div class="agenda-wrap" id="staffCalAgendaWrap" style="display:none">
                     <div class="agenda-tabs" id="staffCalAgendaTabs">
                       <button class="agenda-tab active" data-field="1"><span class="tab-dot" style="background:#f87171"></span>C1</button>
@@ -8186,7 +8238,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.298';
+    const APP_VERSION = '6.299';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -41960,13 +42012,18 @@ Per confermare scrivi ELIMINA.`);
       for (let f = 1; f <= 4; f++) {
         const key = hour + '|' + f;
         const slot = occupied[key] || null;
+        // 🚦 VOCE 137 ④ — ogni cella dichiara DOVE si trova, così il semaforo può accenderla
+        //    senza cercarla per posizione. Vale per tutte e tre le forme (occupata di testa,
+        //    occupata di continuazione, libera): un gesto può riguardare uno slot qualunque, e
+        //    una cella senza coordinate è una cella che il semaforo non troverebbe mai.
+        const _dove = function (el) { el.dataset.campo = String(f); el.dataset.ora = hour; return el; };
         if (slot && !headKeys.has(key)) {
-          const fc = document.createElement('div');
+          const fc = _dove(document.createElement('div'));
           fc.className = 'cell occupied';
           fc.style.visibility = 'hidden';
           grid.appendChild(fc);
         } else if (slot && headKeys.has(key)) {
-          const cell = document.createElement('div');
+          const cell = _dove(document.createElement('div'));
           cell.className = 'cell occupied';
           const durSlots = Math.max(1, Math.round((slot.durata || 90) / 30));
           const hpx = durSlots * ROW_H - 6;
@@ -42057,7 +42114,7 @@ Per confermare scrivi ELIMINA.`);
           cell.appendChild(block);
           grid.appendChild(cell);
         } else {
-          const cell = document.createElement('div');
+          const cell = _dove(document.createElement('div'));
           cell.className = 'cell free';
           cell.addEventListener('click', (function(iso, campo, h) {
             return function() { staffCalClickFree(iso, campo, h); };
@@ -42066,6 +42123,11 @@ Per confermare scrivi ELIMINA.`);
         }
       }
     }
+    // 🚦 VOCE 137 — la griglia è appena nata da zero, quindi la cella accesa se n'è andata con
+    //    quella vecchia. Si riaccende ADESSO e non al giro dopo del polling: quattro secondi
+    //    sono un'eternità su un gesto che ne dura sei, e una cella che si spegne a metà
+    //    operazione racconta che l'operazione è finita quando non lo è.
+    try { svcRiaccendiCellaDopoRidisegno(); } catch (_e) {}
   }
 
   function _staffCalBuildAgenda(isoDate) {
@@ -47821,28 +47883,76 @@ Per confermare scrivi ELIMINA.`);
     return base.replace(/\b\w/g, function (c) { return c.toUpperCase(); });
   }
 
+  // 🚦 VOCE 137 — l'ultimo semaforo ricevuto, tenuto qui perché la GRIGLIA si ridisegna da sé
+  //    (un sync, un click, un cambio giorno) e con lei sparirebbe la cella accesa. Il polling
+  //    passa ogni 4 secondi, e quattro secondi sono un'eternità su un gesto che ne dura sei:
+  //    la cella va riaccesa SUBITO dopo ogni ridisegno, non al giro dopo.
+  let _svcUltimoSemaforo = null;
+
+  // Accende la cella del calendario che corrisponde alle coordinate, se è in vista.
+  // ⛔ Se le coordinate non ci sono, o sono di un ALTRO giorno, non si accende niente e parla la
+  //    barra: è per questo che la disposizione D ha due metà.
+  function svcAccendiCella(dove) {
+    const griglia = document.getElementById('staffCalGridTable');
+    if (!griglia) return;
+    const gia = griglia.querySelectorAll('.svc-cella-attiva');
+    for (let i = 0; i < gia.length; i++) gia[i].classList.remove('svc-cella-attiva');
+    if (!dove || !dove.campo || !dove.ora) return;
+    // Il giorno mostrato: un gesto su domani non deve accendere la cella di oggi.
+    const inp = document.getElementById('staffCalDate');
+    const giornoMostrato = (inp && inp.value) ? String(inp.value).trim() : '';
+    if (dove.data && giornoMostrato && dove.data !== giornoMostrato) return;
+    const celle = griglia.querySelectorAll('.cell[data-campo="' + String(dove.campo) + '"]');
+    for (let i = 0; i < celle.length; i++) {
+      if (celle[i].dataset.ora === String(dove.ora)) { celle[i].classList.add('svc-cella-attiva'); return; }
+    }
+  }
+
+  // Ridisegna il semaforo. `snap` è la risposta della edge: si legge `snap.semaforo`, MAI lo
+  // snapshot grezzo.
+  // 🚨⭐ E qui stava il difetto della versione spenta nel 2026: leggeva `snap.running` e
+  //    `snap.waitingCount` direttamente, quindi mostrava «🔄 Sincronizzazione automatica in
+  //    corso…» ogni due minuti — cioè esattamente la cosa che lui ha chiesto di NON vedere
+  //    («questo io non vorrei vederlo sul calendario segnalato») — e contava i job automatici
+  //    nel «in coda: N», che avrebbe annunciato un ingorgo dove non c'era.
+  //    ⇒ Il filtro e la traduzione stanno nella edge (`frasi-del-semaforo.ts`), che è dove si
+  //    possono PROVARE. Qui si disegna e basta.
   function svcRenderQueueStatus(snap) {
     const el = document.getElementById('svcQueueStatus');
     if (!el) return;
-    const running = snap && snap.running;
-    const waiting = (snap && Number(snap.waitingCount)) || 0;
-    if (!running && waiting === 0) {
-      el.style.display = 'none';
-      el.innerHTML = '';
+    const sem = (snap && snap.semaforo) ? snap.semaforo : null;
+    _svcUltimoSemaforo = sem;
+    if (!sem || !sem.acceso) {
+      el.hidden = true;
+      el.textContent = '';
+      svcAccendiCella(null);
       return;
     }
-    let html;
-    if (running && running.op === 'poll') {
-      html = '🔄 Sincronizzazione automatica in corso…';
-    } else if (running) {
-      const chi = svcQueuePretty(running.operatore);
-      html = '🔄 In corso: ' + (running.label || 'operazione') + (chi ? ' — ' + chi : '');
-    } else {
-      html = '⏳ In attesa…';
+    el.textContent = '';
+    const dot = document.createElement('span');
+    dot.className = 'svc-semaforo-dot';
+    dot.setAttribute('aria-hidden', 'true');
+    el.appendChild(dot);
+    const testo = document.createElement('span');
+    testo.className = 'svc-semaforo-testo';
+    // ⛔ `textContent` e non `innerHTML`: la frase viene dal gestionale ma attraversa la coda del
+    //    worker, e un'etichetta non è un posto in cui si accetta del markup.
+    testo.textContent = sem.frase || 'operazione in corso';
+    el.appendChild(testo);
+    const inAttesa = Number(sem.inAttesa) || 0;
+    if (inAttesa > 0) {
+      const coda = document.createElement('span');
+      coda.className = 'svc-semaforo-coda';
+      coda.textContent = '+' + inAttesa + ' in fila';
+      el.appendChild(coda);
     }
-    if (waiting > 0) html += ' · in coda: ' + waiting;
-    el.innerHTML = html;
-    el.style.display = 'block';
+    el.hidden = false;
+    svcAccendiCella(sem.dove);
+  }
+
+  // Riaccende la cella dopo un ridisegno della griglia. Chiamata da `renderStaffCalendar`.
+  function svcRiaccendiCellaDopoRidisegno() {
+    try { if (_svcUltimoSemaforo && _svcUltimoSemaforo.acceso) svcAccendiCella(_svcUltimoSemaforo.dove); } catch (_e) {}
   }
 
   async function svcPollQueueStatus() {
@@ -47870,8 +47980,18 @@ Per confermare scrivi ELIMINA.`);
     svcPollQueueStatus();
     setInterval(svcPollQueueStatus, 4000);
   }
-  /* Banner "Sincronizzazione automatica in corso" rimosso (v5.627): nessun polling, nessun banner. */
-  // svcStartQueuePolling();
+  /* 🚦 VOCE 137 (03/09/2026) — IL POLLING SI RIACCENDE, e la riga qui sotto era commentata dal
+     3 giugno 2026 (commit `58fee80`, v5.627).
+     ⚖️ La ragione di allora NON era un difetto del dato: era INGOMBRO. Parole del registro:
+     «tolto il banner azzurro nel pannello Calendario e il relativo polling. Effetto collaterale
+     voluto: la riga di input della chat torna allineata in alto con l'intestazione dei campi».
+     ⇒ Il banner dava fastidio perché stava DENTRO IL FLUSSO. Adesso è una SOVRAPPOSIZIONE, e
+     non sposta niente: quella ragione cade, ed è la strada che ha intuito lui.
+     📌 *Un pezzo funzionante spento per una ragione di layout resta spento per sempre, perché
+        nessuno rilegge il motivo.*
+     🚨 E non è lo stesso banner: quello mostrava il sync automatico, che è proprio ciò che lui
+     ha chiesto di non vedere. Il filtro sta nella edge. */
+  svcStartQueuePolling();
 
   // ── Hook test-only per l'harness di esecuzione (test/handle-test.html) ──────
   // Esposto SOLO in TEST (PMO_IS_TEST_ENV) → zero impatto su PROD. Dà all'harness
