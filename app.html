@@ -8250,7 +8250,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.301';
+    const APP_VERSION = '6.302';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -42666,18 +42666,59 @@ Per confermare scrivi ELIMINA.`);
   // maggioranza delle righe, e che devono restare NOMI MUTI.
   // 📌 *Un nome cliccabile che non apre niente è peggio di un nome normale: promette e non
   //    mantiene.* È la ragione per cui qui si torna `null` invece di aprire una scheda vuota.
+  //
+  // 🚨🚨⭐⭐ E QUI LA PRIMA STESURA APRIVA LA SCHEDA DI UN'ALTRA PERSONA. Trovato da LUI su TEST
+  // 6.301, al primo click: «guarda cliccando il nome sulla scheda cosa si apre… un nome
+  // differente». Cliccando «Filippo Battistella» si apriva «Giovanni Modanese».
+  //
+  // ⚖️ LA CAUSA È IL TERZO NUMERO, quello che questo file documenta da mesi: Matchpoint dà a
+  // ogni cliente DUE numeri diversi, e io ne ho confrontato uno con l'altro —
+  //   · il CODICE CLIENTE (quello della tendina «000140-Nome»), che l'anagrafica tiene in
+  //     `memberId` e che legge `pmoIdMatchpoint`;
+  //   · l'ID INTERNO (`id_people`), che l'anagrafica tiene in `matchpointIdInterno`.
+  // Il roster del worker porta `HiddenFieldIdCliente`, che malgrado il nome è l'ID INTERNO
+  // (`server.mjs:5763` lo dice a parole: «idCliente (id interno Matchpoint)»). ⇒ Confrontarlo
+  // col codice cliente fa combaciare DUE NUMERI DIVERSI che per caso si somigliano, e il socio
+  // che esce è un altro.
+  //
+  // 🩹 E la scheda della voce 138 diceva proprio quello: «il socio si trova confrontando
+  // `p.idCliente` del roster con `pmoIdMatchpoint(g)`». L'ho preso per buono senza misurarlo.
+  //
+  // 🚨🚨 E IL PROGETTO QUESTO DIFETTO L'AVEVA GIÀ PAGATO, con un caso vero e un avvertimento
+  // in maiuscolo che sta nel worker da un mese (`server.mjs:6525`):
+  //   «NON confrontare `HiddenFieldIdCliente` col CODICE CLIENTE. […] il 2/08/2026, in
+  //    PRODUZIONE, il codice cliente di Laura Aprea (000140 → "140") era identico all'ID
+  //    INTERNO di Marco Aprea (140)» — e quella volta un giocatore SPARIVA da una partita
+  //   sotto un «✅ confermato».
+  // ⇒ Non è una coincidenza che ricapiti: i due numeri **si sovrappongono davvero**, e ogni
+  //   volta che qualcuno li confronta il danno è **muto**.
+  // 📌 *Una cura si disegna sul difetto raccontato e si convalida sul CODICE: se il racconto e
+  //    il codice non combaciano, vale il codice.* Qui il codice lo diceva in TRE punti — il
+  //    commento di `_staffCalPlayerCode` tre righe sopra, quello di `pmoIdMatchpoint`, e
+  //    l'avvertimento del worker — e li ho saltati tutti fidandomi di una riga di scheda.
+  //
+  // 🚨 Ed era il difetto peggiore possibile per questa voce, perché è SILENZIOSO: non dà
+  // errore, apre una scheda vera, con dentro una persona vera. In cassa la sera si ricarica il
+  // Wallet di chi non c'entra.
+  //
+  // ⛔ NESSUN RIPIEGO SUL NOME, di proposito: davanti a un id che non aggancia, la risposta è
+  // nome muto. Cercare «per nome che somiglia» rimetterebbe in piedi esattamente la classe di
+  // difetto appena tolta — indovinare la persona.
   function _staffCalSocioDelGiocatore(p) {
     try {
       if (!p) return null;
       if (typeof giocatori === 'undefined' || !Array.isArray(giocatori)) return null;
-      if (typeof pmoChiaveCodiceCliente !== 'function' || typeof pmoIdMatchpoint !== 'function') return null;
-      // Il roster porta il CODICE CLIENTE Matchpoint; l'anagrafica lo tiene in `memberId`.
-      // La chiave si normalizza a sei cifre da tutt'e due le parti, o «140» e «000140» non si
-      // riconoscerebbero — ed è la stessa funzione che usa già il resto dell'app.
-      const chiave = pmoChiaveCodiceCliente(p.idCliente);
-      if (!chiave) return null;
+      if (typeof _staffCalPlayerCode !== 'function') return null;
+      // L'ID INTERNO, da tutt'e due le parti — `_staffCalPlayerCode` è la stessa funzione con
+      // cui l'app confronta già i giocatori col worker quando li aggiunge a una partita.
+      // ⛔ Nessun riempimento di zeri: quello serve al CODICE CLIENTE («140» = «000140»),
+      //    l'id interno è un numero e basta, e normalizzarlo qui vorrebbe dire far combaciare
+      //    cose che Matchpoint tiene distinte.
+      const idInterno = String((p && p.idCliente) || '').trim();
+      if (!/^\d{1,12}$/.test(idInterno)) return null;
       return giocatori.find(function (g) {
-        return g && pmoChiaveCodiceCliente(pmoIdMatchpoint(g)) === chiave;
+        const suo = _staffCalPlayerCode(g);
+        return suo && suo === idInterno;
       }) || null;
     } catch (e) { return null; }
   }
