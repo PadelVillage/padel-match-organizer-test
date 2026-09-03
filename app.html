@@ -2990,6 +2990,13 @@
     .svc-pl-ic-gift { font-size:16px; color:#c98a04; flex:0 0 auto; }
     .svc-pl-ic-due { font-size:16px; color:#dc2626; flex:0 0 auto; }
     .svc-pl-name { flex:1 1 auto; min-width:0; font-size:.8rem; font-weight:600; line-height:1.2; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; }
+    /* 🔗 VOCE 138 — il nome che apre la scheda del socio. Tratteggio, non bottone: in questa
+       scheda ogni bottone scrive su Matchpoint, e uno innocuo in mezzo a quelli è un invito a
+       sbagliare mira (stessa ragione della pastiglia muta della 139).
+       ⚠️ `text-decoration` e non un bordo: un bordo cambierebbe l'altezza della riga e
+       sposterebbe di un pixel tutto l'elenco, che su quattro righe incolonnate si vede. */
+    .svc-pl-name-apri { cursor:pointer; text-decoration:underline dotted var(--text-muted); text-underline-offset:3px; }
+    .svc-pl-name-apri:hover, .svc-pl-name-apri:focus-visible { color:var(--accent); text-decoration-color:var(--accent); }
     .svc-pl-paid { flex:0 0 auto; font-size:.76rem; font-weight:700; color:var(--green); white-space:nowrap; }
     .svc-pl-eur { flex:0 0 auto; display:inline-flex; align-items:center; gap:2px; border:1px solid var(--accent); border-radius:8px; padding:0 6px; height:30px; background:var(--surface); }
     .svc-pl-eur-sym { color:var(--text-muted); font-size:.74rem; }
@@ -8243,7 +8250,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.300';
+    const APP_VERSION = '6.301';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -42634,6 +42641,47 @@ Per confermare scrivi ELIMINA.`);
   // poi salva via matchpoint-bookings-edit. Aggiorna la copia locale e ridisegna.
   let staffCalPlayersState = null;
 
+  // ── 🔗 VOCE 138 — IL NOME DEL GIOCATORE APRE LA SUA SCHEDA ────────────────────────────────
+  //
+  // 🗣️ Sua, 03/09/2026: «manca la possibilità di cliccare sul nome del giocatore e ti apre la sua
+  // scheda di anagrafica» — e prima, il 02/09: «potrebbe essere carino… ma non so se si può fare».
+  //
+  // ✅ SCELTA SUA fra tre strade, la ⓒ: **la scheda si apre SOPRA**, senza cambiare tab.
+  // ⚖️ Le altre due pagavano un prezzo che questa non paga: la ⓐ (cliccabile solo se non c'è
+  // niente di modificato) lascia il click a volte assente, e un nome che a volte non risponde è
+  // un nome di cui non ci si fida; la ⓑ (chiedi conferma) mette un popup nel mezzo del lavoro.
+  //
+  // 🚨⭐⭐ E LA SCHEDA DELLA VOCE DICEVA CHE LA ⓒ ERA «LA PIÙ LUNGA DA FARE». È FALSO, misurato
+  // prima di scrivere una riga: `openMemberCard` NON cambia tab — disegna dentro
+  // `#memberCardOverlay`, che è un `position:fixed` **fratello del login**, fuori da ogni tab
+  // (`index.html:6548`). ⇒ Chiamarla dal calendario apre la scheda sopra e basta.
+  // 📌 *Prima di costruire, guarda cosa c'è già: è la seconda volta oggi che il pezzo esisteva —
+  //    il semaforo era spento dietro un commento, questo era già della forma giusta.*
+  //
+  // ⛔ E il prezzo che si temeva NON c'è: né `openMemberCard` né `closeMemberCard` toccano
+  // `staffCalPlayersState` o il DOM del pannello della partita ⇒ gli importi digitati e i
+  // giocatori aggiunti restano sotto, e si ritrovano chiudendo la scheda.
+  //
+  // Il socio, se c'è. `null` per gli «Ospite» — che nelle sue schermate sono spesso la
+  // maggioranza delle righe, e che devono restare NOMI MUTI.
+  // 📌 *Un nome cliccabile che non apre niente è peggio di un nome normale: promette e non
+  //    mantiene.* È la ragione per cui qui si torna `null` invece di aprire una scheda vuota.
+  function _staffCalSocioDelGiocatore(p) {
+    try {
+      if (!p) return null;
+      if (typeof giocatori === 'undefined' || !Array.isArray(giocatori)) return null;
+      if (typeof pmoChiaveCodiceCliente !== 'function' || typeof pmoIdMatchpoint !== 'function') return null;
+      // Il roster porta il CODICE CLIENTE Matchpoint; l'anagrafica lo tiene in `memberId`.
+      // La chiave si normalizza a sei cifre da tutt'e due le parti, o «140» e «000140» non si
+      // riconoscerebbero — ed è la stessa funzione che usa già il resto dell'app.
+      const chiave = pmoChiaveCodiceCliente(p.idCliente);
+      if (!chiave) return null;
+      return giocatori.find(function (g) {
+        return g && pmoChiaveCodiceCliente(pmoIdMatchpoint(g)) === chiave;
+      }) || null;
+    } catch (e) { return null; }
+  }
+
   function _staffCalPlayerCode(member) {
     // Id da confrontare col worker = id interno Matchpoint (id_people = HiddenFieldIdPeople),
     // salvato in matchpointIdInterno. NON memberId (che è il codice/tessera, un numero diverso).
@@ -43516,6 +43564,29 @@ Per confermare scrivi ELIMINA.`);
           nm.className = 'svc-pl-name';
           nm.textContent = p.nome;
           if (marked) { nm.style.textDecoration = 'line-through'; nm.style.opacity = '.5'; }
+          // 🔗 VOCE 138 — il nome apre la scheda del socio, SOPRA il calendario (sua scelta ⓒ).
+          // ⛔ Non è un `<button>`, di proposito: in questa scheda ogni bottone scrive su
+          //    Matchpoint, e uno innocuo in mezzo a quelli è un invito a sbagliare mira — è la
+          //    stessa ragione per cui la pastiglia del Wallet (voce 139) è muta. Qui il segno è
+          //    un tratteggio sotto il nome, che si legge come «si può aprire» senza somigliare
+          //    a un comando. `role="link"` e il tasto lo rendono raggiungibile da tastiera.
+          // ⛔ Su una riga segnata per la RIMOZIONE non si aggancia: là il nome è barrato e
+          //    l'unica cosa che deve dire è «questo sta per uscire».
+          const _socio = marked ? null : _staffCalSocioDelGiocatore(p);
+          if (_socio) {
+            nm.classList.add('svc-pl-name-apri');
+            nm.setAttribute('role', 'link');
+            nm.setAttribute('tabindex', '0');
+            nm.title = 'Apri la scheda di ' + p.nome;
+            const _apri = function (ev) {
+              if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+              try { openMemberCard(String(_socio.id)); } catch (e) {}
+            };
+            nm.addEventListener('click', _apri);
+            nm.addEventListener('keydown', function (ev) {
+              if (ev.key === 'Enter' || ev.key === ' ') _apri(ev);
+            });
+          }
           row.appendChild(nm);
           // ✕ rimuovi/ripristina giocatore — sempre presente (icona sola, tooltip). Sta sulla
           // riga del NOME perché è l'unica azione che riguarda la PERSONA e non i soldi.
