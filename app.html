@@ -2828,7 +2828,7 @@
     .svc-semaforo {
       position:fixed; bottom:0; left:0; width:100%; z-index:30;
       display:flex; align-items:center; gap:8px;
-      padding:7px 12px; box-sizing:border-box;
+      padding:8px 12px; box-sizing:border-box; min-height:52px;
       font-size:.76rem; font-weight:600; line-height:1.25;
       color:#0c4a6e; background:rgba(224,242,254,.97);
       border-top:1px solid #7dd3fc;
@@ -2847,6 +2847,22 @@
        riga in più della griglia ogni volta che la frase è lunga — cioè si mangerebbe il
        calendario proprio nel momento in cui c'è qualcosa da guardare. */
     .svc-semaforo-testo { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* 🗣️ DUE RIGHE, richiesta sua del 04/09: «se è possibile raddoppiare l'altezza del messaggio
+       sotto la barra è perfetto». ⭐ E il raddoppio non è solo spazio: è la riga in cui ci stanno
+       le cose che prima non ci stavano — il DOVE di un gesto, e il MOTIVO di un rifiuto, che da
+       oggi la scheda non scrive più. Senza la seconda riga la cura di sopra non si potrebbe fare.
+       ⚠️ `min-height` e non `height`: la barra non deve restringersi quando la riga 2 è vuota
+       (un annullo per `idReserva` non ha coordinate), o l'altezza ballerebbe sotto gli occhi. */
+    .svc-semaforo-corpo { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px; }
+    .svc-semaforo-riga { display:flex; align-items:baseline; gap:8px; min-width:0; }
+    .svc-semaforo-dove { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; opacity:.82; font-size:.94em; }
+    /* La ✕ è l'UNICA cosa cliccabile della barra: il resto resta trasparente ai click, o uno slot
+       coperto sarebbe uno slot che ogni tanto non si riesce a prenotare. */
+    .svc-semaforo-chiudi {
+      flex:0 0 auto; pointer-events:auto; cursor:pointer; border:0; background:transparent;
+      color:inherit; font-size:1.05em; line-height:1; padding:2px 4px; opacity:.65; font-family:inherit;
+    }
+    .svc-semaforo-chiudi:hover { opacity:1; }
     /* 🚨 Il «chi» NON si tronca — `flex:0 0 auto`, come il conteggio della fila. È la cura di una
        misura fatta sulla pagina viva di TEST: a 390px della frase intera entravano 43 caratteri
        su 61, e a cadere era proprio questa metà. Su un telefono, «richiesta da un socio» vale
@@ -3174,7 +3190,7 @@
       .svc-pl-wallet { font-size:.9rem; }
       /* 🚦 Semaforo su telefono: il testo è la cosa che va letta in un colpo d'occhio,
          e a 12px non si legge camminando verso il banco. */
-      .svc-semaforo { font-size:.88rem; padding:9px 12px; }
+      .svc-semaforo { font-size:.88rem; padding:9px 12px; min-height:60px; }
       .svc-semaforo-dot { width:9px; height:9px; }
       .svc-pl-wallet-ic { font-size:16px; }
       .svc-pl-iconbtn { width:34px; height:34px; font-size:19px; }
@@ -8280,7 +8296,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.310';
+    const APP_VERSION = '6.311';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -47070,14 +47086,46 @@ Per confermare scrivi ELIMINA.`);
    *  PURA, così il banco la esegue invece di rileggerla. */
   function svcMessaggioVaSoloNellaBarra(html) {
     const t = String(html == null ? '' : html);
-    // `mp-sync-head` è la classe del «⏳ Sto elaborando la richiesta su Matchpoint», in tutti e
-    // quattro i punti da cui nasce: è l'avanzamento per eccellenza, ed è quello che lui ha
-    // fotografato con la barra vuota di fianco.
+    if (!t) return false;
+    // ① GLI AVANZAMENTI. `mp-sync-head` è la classe del «⏳ Sto elaborando la richiesta su
+    //    Matchpoint», in tutti e quattro i punti da cui nasce.
     if (/mp-sync-head/.test(t)) return true;
     if (/Aggiorno la lista giocatori/i.test(t)) return true;
     if (/Lista giocatori aggiornata da Matchpoint/i.test(t)) return true;
+    // ② GLI ESITI di un gesto verso Matchpoint. Elencati per come COMINCIANO, che è l'unica
+    //    parte che non cambia: la coda porta il motivo, il campo, l'ora.
+    if (SVC_ESITI_NELLA_SCHEDA.some(function (r) { return r.test(t); })) return true;
     return false;
   }
+
+  /** Gli esiti che la barra ha preso in carico. Riconosciuti dal loro INIZIO, che è la parte
+   *  stabile: quello che segue porta il motivo, il campo e l'ora, e cambia ogni volta.
+   *
+   *  ⛔⛔ E QUELLO CHE NON C'È QUI DENTRO VALE PIÙ DI QUELLO CHE C'È: **le domande
+   *  dell'Assistente restano**. «👥 Quale giocatore?», «👨‍🏫 Quale maestro?», «Aggiungi il
+   *  giocatore (o scrivi Ospite)» non sono resoconti di qualcosa che è successo: sono una
+   *  **conversazione a cui lui deve rispondere**, e toglierle non pulirebbe la scheda —
+   *  spegnerebbe l'assistente, lasciandolo ad aspettare una risposta a una domanda che nessuno
+   *  ha potuto leggere.
+   *  📌 *«Togliere tutti i messaggi» e «togliere tutti i resoconti» si somigliano finché non si
+   *     guarda chi aspetta una risposta.*
+   *
+   *  ⚖️ Elenco a mano, e il difetto lo conosce chi legge: se ne nasce uno nuovo, questo non lo
+   *  toglie. Il fallimento è **sicuro** però — un messaggio in più nella scheda, non uno di meno
+   *  sulla barra — ed è il verso giusto in cui sbagliare. */
+  const SVC_ESITI_NELLA_SCHEDA = [
+    /^\s*(❌|⛔|⌛|🧹|↩️|📝)?\s*(<[^>]+>)?\s*Modifica (non riuscita|chiusa)/i,
+    /Annullamento (non riuscito|non partito)/i,
+    /Creazione su Matchpoint non riuscita/i,
+    /Aggiornamento su Matchpoint non riuscito/i,
+    /Spostamento non riuscito/i,
+    /Errore durante lo spostamento/i,
+    /Rimozione non riuscita/i,
+    /Non ho la conferma/i,
+    /Card rimossa dal calendario/i,
+    /^\s*↩️\s*Operazione annullata/i,
+    /Prenotazione non identificata su Matchpoint/i,
+  ];
 
   function svcAddMessage(role, html, extraClass) {
     const container = document.getElementById('svcChatMessages');
@@ -48216,18 +48264,39 @@ Per confermare scrivi ELIMINA.`);
    *  ⇒ non è protetto da un commento: lo protegge il banco `test/la-barra-e-il-posto-unico.test.mjs`,
    *  che confronta questa mappa con le edge che l'app chiama DAVVERO e fallisce quando ne
    *  compare una non classificata. Le `null` qui sotto sono classificate: valgono «non si vede». */
+  /** Le azioni che si vedono, in TRE forme — perché la barra le racconta in tre momenti diversi
+   *  e una parola sola non può servirli tutti.
+   *
+   *  🗣️ Richiesta sua, del 04/09 a mezzanotte, guardando la barra dire «modifica di una
+   *  prenotazione» dopo aver salvato una nota: *«Si può mettere il tipo di azione che si sta
+   *  effettuando / è stato effettuato al posto di quello generico?»*
+   *
+   *  ⚖️ **Il nome della edge non è il tipo di azione**, ed è il punto che rende questa cura non
+   *  banale: dietro `bookings-edit` ci sono CINQUE gesti diversi — una nota, un giocatore che
+   *  entra, uno che esce, uno spostamento, un maestro che cambia — e chi guarda il calendario
+   *  vuole sapere QUALE. Lo dice il corpo della richiesta, non l'indirizzo: vedi `svcAffinaEdit`.
+   *
+   *  ⛔ LISTA BIANCA di proposito: una funzione nuova non compare finché non la si scrive qui, e
+   *  il silenzio è il fallimento **sicuro** — mostrare per sbaglio un sync automatico è ciò che
+   *  lui ha chiesto di non vedere. 🚨 Ma un elenco a mano si dimentica (già successo due volte in
+   *  questa voce): lo protegge `test/la-barra-e-il-posto-unico.test.mjs`, che confronta questa
+   *  mappa con le edge che l'app chiama DAVVERO e fallisce quando ne compare una non classificata. */
   const SVC_AZIONI_DELLAPP = {
-    'matchpoint-bookings-create': 'prenotazione',
-    'matchpoint-bookings-edit': 'modifica di una prenotazione',
-    'matchpoint-bookings-cancel': 'annullamento',
-    'matchpoint-payment-write': 'incasso',
-    'matchpoint-payment-void': 'storno di un incasso',
-    'matchpoint-charge-write': 'addebito',
-    'matchpoint-wallet-correct': 'correzione del borsellino',
-    'matchpoint-clients-create': 'nuovo cliente',
-    'matchpoint-clients-update': 'modifica di un cliente',
-    'matchpoint-clients-disable': 'disabilitazione di un cliente',
-    'matchpoint-clients-reactivate': 'riattivazione di un cliente',
+    'matchpoint-bookings-create': { corso: '➕ Prenoto il campo', soggetto: 'Prenotazione', participio: 'creata' },
+    'matchpoint-bookings-edit':   { corso: '✏️ Modifico la prenotazione', soggetto: 'Prenotazione', participio: 'modificata' },
+    'matchpoint-bookings-cancel': { corso: '🗑️ Annullo la prenotazione', soggetto: 'Prenotazione', participio: 'annullata' },
+    'matchpoint-payment-write':   { corso: '💶 Registro l\'incasso', soggetto: 'Incasso', participio: 'registrato' },
+    'matchpoint-payment-void':    { corso: '↩️ Storno l\'incasso', soggetto: 'Incasso', participio: 'stornato' },
+    'matchpoint-charge-write':    { corso: '💶 Cambio l\'importo', soggetto: 'Importo', participio: 'cambiato' },
+    // ⚠️ «Wallet» e non «Borsellino»: la voce 128 vuole Cash · Card · Wallet sotto gli occhi
+    //    della segreteria, e la guardia `letichetta-si-traduce-la-chiave-no` ha preso questa riga
+    //    la prima volta che è stata scritta. Una parola italiana qui sarebbe la quarta di un
+    //    vocabolario che ne ha tre.
+    'matchpoint-wallet-correct':  { corso: '👛 Correggo il Wallet', soggetto: 'Wallet', participio: 'corretto' },
+    'matchpoint-clients-create':  { corso: '🆕 Creo il cliente', soggetto: 'Cliente', participio: 'creato' },
+    'matchpoint-clients-update':  { corso: '✏️ Aggiorno il cliente', soggetto: 'Cliente', participio: 'aggiornato' },
+    'matchpoint-clients-disable': { corso: '🚫 Disabilito il cliente', soggetto: 'Cliente', participio: 'disabilitato' },
+    'matchpoint-clients-reactivate': { corso: '♻️ Riattivo il cliente', soggetto: 'Cliente', participio: 'riattivato' },
     // ⛔ Sotto: quelle che NON si vedono. È l'elenco della voce 137 letto dal worker — i sync
     //    (in testa quello ogni 2 minuti), le letture e lo stato della coda stessa.
     'matchpoint-clients-sync': null,
@@ -48240,15 +48309,80 @@ Per confermare scrivi ELIMINA.`);
     'matchpoint-queue-status': null,
   };
 
+  /** 🚨⭐⭐ QUALE modifica, letta dal CORPO della richiesta e non dal suo indirizzo.
+   *
+   *  Dietro `matchpoint-bookings-edit` ci sono cinque gesti che per chi guarda il calendario non
+   *  si somigliano affatto: una nota è innocua, un giocatore tolto no, uno spostamento cambia il
+   *  campo sotto gli occhi di quattro persone. Il payload li distingue già — `move`, `players`,
+   *  `note`, `descrizione`, `istruttore` — e li distingue **perché li costruisce chi sa cosa sta
+   *  facendo**, non perché qualcuno li abbia indovinati dopo.
+   *
+   *  ⚖️ L'ORDINE NON È ALFABETICO ed è la sola cosa che si può sbagliare qui: un salvataggio può
+   *  portare più cambiamenti insieme, e la riga ne dice UNO. Si dichiara il più **grosso** — chi
+   *  si sposta prima di chi entra, chi entra prima di una nota — perché la barra serve a farsi
+   *  accorgere, e accorgersi di uno spostamento conta più che di una nota.
+   *  PURA. */
+  function svcAffinaEdit(b) {
+    if (!b || typeof b !== 'object') return null;
+    if (b.move) return { corso: '🔀 Sposto la prenotazione', soggetto: 'Prenotazione', participio: 'spostata' };
+    const pl = b.players || {};
+    const quantiAdd = Array.isArray(pl.add) ? pl.add.length : 0;
+    const quantiRem = Array.isArray(pl.remove) ? pl.remove.length : 0;
+    if (quantiAdd && quantiRem) return { corso: '👥 Cambio i giocatori', soggetto: 'Giocatori', participio: 'cambiati' };
+    if (quantiAdd) return quantiAdd > 1
+      ? { corso: '👥 Aggiungo ' + quantiAdd + ' giocatori', soggetto: 'Giocatori', participio: 'aggiunti' }
+      : { corso: '👥 Aggiungo un giocatore', soggetto: 'Giocatore', participio: 'aggiunto' };
+    if (quantiRem) return quantiRem > 1
+      ? { corso: '👥 Tolgo ' + quantiRem + ' giocatori', soggetto: 'Giocatori', participio: 'tolti' }
+      : { corso: '👥 Tolgo un giocatore', soggetto: 'Giocatore', participio: 'tolto' };
+    if (b.istruttore !== undefined) return { corso: '👨‍🏫 Cambio il maestro', soggetto: 'Maestro', participio: 'cambiato' };
+    if (b.note !== undefined) return { corso: '📝 Salvo la nota', soggetto: 'Nota', participio: 'salvata' };
+    if (b.descrizione !== undefined) return { corso: '✏️ Cambio la descrizione', soggetto: 'Descrizione', participio: 'cambiata' };
+    return null;   // nessun campo riconosciuto ⇒ resta la frase generica dell'edge
+  }
+
   /** I tre esiti, e quanto restano sotto gli occhi.
    *  ⚖️ «Non è passata» dura più del doppio di «fatto», e non è una svista: un successo lo si
    *  può anche perdere (il calendario lo mostra da sé un attimo dopo), un rifiuto no — è
    *  l'unico dei tre che chiede a qualcuno di rifare qualcosa. */
+  /** I tre esiti.
+   *  🚨⭐⭐ `durataMs: 0` VUOL DIRE «non se ne va da sola», e non è un dettaglio: dal 04/09 i
+   *  messaggi di azione **non stanno più nella scheda** — quindi la barra è l'unico posto in cui
+   *  un rifiuto è scritto. Un rifiuto che sparisce dopo quattordici secondi è un rifiuto che
+   *  qualcuno non leggerà mai, e chi non l'ha letto crede che sia andata bene.
+   *  ⇒ Il successo passa da sé (il calendario lo mostra un attimo dopo); il rifiuto e il dubbio
+   *    restano finché non li si chiude con la ✕.
+   *  📌 *Il tempo di vita di un messaggio si misura su chi deve leggerlo, non su quanto dura la
+   *     cosa che racconta.* */
   const SVC_ESITI = {
-    fatto:     { testo: '✅ fatto',                      classe: 'svc-semaforo-fatto',     durataMs: 6000 },
-    rifiutato: { testo: '⛔ non è passata',              classe: 'svc-semaforo-rifiutato', durataMs: 14000 },
-    ignoto:    { testo: "❔ non so com'è finita",        classe: 'svc-semaforo-ignoto',    durataMs: 14000 },
+    fatto:     { segno: '✅', classe: 'svc-semaforo-fatto',     durataMs: 6000 },
+    rifiutato: { segno: '⛔', classe: 'svc-semaforo-rifiutato', durataMs: 0 },
+    ignoto:    { segno: '❔', classe: 'svc-semaforo-ignoto',    durataMs: 0 },
   };
+
+  /** La riga 1 all'esito, costruita dalle forme dell'azione: «✅ Nota salvata» · «⛔ Nota non
+   *  salvata» · «❔ Nota: non so com'è finita».
+   *  ⚖️ Tre frasi e non una: «non è passata» detto su un dubbio sarebbe una bugia (voce 72), e
+   *  «fatto» detto su un rifiuto sarebbe la stessa bugia dall'altra parte. PURA. */
+  function svcFraseDellEsito(azione, esito) {
+    const e = SVC_ESITI[esito];
+    if (!e || !azione) return '';
+    const sogg = azione.soggetto || 'Operazione';
+    const part = azione.participio || 'eseguita';
+    if (esito === 'fatto') return e.segno + ' ' + sogg + ' ' + part;
+    if (esito === 'rifiutato') return e.segno + ' ' + sogg + ' NON ' + part;
+    return e.segno + ' ' + sogg + ": non so com'è finita";
+  }
+
+  /** Il motivo del rifiuto, per la seconda riga. Da quando la scheda non lo scrive più, questa è
+   *  l'unica riga che dice PERCHÉ — e senza il perché un «non è passata» non si può nemmeno
+   *  rifare. ⚠️ Si taglia a 120 caratteri: la riga è una sola e deve restare leggibile. PURA. */
+  function svcMotivoDelRifiuto(dati) {
+    const d = (dati && typeof dati === 'object') ? dati : {};
+    const grezzo = String(d.message || d.error || '').replace(/\s+/g, ' ').trim();
+    if (!grezzo) return '';
+    return grezzo.slice(0, 120);
+  }
 
   /** 🚨 Il TETTO. Una barra accesa per sempre smette di essere una segnalazione e diventa uno
    *  sfondo: passati quattro minuti senza che nessuno abbia chiuso l'azione, la si chiude
@@ -48264,15 +48398,16 @@ Per confermare scrivi ELIMINA.`);
     if (!m) return null;
     const nome = m[1].toLowerCase();
     if (!Object.prototype.hasOwnProperty.call(SVC_AZIONI_DELLAPP, nome)) return null;
-    const che = SVC_AZIONI_DELLAPP[nome];
-    if (!che) return null;
+    const base = SVC_AZIONI_DELLAPP[nome];
+    if (!base) return null;
     // Il POLLING di un lavoro già annunciato non è un'azione NUOVA: chi la riaccendesse
     // mostrerebbe due prenotazioni dove ce n'è una sola.
     if (/[?&]jobId=/.test(u)) return null;
     const b = (corpo && typeof corpo === 'object') ? corpo : {};
     if (b.read === true) return null;          // 🚨 trappola ①: aprire una scheda non è modificarla
     if (b.soloRicerca === true) return null;   // 🚨 trappola ②: cercare un telefono non crea nessuno
-    return { che: che, dove: svcDoveDelGesto(b) };
+    const forme = (nome === 'matchpoint-bookings-edit' && svcAffinaEdit(b)) || base;
+    return { corso: forme.corso, soggetto: forme.soggetto, participio: forme.participio, dove: svcDoveDelGesto(b) };
   }
 
   /** Le coordinate per la cella, SOLO se complete — stessa regola di `dovePulito` nella edge, e
@@ -48326,7 +48461,10 @@ Per confermare scrivi ELIMINA.`);
   function svcAccendiAzione(descrizione) {
     if (_svcTimerAzione) { clearTimeout(_svcTimerAzione); _svcTimerAzione = null; }
     _svcAzioneLocale = {
-      che: descrizione.che,
+      corso: descrizione.corso,
+      soggetto: descrizione.soggetto,
+      participio: descrizione.participio,
+      motivo: '',
       // ⛔ «da te» e non il nome dell'operatore: questa riga sta sotto gli occhi di chiunque
       //    passi davanti allo schermo della segreteria, e chi la legge è già quello che l'ha
       //    fatta. È la stessa scelta di `chiSpiegato` nella edge, dal lato di qua.
@@ -48343,18 +48481,31 @@ Per confermare scrivi ELIMINA.`);
 
   /** `rif` è l'azione che chi chiama credeva di chiudere: una risposta lenta non deve poter
    *  chiudere l'azione SUCCESSIVA, che è un modo silenzioso di dire «fatto» di una cosa diversa. */
-  function svcChiudiAzione(esito, rif) {
+  function svcChiudiAzione(esito, rif, motivo) {
     if (!_svcAzioneLocale) return;
     if (rif && rif !== _svcAzioneLocale) return;
     if (!esito || !SVC_ESITI[esito]) return;   // non finita: resta accesa, ci penserà il tetto
     if (_svcTimerAzione) { clearTimeout(_svcTimerAzione); _svcTimerAzione = null; }
     _svcAzioneLocale.stato = esito;
+    _svcAzioneLocale.motivo = String(motivo || '');
     svcRidisegnaSemaforo();
+    const durata = SVC_ESITI[esito].durataMs;
+    // 🚨 `0` = non se ne va da sola. Da quando i messaggi di azione non stanno più nella scheda,
+    //    questa è l'unica riga in cui un rifiuto è scritto: farla sparire da sé vorrebbe dire
+    //    perderlo, e chi non l'ha letto crede che sia andata bene.
+    if (!durata) return;
     const mia = _svcAzioneLocale;
     _svcTimerAzione = setTimeout(function () {
       _svcTimerAzione = null;
       if (_svcAzioneLocale === mia) { _svcAzioneLocale = null; svcRidisegnaSemaforo(); }
-    }, SVC_ESITI[esito].durataMs);
+    }, durata);
+  }
+
+  /** La ✕: l'operatore ha letto il rifiuto e lo scaccia. */
+  function svcScacciaAzione() {
+    if (_svcTimerAzione) { clearTimeout(_svcTimerAzione); _svcTimerAzione = null; }
+    _svcAzioneLocale = null;
+    svcRidisegnaSemaforo();
   }
 
   // Riceve lo snapshot della coda e ridisegna. Si legge `snap.semaforo`, MAI lo snapshot grezzo.
@@ -48405,14 +48556,19 @@ Per confermare scrivi ELIMINA.`);
       return;
     }
     const finita = !!(loc && loc.stato !== 'corso');
-    const che = loc
-      ? (finita ? (SVC_ESITI[loc.stato].testo + ' · ' + loc.che) : loc.che)
+    // RIGA 1 — cosa sta succedendo, o com'è finita. La forma cambia col momento, ed è la
+    // richiesta sua: «il tipo di azione che si sta effettuando / è stato effettuato».
+    const riga1 = loc
+      ? (finita ? svcFraseDellEsito(loc, loc.stato) : loc.corso)
       : (sem.che || sem.frase || 'operazione in corso');
     const chi = loc ? loc.chi : sem.chi;
     const dove = loc ? loc.dove : sem.dove;
-    // ⚠️ Il conteggio della fila viene SEMPRE dalla coda, anche mentre parla la locale: è
-    //    l'unica delle due che possa contare i gesti degli altri. Si mostra solo quando la coda
-    //    è accesa, cioè quando quel numero conta chi sta DIETRO a un gesto in corso.
+    // RIGA 2 — il DOVE mentre succede, il PERCHÉ quando è andata male. Sono la stessa riga
+    // perché non capitano mai insieme: finché è in corso non c'è un motivo, e quando c'è un
+    // motivo quello è ciò che serve leggere.
+    const riga2 = (loc && finita && loc.motivo)
+      ? loc.motivo
+      : (dove ? ('Campo ' + dove.campo + ' · ' + String(dove.data).split('-').reverse().join('/') + ' · ' + dove.ora) : '');
     const inAttesa = sem ? (Number(sem.inAttesa) || 0) : 0;
     if (finita) el.classList.add(SVC_ESITI[loc.stato].classe);
     el.textContent = '';
@@ -48420,30 +48576,52 @@ Per confermare scrivi ELIMINA.`);
     dot.className = 'svc-semaforo-dot';
     dot.setAttribute('aria-hidden', 'true');
     el.appendChild(dot);
-    // 🚨⭐⭐ LE DUE METÀ SI DISEGNANO SEPARATE, e nasce da una MISURA sulla pagina viva di TEST:
-    //    a larghezza telefono (390px) della frase intera entrano **43 caratteri su 61**, e a
-    //    tagliarsi è la coda — cioè PROPRIO il «chi». Chi fa segreteria dal telefono perdeva
-    //    l'unica cosa che gli dice *se è stata lei o no*, e gli restava il dettaglio di campo e
-    //    ora che la cella accesa gli dice già.
-    //    ⇒ Si tronca SOLO il «che» (`flex:1 1 auto`); il «chi» sta su `flex:0 0 auto` e resta
-    //      intero, come il conteggio della fila.
+    const corpo = document.createElement('div');
+    corpo.className = 'svc-semaforo-corpo';
+    const r1 = document.createElement('div');
+    r1.className = 'svc-semaforo-riga';
+    // 🚨⭐⭐ LE DUE METÀ DELLA RIGA 1 SI DISEGNANO SEPARATE, e nasce da una MISURA sulla pagina
+    //    viva di TEST: a larghezza telefono (390px) della frase intera entravano **43 caratteri
+    //    su 61**, e a tagliarsi era la coda — cioè PROPRIO il «chi». Chi fa segreteria dal
+    //    telefono perdeva l'unica cosa che gli dice *se è stata lei o no*.
+    //    ⇒ Si tronca SOLO il testo (`flex:1 1 auto`); il «chi» sta su `flex:0 0 auto`.
     // ⛔ `textContent` e non `innerHTML`: la frase può venire dalla coda del worker, e
     //    un'etichetta non è un posto in cui si accetta del markup.
     const testo = document.createElement('span');
     testo.className = 'svc-semaforo-testo';
-    testo.textContent = che;
-    el.appendChild(testo);
+    testo.textContent = riga1;
+    r1.appendChild(testo);
     if (chi) {
       const spanChi = document.createElement('span');
       spanChi.className = 'svc-semaforo-chi';
       spanChi.textContent = chi;
-      el.appendChild(spanChi);
+      r1.appendChild(spanChi);
     }
+    corpo.appendChild(r1);
+    const r2 = document.createElement('div');
+    r2.className = 'svc-semaforo-riga';
+    const spanDove = document.createElement('span');
+    spanDove.className = 'svc-semaforo-dove';
+    spanDove.textContent = riga2;
+    r2.appendChild(spanDove);
     if (inAttesa > 0) {
       const coda = document.createElement('span');
       coda.className = 'svc-semaforo-coda';
       coda.textContent = '+' + inAttesa + ' in fila';
-      el.appendChild(coda);
+      r2.appendChild(coda);
+    }
+    corpo.appendChild(r2);
+    el.appendChild(corpo);
+    // La ✕ compare SOLO su un esito che non se ne va da sé: su un'azione in corso non c'è niente
+    // da scacciare, e su un «fatto» sparisce prima che qualcuno la cerchi.
+    if (finita && !SVC_ESITI[loc.stato].durataMs) {
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'svc-semaforo-chiudi';
+      x.textContent = '✕';
+      x.setAttribute('aria-label', 'Ho letto, chiudi');
+      x.onclick = function (ev) { try { ev.stopPropagation(); } catch (_e) {} svcScacciaAzione(); };
+      el.appendChild(x);
     }
     el.hidden = false;
     svcAllineaSemaforoAllaColonna(el);
@@ -48497,8 +48675,8 @@ Per confermare scrivi ELIMINA.`);
           risposta.clone().json().then(function (dati) {
             try {
               const delLavoro = svcEsitoDelLavoro(url, dati);
-              if (delLavoro) { svcChiudiAzione(delLavoro, mia); return; }
-              if (azione) svcChiudiAzione(svcEsitoDellaRisposta(risposta.ok, dati, false), azione);
+              if (delLavoro) { svcChiudiAzione(delLavoro, mia, svcMotivoDelRifiuto(dati)); return; }
+              if (azione) svcChiudiAzione(svcEsitoDellaRisposta(risposta.ok, dati, false), azione, svcMotivoDelRifiuto(dati));
             } catch (_e) {}
           }).catch(function () {
             // Risposta illeggibile: l'HTTP è l'unica cosa che resta da guardare.
@@ -48511,7 +48689,7 @@ Per confermare scrivi ELIMINA.`);
         //    essere uscita di casa e essere arrivata benissimo — è il caso da cui nasce la voce 23.
         //    ⚠️ Vale solo per l'azione: un polling di lavoro che cade viene ritentato da chi lo fa,
         //    e chiudere lì spegnerebbe una barra su un inciampo che non è successo a niente.
-        try { if (azione) svcChiudiAzione('ignoto', azione); } catch (_e) {}
+        try { if (azione) svcChiudiAzione('ignoto', azione, 'la connessione è caduta mentre la richiesta era in volo'); } catch (_e) {}
         throw err;
       });
     };
