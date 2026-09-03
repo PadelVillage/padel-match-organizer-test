@@ -8137,7 +8137,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.293';
+    const APP_VERSION = '6.294';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -8176,6 +8176,18 @@ body.assessment-public-mode .assessment-public-only-card {
        📌 *Due gesti dietro lo stesso interruttore sono un gesto solo: chi vuole il primo si porta
        via il secondo senza averlo chiesto.* */
     const PMO_PAYMENTS_COLLECT_ENABLED = true;
+    /* 🆕💶 03/09/2026 — QUINTO FLAG, voce 132: il SALVATAGGIO dell'importo a carico.
+       🗣️ Sua richiesta: *«quando su una scheda cambio l'importo e poi clicco salva me lo deve
+       riportare su Matchpoint e sul gestionale»*.
+       🚨⭐⭐ E il flag è NUOVO, di nuovo, per la stessa ragione misurata del quarto: quella
+       casella **non è mai stata salvabile** — il Salva mandava campo/data/ora, `players`, `note`,
+       `descrizione`, `istruttore`, e l'importo non c'era nemmeno nella condizione che decide se
+       salvare, così cambiandolo da solo usciva «ℹ️ Nessuna modifica da salvare».
+       ⇒ Cambiare un importo NON è incassare: è un gesto che si vuole poter spegnere da solo, e
+       che oggi vive dietro `matchpoint-charge-write` (edge sua, non un modo in più dell'incasso).
+       📌 *Un campo che si può digitare ma non salvare non è un difetto del salvataggio: è un
+       campo che promette una cosa che nessuno gli ha mai chiesto di fare.* */
+    const PMO_CHARGE_WRITE_ENABLED = true;
     function pmoShowVersionOverlay() {
       var o = document.getElementById('pmoVersionOverlay');
       if (o) o.classList.add('is-open');
@@ -41301,6 +41313,110 @@ Per confermare scrivi ELIMINA.`);
     }
   }
 
+  // ── IMPORTO A CARICO (voce 132) — cambia QUANTO uno deve, non incassa niente ──────────────
+  //
+  // 🗣️ Sua richiesta del 03/09: «quando su una scheda cambio l'importo e poi clicco salva me lo
+  // deve riportare su Matchpoint e sul gestionale».
+  //
+  // ⚖️ NON è il gemello di `_pmoCollectPayment`, e le differenze non sono di stile:
+  //   · è IDEMPOTENTE — riscrivere 10,00 € lascia 10,00 € ⇒ dopo un timeout si può ritentare,
+  //     mentre un incasso ritentato è un doppio cobro. È l'unico gesto di questa scheda di cui
+  //     si può dire «riprova pure»;
+  //   · non nasce nessun `payment` ⇒ la sezione Incassi non lo vede, ed è giusto: nessuno ha
+  //     ancora pagato. 📌 *Un importo a carico non è un pagamento, e i due non stanno nello
+  //     stesso libro.*
+  //   · su una riga GIÀ RISCOSSA non si tocca (il worker risponde ALREADY_PAID): cambiare il
+  //     carico sotto un cobro fatto lascerebbe una differenza che nessuno ha incassato.
+  //
+  // 🚨 Le caselle si mandano UNA PER UNA e in fila, non in parallelo: il worker è a coda unica
+  // sulla stessa scheda Matchpoint, e sparargliele insieme non le farebbe arrivare prima —
+  // renderebbe solo indistinguibile quale delle quattro è andata storta.
+  async function _pmoSetCharges(opts) {
+    opts = opts || {};
+    const esc = (typeof escapeHtml === 'function') ? escapeHtml : function (x) { return String(x == null ? '' : x); };
+    const idReserva = String(opts.idReserva == null ? '' : opts.idReserva).trim();
+    const changes = Array.isArray(opts.changes) ? opts.changes : [];
+    if (!changes.length) return { ok: true, done: 0, failed: 0 };
+    if (!PMO_CHARGE_WRITE_ENABLED) {
+      try { svcAddMessage('system', 'ℹ️ Il salvataggio dell\'importo a carico non è attivo.'); } catch (e) {}
+      return { ok: false, done: 0, failed: changes.length, message: 'CHARGE_WRITE_DISABLED' };
+    }
+    if (!idReserva) {
+      try { svcAddMessage('system', '⚠️ Importi non salvati: la prenotazione non è identificata su Matchpoint (idReserva mancante). Riapri la scheda e riprova.', 'error'); } catch (e) {}
+      return { ok: false, done: 0, failed: changes.length, message: 'NO_IDRESERVA' };
+    }
+
+    const _riga = function (c) { return esc(c.nome) + ' ' + _incassiEuro(c.daCents) + ' → ' + _incassiEuro(c.aCents); };
+    const note = svcAddMessage('system', '↻ Salvo su Matchpoint ' + (changes.length === 1 ? 'l\'importo' : 'gli importi') + ' a carico… (non chiudere)<br><span style="color:var(--text-muted);font-size:.78rem;">' + changes.map(_riga).join('<br>') + '</span>');
+    const _setMsg = function (html) { try { const last = note && note.querySelector(':scope > div:last-child'); if (last) last.innerHTML = html; } catch (e) {} };
+
+    let done = 0;
+    const problemi = [];
+    try {
+      const cfg = await loadAssessmentSupabaseConfig();
+      const supabaseUrl = cfg.supabaseUrl, supabaseKey = cfg.supabaseKey;
+      const staff = await pmoRequireStaffPermission('cloud_sync', 'cambiare l\'importo a carico su Matchpoint');
+      for (const c of changes) {
+        let esito = null;
+        try {
+          const ctrl = new AbortController();
+          const to = setTimeout(function () { ctrl.abort(); }, 200000);
+          const resp = await fetch(supabaseUrl + '/functions/v1/matchpoint-charge-write', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': supabaseKey, 'Authorization': 'Bearer ' + staff.accessToken },
+            body: JSON.stringify({ idReserva: idReserva, idCliente: c.idCliente || '', playerName: c.nome || '', amountCents: c.aCents }),
+          signal: ctrl.signal });
+          const txt = await resp.text();
+          let data = null; try { data = txt ? JSON.parse(txt) : null; } catch (e) { data = txt; }
+          clearTimeout(to);
+          if (resp.ok && data && data.ok !== false) {
+            esito = data;
+          } else {
+            problemi.push(esc(c.nome) + ': ' + esc(String((data && (data.message || data.error)) || ('HTTP ' + resp.status))));
+          }
+        } catch (err) {
+          problemi.push(esc(c.nome) + ': ' + ((err && err.name === 'AbortError')
+            ? 'esito non confermato (troppo lento) — si può ritentare, riscrivere lo stesso importo non fa danno'
+            : esc(err && err.message ? err.message : String(err))));
+        }
+        if (!esito) continue;
+        done += 1;
+        // ⭐ La scheda mostra il valore CONFERMATO dal gestionale, non quello digitato: se
+        // Matchpoint avesse preso un numero diverso, il worker avrebbe già chiamato errore —
+        // ma il pendente che si scrive qui è quello riletto, non quello sperato.
+        try {
+          const stOpen = staffCalPlayersState;
+          if (stOpen && String(stOpen.idReserva || '') === idReserva && Array.isArray(stOpen.roster)) {
+            const tgt = stOpen.roster.find(function (x) {
+              return (c.idx && String(x.idx) === String(c.idx))
+                || (x.idCliente && c.idCliente && String(x.idCliente) === String(c.idCliente))
+                || x.nome === c.nome;
+            });
+            if (tgt) {
+              tgt.importoCents = c.aCents;
+              tgt.pendenteCents = (typeof esito.pendenteCents === 'number') ? esito.pendenteCents : c.aCents;
+            }
+          }
+        } catch (e) {}
+        // 🚨 «Registrato» è un FATTO che risponde il gestionale, non una frase nostra: se la riga
+        // non è stata scritta lo si dice, invece di lasciar credere che ci sia.
+        if (esito.registrato === false) problemi.push(esc(c.nome) + ': cambiato su Matchpoint, ma il gestionale non ha registrato il gesto');
+      }
+    } catch (err) {
+      problemi.push(esc(err && err.message ? err.message : String(err)));
+    }
+
+    const failed = changes.length - done;
+    if (!failed && !problemi.length) {
+      _setMsg('✅ ' + (changes.length === 1 ? 'Importo aggiornato' : 'Importi aggiornati') + ' su Matchpoint<br><span style="color:var(--text-muted);font-size:.78rem;">' + changes.map(_riga).join('<br>') + '</span>');
+    } else {
+      _setMsg('⚠️ ' + (done ? (done + ' su ' + changes.length + ' aggiornati. ') : 'Nessun importo aggiornato. ')
+        + '<br><span style="color:var(--text-muted);font-size:.78rem;">' + problemi.join('<br>') + '</span>');
+    }
+    try { if (typeof staffCalRenderPlayersEditor === 'function' && staffCalPlayersState) staffCalRenderPlayersEditor(); } catch (e) {}
+    return { ok: !failed && !problemi.length, done: done, failed: failed };
+  }
+
   // ── STORNO pagamento (Fase 2b) — annulla un cobro già fatto. Gemello di
   // _pmoCollectPayment: conferma esplicita + edge sincrona + nessun retry.
   function _pmoConfirmVoid(name, amountCents, simulate) {
@@ -43094,6 +43210,12 @@ Per confermare scrivi ELIMINA.`);
       const _paySimUi = PMO_PAYMENTS_SIMULATE && !PMO_PAYMENTS_WRITE_ENABLED;
       let _anyUnknown = false;
       const _payAmtInputs = []; // campi "€ a carico" → totale live
+      // 🆕 VOCE 132 — le stesse caselle, ma con accanto DA DOVE partivano e CHI sono: senza la
+      // riga di partenza «è cambiato?» non si può nemmeno chiedere, e il Salva non saprebbe
+      // distinguere un importo toccato da uno solo riletto. Stesso array vivo per tutta la
+      // resa (`st.payRows` lo referenzia, non lo copia).
+      const _payAmtRows = [];
+      st.payRows = _payAmtRows;
       if (_payShow && _paySimUi) {
         const simNote = document.createElement('div');
         simNote.style.cssText = 'font-size:.74rem;color:#92600a;background:#fff7e6;border:1px solid #f5d98a;border-radius:8px;padding:6px 8px;margin-bottom:8px;';
@@ -43282,6 +43404,13 @@ Per confermare scrivi ELIMINA.`);
             eur.appendChild(sym); eur.appendChild(amt);
             money.appendChild(eur);
             _payAmtInputs.push(amt);
+            _payAmtRows.push({
+              input: amt,
+              baseCents: (dovutoCents || 0),
+              idCliente: (p.idCliente != null ? String(p.idCliente) : ''),
+              idx: (p.idx != null ? String(p.idx) : ''),
+              nome: p.nome,
+            });
             if (stato == null) _anyUnknown = true;
           }
           if (money) item.appendChild(money);
@@ -43437,7 +43566,7 @@ Per confermare scrivi ELIMINA.`);
           : (_anyUnknown
               ? 'Lo stato dei pagamenti si aggiorna da Matchpoint appena la lista giocatori è letta.'
               : (_payCollectActive
-                  ? 'Modifica l’importo a carico se serve, poi incassa: il pagamento viene scritto su Matchpoint.'
+                  ? 'Modifica l’importo a carico se serve: con «Salva» finisce su Matchpoint, con «Cash/Card/Wallet» viene anche incassato.'
                   : 'Stato letto da Matchpoint. L’incasso (Cash/Card/Wallet) è disattivato (si abilita nel test dal vivo).'));
         playersSec.appendChild(payHint);
       }
@@ -43942,7 +44071,30 @@ Per confermare scrivi ELIMINA.`);
       && String((st && st.istruttore) || '').trim() !== String((st && st.origIstruttore) || '').trim()
       && String((st && st.istruttore) || '').trim() !== '';
 
-    if (!moveChanged && !playersChanged && !noteChanged && !descrChanged && !istruttoreChanged) {
+    // 🆕💶 VOCE 132 — gli IMPORTI A CARICO toccati a mano, che fino al 03/09 questo Salva non
+    // guardava affatto: non stavano nel pacchetto e non stavano nemmeno nella condizione qui
+    // sotto, così cambiando SOLO un importo usciva «ℹ️ Nessuna modifica da salvare» — che è
+    // esattamente quello che il committente ha visto provando.
+    // ⚖️ Si confronta con `baseCents`, il valore con cui la casella è stata DISEGNATA (pendente,
+    // o importo letto da Matchpoint): senza una riga di partenza «è cambiato?» non è una domanda
+    // a cui si possa rispondere.
+    // ⛔ Le righe di chi si sta TOGLIENDO dalla partita non entrano: fra un attimo non è più in
+    // campo, e scrivergli un importo sarebbe un addebito a chi esce.
+    const chargeChanges = (function () {
+      if (!PMO_CHARGE_WRITE_ENABLED || !st.hasPlayers) return [];
+      const out = [];
+      (Array.isArray(st.payRows) ? st.payRows : []).forEach(function (r) {
+        if (!r || !r.input || r.input.disabled) return;
+        if (r.idx != null && st.remove[r.idx]) return;
+        const c = _pmoEuroToCents(r.input.value);
+        if (c == null || !(c >= 0) || c === r.baseCents) return;
+        out.push({ idCliente: r.idCliente, idx: r.idx, nome: r.nome, daCents: r.baseCents, aCents: c });
+      });
+      return out;
+    })();
+    const chargesChanged = chargeChanges.length > 0;
+
+    if (!moveChanged && !playersChanged && !noteChanged && !descrChanged && !istruttoreChanged && !chargesChanged) {
       svcAddMessage('system', 'ℹ️ Nessuna modifica da salvare.');
       return;
     }
@@ -43958,9 +44110,37 @@ Per confermare scrivi ELIMINA.`);
     if (noteChanged) parts.push((st.note ? (st.isManut ? 'Osservazioni aggiornate' : 'Nota aggiornata') : (st.isManut ? 'Osservazioni rimosse' : 'Nota rimossa')));
     if (descrChanged) parts.push('Descrizione aggiornata');
     if (istruttoreChanged) parts.push('Maestro → ' + (st.istruttore || ''));
+    // 💶 Nel riepilogo si scrivono i nomi e i DUE numeri: chi conferma deve vedere da dove a
+    // dove, non «3 importi cambiati» — è denaro che qualcuno pagherà al banco.
+    if (chargesChanged) {
+      chargeChanges.forEach(function (c) {
+        parts.push('Importo ' + c.nome + ': ' + _incassiEuro(c.daCents) + ' → ' + _incassiEuro(c.aCents));
+      });
+    }
     // skipConfirm = chiamata dall'assistente ("salva" a voce): la conferma è già stata data a voce,
     // niente popup nativo (che spezzerebbe il flusso vocale). Il pulsante Salva manuale lo mantiene.
     if (!opts.skipConfirm && !confirm('Salvare su Matchpoint?\n\n' + parts.join('\n'))) return;
+
+    // 💶 VOCE 132 — GLI IMPORTI SI SCRIVONO PRIMA, e si ASPETTANO.
+    //
+    // ⚖️ Perché prima e non insieme: cambiare l'importo e modificare la prenotazione sono due
+    // scritture sulla STESSA scheda Matchpoint, e il worker le mette in coda comunque. Farle
+    // partire insieme non le farebbe arrivare prima — renderebbe solo impossibile dire quale
+    // delle due ha fallito. E l'importo si aggancia al giocatore per nome/idCliente: farlo
+    // mentre la lista dei partecipanti sta cambiando è il modo di scrivere alla riga sbagliata.
+    // 🚨 Si aspetta l'esito (non è il ramo «libera subito l'operatore») perché il gestionale
+    // deve registrare il gesto NELLO STESSO ISTANTE in cui il circolo lo conferma: rispondere
+    // prima della conferma è esattamente il difetto della voce 75, applicato al denaro.
+    if (chargesChanged) {
+      const _idResCharge = st.idReserva || _staffCalLookupIdReserva(st.origIso, st.origCampo, st.origOra);
+      await _pmoSetCharges({ idReserva: _idResCharge, changes: chargeChanges });
+      // Solo importi toccati ⇒ non c'è niente da mandare a `matchpoint-bookings-edit`: la scheda
+      // resta aperta (i nuovi valori sono già quelli mostrati) e non si finge una modifica alla
+      // prenotazione che nessuno ha chiesto.
+      if (!moveChanged && !playersChanged && !noteChanged && !descrChanged && !istruttoreChanged) return;
+      // Misto: la scheda che segue è ancora quella aperta prima, quindi si rilegge lo stato.
+      if (!staffCalPlayersState) return;
+    }
 
     // ── Cattura tutto in "op" e LIBERA SUBITO l'operatore: la scrittura prosegue in sottofondo ──
     const op = {
