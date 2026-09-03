@@ -46431,7 +46431,7 @@ Per confermare scrivi ELIMINA.`);
       // `flex:1 1 0` + `min-width:0`: i quattro si dividono la riga in parti uguali e nessuno la
       // allarga oltre. Senza `min-width:0` varrebbe la dimensione minima automatica dei flex item
       // e la riga sborderebbe invece di stringersi — è la stessa trappola della stellina (v6.129).
-      b.style.cssText='flex:1 1 0;min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:'+FS.btn+'px;padding:'+PAD.pill4+';border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;';
+      b.style.cssText='flex:1 1 0;min-width:0;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:'+FS.btn+'px;padding:'+PAD.pill4+';border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;';
       const d=document.createElement('span'); d.style.cssText='width:9px;height:9px;border-radius:50%;flex:0 0 auto;background:'+FIELD_COLORS[i-1]+';'; b.appendChild(d);
       b.appendChild(document.createTextNode(String(i)));
       const col=FIELD_COLORS[i-1], idx=i;
@@ -46463,7 +46463,14 @@ Per confermare scrivi ELIMINA.`);
     const tipoRow=document.createElement('div'); tipoRow.style.cssText='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;'; const tipoBtns=[];
     TIPI.forEach(function(tp){
       const b=document.createElement('button'); b.type='button'; b.textContent=_tipoTesto(tp.key); b.title=tp.key;
-      b.style.cssText='min-width:0;font-size:'+FS.tipo+'px;padding:'+PAD.tipo4+';border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;';
+      // 🚨📏 `width:100%` + `box-sizing:border-box` NON sono ornamentali, ed è stato MISURATO sulla
+      // pagina viva: un `<button>` dentro una griglia **non si allarga da sé** — le colonne erano
+      // 51,25px e i bottoni ne prendevano 43, cioè la loro larghezza naturale, e le quattro parole
+      // uscivano tutte troncate con i puntini. Con la colonna piena ci stanno: la più larga
+      // («Lezione», 42px a corpo 12) più 8 di fianchi fa 50 contro 51,25.
+      // 📌 *In griglia un bottone non è un div: lo `stretch` non gli si applica, e la colonna resta
+      // vuota mentre il testo dentro viene tagliato.*
+      b.style.cssText='width:100%;box-sizing:border-box;min-width:0;font-size:'+FS.tipo+'px;padding:'+PAD.tipo4+';border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;';
       if(tp.disabled){ b.disabled=true; b.style.opacity='0.45'; b.style.cursor='not-allowed'; } else { b.addEventListener('click',function(){ selectTipo(tp); }); }
       tipoBtns.push({b:b,tp:tp}); tipoRow.appendChild(b);
     });
