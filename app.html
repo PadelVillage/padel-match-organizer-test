@@ -2833,11 +2833,14 @@
     /* 🆕 VOCE 134 — LA PASTIGLIA «↓ messaggio nuovo». `sticky` e non `fixed`: resta incollata al
        bordo basso dell'area messaggi qualunque sia l'ordine dei blocchi (su mobile l'area messaggi
        e la riga di scrittura si scambiano di posto), senza dover misurare niente a mano. */
-    .svc-chat-nuovi { position:sticky; bottom:6px; align-self:center; z-index:6; max-width:92%;
+    /* 🩹 VOCE 136 — fondo PIENO e `z-index` più alto: quando compare deve leggersi come una cosa
+       che sta SOPRA il pannello, non come una riga finita per sbaglio dentro la scheda. Sul
+       telefono la trasparenza la faceva sembrare parte dei bottoni. */
+    .svc-chat-nuovi { position:sticky; bottom:6px; align-self:center; z-index:20; max-width:92%;
       display:flex; align-items:center; gap:6px; margin-top:4px; padding:7px 12px; cursor:pointer;
-      border:1px solid var(--accent); border-radius:999px; background:var(--accent-light);
+      border:1px solid var(--accent); border-radius:999px; background:var(--surface);
       color:var(--text); font-size:.78rem; font-weight:600; text-align:left;
-      box-shadow:0 2px 10px rgba(16,24,40,.18); }
+      box-shadow:0 4px 14px rgba(16,24,40,.28); }
     .svc-chat-nuovi[hidden] { display:none !important; }
     .svc-chat-nuovi .svc-chat-nuovi-txt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     /* La riga di sincronizzazione NASCE VUOTA e resta invisibile finché non ha qualcosa da
@@ -8169,7 +8172,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.296';
+    const APP_VERSION = '6.297';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -46638,11 +46641,41 @@ Per confermare scrivi ELIMINA.`);
     } catch (e) { return { visibile: true, testo: '' }; }
   }
 
+  /** 🩹⭐⭐ VOCE 136 — UN AVVISO ALLA VOLTA, e prima erano DUE.
+   *
+   * 🗣️ Sua segnalazione dal telefono, 03/09: *«ci sono due avvisi, è troppo pieno»* — schermata di
+   * PROD 6.283 con la riga gialla dentro la scheda («↻ Salvo su Matchpoint l'importo a carico…»)
+   * **e** la pastiglia che ripeteva la stessa frase, per giunta **sopra il bottone «Annulla
+   * prenotazione»**.
+   *
+   * ⚖️ La 134 aveva dichiarato che le due cose «si affiancano, non sono due copie»: vero quando
+   * l'esito è **fuori** dal bordo, **falso** quando è dentro. Nello stesso istante, per lo stesso
+   * evento, erano due copie — e la seconda copriva un bottone.
+   * ⇒ La riga dentro la scheda **vince**, perché è la più vicina al gesto; la pastiglia serve
+   * **solo** quando quella non si vede (o non c'è: risposta a una frase scritta in chat).
+   * 📌 *Due avvisi per lo stesso fatto non sono il doppio dell'informazione: sono un avviso e un
+   * disturbo, e chi legge non sa quale dei due guardare.* */
+  function _svcEsitoInSchedaVisibile(cont) {
+    try {
+      const riga = document.querySelector('.svc-edit-box > .svc-edit-esito');
+      if (!riga || !cont) return false;
+      const c = cont.getBoundingClientRect(), r = riga.getBoundingClientRect();
+      return r.top < c.bottom - 4 && r.bottom > c.top + 4;
+    } catch (e) { return false; }
+  }
+
   function _svcAggiornaPastiglia(cont) {
     if (!cont) return;
     const st = _svcUltimoMsgVisibile(cont);
     const p = _svcPastiglia(cont);
     if (!p) return;
+    if (_svcEsitoInSchedaVisibile(cont)) {
+      // L'esito è già davanti agli occhi, dentro la scheda: la pastiglia sarebbe la stessa frase
+      // detta due volte, e sul telefono finisce sopra i bottoni.
+      cont.__pmoNonVisti = 0;
+      p.hidden = true;
+      return;
+    }
     if (st.visibile) {
       cont.__pmoNonVisti = 0;
       p.hidden = true;
