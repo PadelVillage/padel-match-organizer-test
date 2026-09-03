@@ -8250,7 +8250,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.303';
+    const APP_VERSION = '6.304';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -13387,6 +13387,20 @@ Grazie.`
     // e al giro dopo l'edge riapplicherebbe la stessa scheda. Per sempre.
     const PMO_MEMBER_CLOUD_FIELDS = ['firstName', 'surname', 'name', 'phone', 'email', 'level', 'gender', 'pmoPlayerId',
                                      'levelSource', 'selfAssessmentDate', 'lastLevelUpdateAt'];
+    // 🆔 L'ID INTERNO MATCHPOINT non sta in `PMO_MEMBER_CLOUD_FIELDS`, ed è una scelta, non una
+    // dimenticanza: quei campi si copiano solo se la riga del cloud è PIÙ FRESCA della copia
+    // locale, e un id non compete sulla freschezza — è l'INDIRIZZO della persona su Matchpoint,
+    // scritto una volta e mai contraddetto. Dentro quel confronto resterebbe inerte proprio per
+    // i soci che ne hanno bisogno: quelli fermi in locale da prima che il numero esistesse.
+    // ⛔ Solo cloud→locale, e solo su un valore presente: un cloud senza id non cancella l'id che
+    //    questo browser ha già imparato aggiungendo quella persona a una partita.
+    // 📌 Funzione a sé, e non un `if` in mezzo all'idratazione, perché è una DECISIONE (dove sta
+    //    il confronto sulla freschezza) e le decisioni si provano.
+    function pmoIdInternoDalCloud(locale, cloud) {
+      const vivo = cleanCell(cloud && cloud.matchpointIdInterno);
+      if (!vivo) return '';
+      return String((locale && locale.matchpointIdInterno) || '') === vivo ? '' : vivo;
+    }
     function pmoMemberFieldsFromCloud(locale, cloud, cloudRowAt) {
       if (!locale || !cloud) return { changed: false, next: locale };
       if (!(pmoCloudTsMs(cloudRowAt) > pmoCloudTsMs(locale.updatedAt))) return { changed: false, next: locale };
@@ -13677,8 +13691,33 @@ Grazie.`
              guardi il produttore invece del destinatario.* */
           const chiaveViva = cleanCell(m.cloudLocalKey);
           if (chiaveViva && g.cloudLocalKey !== chiaveViva) { g.cloudLocalKey = chiaveViva; }
+          /* 🩹🚨⭐⭐ 03/09/2026 (voce 138) — L'ID INTERNO MATCHPOINT SI RINFRESCA SEMPRE, E FUORI
+             DAL CONFRONTO SULLA FRESCHEZZA. Stessa forma della chiave qui sopra, stesso posto,
+             stessa ragione — e il difetto è stato pagato di nuovo, cinque giorni dopo.
+             📏 MISURATO, non dedotto: `matchpointIdInterno` non è in `PMO_MEMBER_CLOUD_FIELDS`
+             ⇒ per un socio GIÀ in localStorage quel numero non arrivava MAI. Nella scheda del
+             04/09 C3 14:00, su TEST: Michele Marchi agganciava (289 ✓), Erika Poser (239) e
+             Marta Morelli (187) NO — mentre nel cloud tutti e tre ce l'avevano identico.
+             🚨 E il modo in cui si nascondeva è la parte da ricordare: nella console remota
+             FUNZIONAVA, perché lì il localStorage nasce vuoto e ogni riga arriva dritta dal
+             cloud. ⇒ Avevo misurato l'ambiente che NON ha il difetto, e la misura tornava
+             verde tre volte di fila. *Una sonda che parte pulita non può vedere un guasto che
+             vive nello stato accumulato.*
+             ⚖️ Fuori dal confronto sulla freschezza perché un id non compete sulla freschezza:
+             è l'INDIRIZZO della persona su Matchpoint, scritto una volta e mai contraddetto.
+             Dentro il gate resterebbe inerte esattamente per i soci che ne hanno bisogno —
+             quelli fermi in locale da prima che il numero esistesse, cioè tutti.
+             ⛔ Vale SOLO da cloud→locale e SOLO su un valore presente: `cleanCell` scarta il
+             vuoto, quindi una riga senza id non cancella un id che questo browser ha già. */
+          const idInternoVivo = pmoIdInternoDalCloud(g, m);
+          const idImparato = !!idInternoVivo;
+          if (idImparato) g.matchpointIdInterno = idInternoVivo;
           const esito = pmoMemberFieldsFromCloud(g, m, rowAt.get(id));
-          if (esito.changed) { giocatori[i] = esito.next; updated++; }
+          if (esito.changed) giocatori[i] = esito.next;
+          // Un solo conteggio per riga: `updated` non è una statistica, è ciò che fa scattare il
+          // `save('giocatori')` qui sotto — e senza quel salvataggio l'id imparato si perde al
+          // ricaricamento, cioè la cura durerebbe una sessione sola.
+          if (idImparato || esito.changed) updated++;
         });
         if (updated > 0) console.log('PMO_CLOUD_MEMBERS_REFRESHED', { updated, total: giocatori.length });
         // Dedup consistente con l'import (pmoImportContactKey = nome+telefono, STRETTA):
