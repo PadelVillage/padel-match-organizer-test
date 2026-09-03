@@ -2841,6 +2841,23 @@
     .svc-semaforo-chi { flex:0 0 auto; font-weight:700; opacity:.9; }
     .svc-semaforo-coda { flex:0 0 auto; font-weight:700; opacity:.75; }
     @media (prefers-reduced-motion: reduce) { .svc-semaforo-dot { animation:none; } }
+    /* 🚦 VOCE 137 ⑤ — I TRE ESITI, che dal 03/09 notte la barra dice (sua decisione, presa
+       ribaltando la sua di poche ore prima: vedi il blocco del motore, più sotto).
+       ⚖️ I colori NON sono decorativi e non sono tre gradazioni della stessa cosa: «non è
+       passata» e «non so com'è finita» portano a due gesti opposti — il primo si rifà, il
+       secondo NON si rifà — e distinguerli con la sola parola, su una barra che si legge di
+       sfuggita passando davanti allo schermo, vuol dire non distinguerli.
+       🚨 E il puntino SMETTE di pulsare: pulsare vuol dire «adesso», e un'azione finita non è
+       più adesso. Lasciarlo battere su un esito farebbe leggere «sta ancora succedendo». */
+    .svc-semaforo-fatto { color:#14532d; background:rgba(220,252,231,.97); border-top-color:#86efac; box-shadow:0 -2px 10px rgba(22,163,74,.16); }
+    .svc-semaforo-fatto .svc-semaforo-dot { background:#16a34a; }
+    .svc-semaforo-rifiutato { color:#7f1d1d; background:rgba(254,226,226,.97); border-top-color:#fca5a5; box-shadow:0 -2px 10px rgba(220,38,38,.18); }
+    .svc-semaforo-rifiutato .svc-semaforo-dot { background:#dc2626; }
+    .svc-semaforo-ignoto { color:#78350f; background:rgba(254,243,199,.97); border-top-color:#fcd34d; box-shadow:0 -2px 10px rgba(217,119,6,.18); }
+    .svc-semaforo-ignoto .svc-semaforo-dot { background:#d97706; }
+    .svc-semaforo-fatto .svc-semaforo-dot,
+    .svc-semaforo-rifiutato .svc-semaforo-dot,
+    .svc-semaforo-ignoto .svc-semaforo-dot { animation:none; }
     /* La CELLA accesa — la seconda metà della D: dice DOVE, quando lo slot è in vista.
        ⚠️ `outline` e non `border`: un bordo cambierebbe la scatola e sposterebbe di un pixel
        tutto quello che sta intorno, che su una griglia si vede. */
@@ -8250,7 +8267,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.306';
+    const APP_VERSION = '6.307';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -48072,6 +48089,14 @@ Per confermare scrivi ELIMINA.`);
   //    passa ogni 4 secondi, e quattro secondi sono un'eternità su un gesto che ne dura sei:
   //    la cella va riaccesa SUBITO dopo ogni ridisegno, non al giro dopo.
   let _svcUltimoSemaforo = null;
+  let _svcUltimoSemaforoTs = 0;
+  /* 🚨 IL REMOTO SCADE, e senza questa riga la barra saprebbe mentire in silenzio: `svcPollQueueStatus`
+     esce presto in almeno quattro casi normali — scheda del browser nascosta, pannello Calendario non
+     attivo, configurazione non ancora caricata, sessione staff assente — e in nessuno di quelli
+     `_svcUltimoSemaforo` viene toccato. ⇒ L'ultimo snapshot ACCESO resterebbe acceso per sempre,
+     raccontando un gesto finito da un pezzo. Quattro giri di polling di tolleranza (16 s): oltre,
+     non è più «adesso» e la barra tace. */
+  const SVC_REMOTO_SCADE_MS = 16000;
 
   // Accende la cella del calendario che corrisponde alle coordinate, se è in vista.
   // ⛔ Se le coordinate non ci sono, o sono di un ALTRO giorno, non si accende niente e parla la
@@ -48101,17 +48126,235 @@ Per confermare scrivi ELIMINA.`);
   //    nel «in coda: N», che avrebbe annunciato un ingorgo dove non c'era.
   //    ⇒ Il filtro e la traduzione stanno nella edge (`frasi-del-semaforo.ts`), che è dove si
   //    possono PROVARE. Qui si disegna e basta.
+  /* ══════════════════════════════════════════════════════════════════════════════════════
+     🚦 VOCE 137 ⑤ — LA BARRA È IL POSTO UNICO DOVE SI LEGGONO LE AZIONI (03/09/2026, notte)
+
+     🗣️ Sua decisione, presa davanti a una barra che su PROD non si accendeva:
+        «Tutti i messaggi di azione li portiamo in una barra sotto il calendario. Si leggono
+         tutte le azioni là.»
+
+     ⭐⭐ PERCHÉ CAMBIA LA SOSTANZA, e non è un abbellimento. Fino a stanotte la barra aveva UNA
+       fonte sola: la coda del worker, raggiunta per `matchpoint-queue-status`. Quella catena ha
+       quattro anelli (app → edge → worker → coda) e basta che ne salti uno perché la barra resti
+       spenta **esattamente come se non stesse succedendo niente**. Il 03/09 alle 23:10 è
+       successo: gesto vero su PROD, scrittura partita, barra muta — e da fuori i due casi sono
+       indistinguibili.
+       ⇒ Adesso le fonti sono DUE, e non si sostituiscono:
+         ① LOCALE — l'app sa cosa ha appena chiesto LEI, e lo sa nell'istante in cui parte. Non
+            passa da nessuna rete: se il browser ha fatto il gesto, la barra si accende.
+         ② LA CODA — l'unica che sa dei gesti degli ALTRI (l'altra postazione, il bot). Resta
+            intera, perché la ① non può saperli: nessuna sonda locale vede il gesto di un altro.
+       📌 *Una barra con una fonte sola ha un silenzio che significa due cose — «non sta
+          succedendo niente» e «non sono riuscito a chiederlo» — e chi guarda deve indovinare
+          quale.* È la stessa forma del terzo filo del 22/08, su un'altra superficie.
+
+     🔄 E RIBALTA UNA SUA DECISIONE — va detto qui, non lasciato scoprire a chi legge il codice.
+       Il 03/09 pomeriggio aveva tenuto l'ESITO fuori dal semaforo («ho bisogno di capire se ci
+       sono azioni in corso e quali»), e `frasi-del-semaforo.ts` lo dichiara ancora in testa a sé.
+       Stanotte l'ha ribaltata di persona, chiesto e risposto: **l'esito ci va**.
+       ⚖️ Le due decisioni si contraddicono meno di quanto sembri: quella riguardava l'esito dei
+       gesti ALTRUI, che la coda non conosce e che il bot racconta già a chi li ha fatti. Questo
+       è l'esito del gesto fatto **da questo browser**, che è l'unico a saperlo per certo.
+
+     🚨 LE DUE TRAPPOLE DELLA VOCE 137 VALGONO ANCHE QUI, perché sono trappole del GESTO e non
+       della coda: aprire una scheda è un `edit` con `read:true` (non è una modifica) e cercare
+       un telefono è un `clients-create` con `soloRicerca` (non crea niente). Un filtro che
+       guardasse il solo nome della funzione riaccenderebbe la barra a ogni scheda aperta — cioè
+       la renderebbe uno sfondo, che è il modo in cui si perde un avviso senza toglierlo.
+     ══════════════════════════════════════════════════════════════════════════════════════ */
+
+  /** Le azioni che si vedono, e come si chiamano in italiano.
+   *  ⚖️ LISTA BIANCA di proposito: una funzione nuova non compare finché qualcuno non la scrive
+   *  qui, e questo silenzio è il fallimento **sicuro** — mostrare per sbaglio un sync automatico
+   *  è precisamente la cosa che lui ha chiesto di non vedere.
+   *  🚨 Ma un elenco a mano si dimentica, ed è già successo due volte dentro questa stessa voce
+   *  (`MP_INTERACTIVE_OPS` senza i soldi, `HANDLER_CHE_APRONO_UN_BROWSER` senza `handleSetCharge`)
+   *  ⇒ non è protetto da un commento: lo protegge il banco `test/la-barra-e-il-posto-unico.test.mjs`,
+   *  che confronta questa mappa con le edge che l'app chiama DAVVERO e fallisce quando ne
+   *  compare una non classificata. Le `null` qui sotto sono classificate: valgono «non si vede». */
+  const SVC_AZIONI_DELLAPP = {
+    'matchpoint-bookings-create': 'prenotazione',
+    'matchpoint-bookings-edit': 'modifica di una prenotazione',
+    'matchpoint-bookings-cancel': 'annullamento',
+    'matchpoint-payment-write': 'incasso',
+    'matchpoint-payment-void': 'storno di un incasso',
+    'matchpoint-charge-write': 'addebito',
+    'matchpoint-wallet-correct': 'correzione del borsellino',
+    'matchpoint-clients-create': 'nuovo cliente',
+    'matchpoint-clients-update': 'modifica di un cliente',
+    'matchpoint-clients-disable': 'disabilitazione di un cliente',
+    'matchpoint-clients-reactivate': 'riattivazione di un cliente',
+    // ⛔ Sotto: quelle che NON si vedono. È l'elenco della voce 137 letto dal worker — i sync
+    //    (in testa quello ogni 2 minuti), le letture e lo stato della coda stessa.
+    'matchpoint-clients-sync': null,
+    'matchpoint-bookings-sync': null,
+    'matchpoint-history-sync': null,
+    'matchpoint-slot-schedule-sync': null,
+    'matchpoint-payments-sync': null,
+    'matchpoint-wallet-sync': null,
+    'matchpoint-wallet-read': null,
+    'matchpoint-queue-status': null,
+  };
+
+  /** I tre esiti, e quanto restano sotto gli occhi.
+   *  ⚖️ «Non è passata» dura più del doppio di «fatto», e non è una svista: un successo lo si
+   *  può anche perdere (il calendario lo mostra da sé un attimo dopo), un rifiuto no — è
+   *  l'unico dei tre che chiede a qualcuno di rifare qualcosa. */
+  const SVC_ESITI = {
+    fatto:     { testo: '✅ fatto',                      classe: 'svc-semaforo-fatto',     durataMs: 6000 },
+    rifiutato: { testo: '⛔ non è passata',              classe: 'svc-semaforo-rifiutato', durataMs: 14000 },
+    ignoto:    { testo: "❔ non so com'è finita",        classe: 'svc-semaforo-ignoto',    durataMs: 14000 },
+  };
+
+  /** 🚨 Il TETTO. Una barra accesa per sempre smette di essere una segnalazione e diventa uno
+   *  sfondo: passati quattro minuti senza che nessuno abbia chiuso l'azione, la si chiude
+   *  dicendo la verità — «non so com'è finita» — e mai «fatto». */
+  const SVC_TETTO_AZIONE_MS = 240000;
+
+  /** Da una chiamata dell'app all'azione da mostrare, o `null` se non se ne mostra nessuna.
+   *  PURA: non tocca il DOM e non legge nessuno stato. È la regola, ed è qui perché il banco la
+   *  possa ESEGUIRE invece di rileggerla. */
+  function svcAzioneDaChiamata(url, corpo) {
+    const u = String(url || '');
+    const m = u.match(/\/functions\/v1\/(matchpoint-[a-z0-9-]+)/i);
+    if (!m) return null;
+    const nome = m[1].toLowerCase();
+    if (!Object.prototype.hasOwnProperty.call(SVC_AZIONI_DELLAPP, nome)) return null;
+    const che = SVC_AZIONI_DELLAPP[nome];
+    if (!che) return null;
+    // Il POLLING di un lavoro già annunciato non è un'azione NUOVA: chi la riaccendesse
+    // mostrerebbe due prenotazioni dove ce n'è una sola.
+    if (/[?&]jobId=/.test(u)) return null;
+    const b = (corpo && typeof corpo === 'object') ? corpo : {};
+    if (b.read === true) return null;          // 🚨 trappola ①: aprire una scheda non è modificarla
+    if (b.soloRicerca === true) return null;   // 🚨 trappola ②: cercare un telefono non crea nessuno
+    return { che: che, dove: svcDoveDelGesto(b) };
+  }
+
+  /** Le coordinate per la cella, SOLO se complete — stessa regola di `dovePulito` nella edge, e
+   *  per la stessa ragione: mezze coordinate accenderebbero una colonna intera, e chi guarda
+   *  leggerebbe «sta succedendo qualcosa su tutto il Campo 2». PURA. */
+  function svcDoveDelGesto(b) {
+    const campo = Number(String((b && b.campo) != null ? b.campo : '').replace(/\D/g, ''));
+    const data = String((b && b.data) != null ? b.data : '').trim();
+    const ora = String((b && b.ora) != null ? b.ora : '').trim();
+    if (!campo || !/^\d{4}-\d{2}-\d{2}$/.test(data) || !/^\d{1,2}:\d{2}$/.test(ora)) return null;
+    return { campo: campo, data: data, ora: ora };
+  }
+
+  /** Com'è finita, detta a chi fa segreteria. `null` = non è finita (un lavoro asincrono è
+   *  appena partito): la barra resta accesa e a chiuderla sarà il polling del lavoro o il tetto.
+   *
+   *  🚨⭐⭐ LA RIGA CHE COSTA, ed è la lezione della voce 72 messa su una superficie che guarda
+   *  tutto il circolo: **«non è passata» si dice SOLO su un rifiuto che il gestionale ha
+   *  pronunciato**. Una linea caduta, un timeout, un `esitoIgnoto` non sono un no — e scriverlo
+   *  sul calendario spingerebbe la segreteria a rifare un gesto che può essere già passato,
+   *  cioè a occupare due volte lo stesso campo. ⇒ Nel dubbio si dice il dubbio. PURA. */
+  function svcEsitoDellaRisposta(rispostaOk, dati, erroreDiRete) {
+    if (erroreDiRete) return 'ignoto';
+    const d = (dati && typeof dati === 'object') ? dati : {};
+    if (d.esitoIgnoto === true) return 'ignoto';
+    if (typeof d.error === 'string' && /ESITO_IGNOTO|TIMEOUT|UNREACHABLE|NOT_CONFIGURED|WORKER_/i.test(d.error)) return 'ignoto';
+    if (d.status === 'error') return 'rifiutato';
+    // Un lavoro ASINCRONO appena accodato NON è finito: risponde `ok` con un numero di lavoro, e
+    // la risposta vera arriva minuti dopo. Chiuderlo qui direbbe «fatto» a cose non fatte.
+    if (rispostaOk && d.jobId && d.status !== 'done') return null;
+    if (rispostaOk && (d.status === 'queued' || d.status === 'running' || d.status === 'pending')) return null;
+    if (!rispostaOk || d.ok === false) return 'rifiutato';
+    return 'fatto';
+  }
+
+  /** Il polling di un lavoro asincrono (`?jobId=`) non accende niente — ma è l'unico che sa come
+   *  finisce. Senza questo, una prenotazione `async` riuscita resterebbe accesa fino al tetto e
+   *  si chiuderebbe con «non so com'è finita» mentre il gestionale lo sapeva benissimo. PURA. */
+  function svcEsitoDelLavoro(url, dati) {
+    if (!/[?&]jobId=/.test(String(url || ''))) return null;
+    const d = (dati && typeof dati === 'object') ? dati : {};
+    if (d.status === 'done') return 'fatto';
+    if (d.status === 'error') return 'rifiutato';
+    return null;
+  }
+
+  // L'azione di QUESTO browser, se ce n'è una: { che, chi, dove, stato, ts }.
+  let _svcAzioneLocale = null;
+  let _svcTimerAzione = null;
+
+  function svcAccendiAzione(descrizione) {
+    if (_svcTimerAzione) { clearTimeout(_svcTimerAzione); _svcTimerAzione = null; }
+    _svcAzioneLocale = {
+      che: descrizione.che,
+      // ⛔ «da te» e non il nome dell'operatore: questa riga sta sotto gli occhi di chiunque
+      //    passi davanti allo schermo della segreteria, e chi la legge è già quello che l'ha
+      //    fatta. È la stessa scelta di `chiSpiegato` nella edge, dal lato di qua.
+      chi: 'da te',
+      dove: descrizione.dove || null,
+      stato: 'corso',
+      ts: Date.now(),
+    };
+    const mia = _svcAzioneLocale;
+    _svcTimerAzione = setTimeout(function () { svcChiudiAzione('ignoto', mia); }, SVC_TETTO_AZIONE_MS);
+    svcRidisegnaSemaforo();
+    return mia;
+  }
+
+  /** `rif` è l'azione che chi chiama credeva di chiudere: una risposta lenta non deve poter
+   *  chiudere l'azione SUCCESSIVA, che è un modo silenzioso di dire «fatto» di una cosa diversa. */
+  function svcChiudiAzione(esito, rif) {
+    if (!_svcAzioneLocale) return;
+    if (rif && rif !== _svcAzioneLocale) return;
+    if (!esito || !SVC_ESITI[esito]) return;   // non finita: resta accesa, ci penserà il tetto
+    if (_svcTimerAzione) { clearTimeout(_svcTimerAzione); _svcTimerAzione = null; }
+    _svcAzioneLocale.stato = esito;
+    svcRidisegnaSemaforo();
+    const mia = _svcAzioneLocale;
+    _svcTimerAzione = setTimeout(function () {
+      _svcTimerAzione = null;
+      if (_svcAzioneLocale === mia) { _svcAzioneLocale = null; svcRidisegnaSemaforo(); }
+    }, SVC_ESITI[esito].durataMs);
+  }
+
+  // Riceve lo snapshot della coda e ridisegna. Si legge `snap.semaforo`, MAI lo snapshot grezzo.
+  // 🚨⭐ Qui stava il difetto della versione spenta nel 2026: leggeva `snap.running` e
+  //    `snap.waitingCount` direttamente, quindi mostrava «🔄 Sincronizzazione automatica in
+  //    corso…» ogni due minuti — cioè esattamente la cosa che lui ha chiesto di NON vedere — e
+  //    contava i job automatici nel «in coda: N», annunciando un ingorgo dove non c'era.
+  //    ⇒ Il filtro e la traduzione stanno nella edge (`frasi-del-semaforo.ts`), che è dove si
+  //    possono PROVARE. Qui si disegna e basta.
   function svcRenderQueueStatus(snap) {
+    _svcUltimoSemaforo = (snap && snap.semaforo) ? snap.semaforo : null;
+    _svcUltimoSemaforoTs = Date.now();
+    svcRidisegnaSemaforo();
+  }
+
+  /** Il disegno, con le due fonti davanti.
+   *  ⭐ LA LOCALE HA LA PRECEDENZA, e non è una preferenza estetica: delle due è l'unica che
+   *  sappiamo vera **in questo istante**. La coda arriva con quattro secondi di polling e un
+   *  giro di rete in mezzo: quando le due parlano dello stesso gesto, la coda sta dicendo il
+   *  passato di qualcosa che qui è già andato avanti. */
+  function svcRidisegnaSemaforo() {
     const el = document.getElementById('svcQueueStatus');
     if (!el) return;
-    const sem = (snap && snap.semaforo) ? snap.semaforo : null;
-    _svcUltimoSemaforo = sem;
-    if (!sem || !sem.acceso) {
+    const loc = _svcAzioneLocale;
+    const remotoFresco = (Date.now() - _svcUltimoSemaforoTs) < SVC_REMOTO_SCADE_MS;
+    const sem = (remotoFresco && _svcUltimoSemaforo && _svcUltimoSemaforo.acceso) ? _svcUltimoSemaforo : null;
+    el.className = 'svc-semaforo';
+    if (!loc && !sem) {
       el.hidden = true;
       el.textContent = '';
       svcAccendiCella(null);
       return;
     }
+    const finita = !!(loc && loc.stato !== 'corso');
+    const che = loc
+      ? (finita ? (SVC_ESITI[loc.stato].testo + ' · ' + loc.che) : loc.che)
+      : (sem.che || sem.frase || 'operazione in corso');
+    const chi = loc ? loc.chi : sem.chi;
+    const dove = loc ? loc.dove : sem.dove;
+    // ⚠️ Il conteggio della fila viene SEMPRE dalla coda, anche mentre parla la locale: è
+    //    l'unica delle due che possa contare i gesti degli altri. Si mostra solo quando la coda
+    //    è accesa, cioè quando quel numero conta chi sta DIETRO a un gesto in corso.
+    const inAttesa = sem ? (Number(sem.inAttesa) || 0) : 0;
+    if (finita) el.classList.add(SVC_ESITI[loc.stato].classe);
     el.textContent = '';
     const dot = document.createElement('span');
     dot.className = 'svc-semaforo-dot';
@@ -48124,21 +48367,18 @@ Per confermare scrivi ELIMINA.`);
     //    ora che la cella accesa gli dice già.
     //    ⇒ Si tronca SOLO il «che» (`flex:1 1 auto`); il «chi» sta su `flex:0 0 auto` e resta
     //      intero, come il conteggio della fila.
-    //    📌 *Chi compone una frase a monte decide cosa si perde quando lo spazio finisce, e a
-    //       monte nessuno sa quanto spazio c'è.*
-    // ⛔ `textContent` e non `innerHTML`: la frase viene dal gestionale ma attraversa la coda del
-    //    worker, e un'etichetta non è un posto in cui si accetta del markup.
+    // ⛔ `textContent` e non `innerHTML`: la frase può venire dalla coda del worker, e
+    //    un'etichetta non è un posto in cui si accetta del markup.
     const testo = document.createElement('span');
     testo.className = 'svc-semaforo-testo';
-    testo.textContent = sem.che || sem.frase || 'operazione in corso';
+    testo.textContent = che;
     el.appendChild(testo);
-    if (sem.chi) {
-      const chi = document.createElement('span');
-      chi.className = 'svc-semaforo-chi';
-      chi.textContent = sem.chi;
-      el.appendChild(chi);
+    if (chi) {
+      const spanChi = document.createElement('span');
+      spanChi.className = 'svc-semaforo-chi';
+      spanChi.textContent = chi;
+      el.appendChild(spanChi);
     }
-    const inAttesa = Number(sem.inAttesa) || 0;
     if (inAttesa > 0) {
       const coda = document.createElement('span');
       coda.className = 'svc-semaforo-coda';
@@ -48146,12 +48386,71 @@ Per confermare scrivi ELIMINA.`);
       el.appendChild(coda);
     }
     el.hidden = false;
-    svcAccendiCella(sem.dove);
+    // ⛔ Su un'azione FINITA la cella si spegne: l'accesa dice «qui sta succedendo adesso», e su
+    //    un esito non sta più succedendo niente. La barra resta a raccontare com'è andata.
+    svcAccendiCella(finita ? null : dove);
   }
+
+  /* 🕸️ L'AGGANCIO — UN PUNTO SOLO, e la ragione va detta perché la strada ovvia era un'altra.
+     L'alternativa era chiamare `svcAccendiAzione` nei ~20 punti dell'app che scrivono su
+     Matchpoint: più esplicita e più fragile allo stesso tempo — venti occasioni di
+     dimenticarsene oggi, e una in più per ogni gesto che nascerà domani. È il difetto
+     dell'elenco scritto a mano, già pagato due volte in questa voce.
+     ⇒ Si intercetta dove le venti strade sono già UNA: la `fetch` verso le edge del gestionale.
+     🚨 E NON cambia niente del loro comportamento: la risposta torna intatta al chiamante, il
+        rigetto viene rilanciato tale e quale, ogni passo sta sotto `try`. Se questo blocco
+        esplodesse, l'app scriverebbe lo stesso — **una barra non deve poter far fallire una
+        prenotazione**. */
+  (function svcAggancioDelleAzioni() {
+    if (typeof window === 'undefined' || typeof window.fetch !== 'function') return;
+    if (window.__svcAzioniAgganciate) return;
+    window.__svcAzioniAgganciate = true;
+    const fetchVero = window.fetch.bind(window);
+    window.fetch = function (risorsa, opzioni) {
+      let azione = null, seguiLavoro = false, url = '';
+      try {
+        url = (risorsa && typeof risorsa === 'object' && risorsa.url) ? risorsa.url : String(risorsa || '');
+        let corpo = null;
+        const grezzo = opzioni && opzioni.body;
+        if (typeof grezzo === 'string' && grezzo) { try { corpo = JSON.parse(grezzo); } catch (_e) { corpo = null; } }
+        const descrizione = svcAzioneDaChiamata(url, corpo);
+        if (descrizione) azione = svcAccendiAzione(descrizione);
+        else seguiLavoro = /[?&]jobId=/.test(url) && /\/functions\/v1\/matchpoint-/i.test(url) && !!_svcAzioneLocale;
+      } catch (_e) { azione = null; seguiLavoro = false; }
+      const promessa = fetchVero(risorsa, opzioni);
+      if (!azione && !seguiLavoro) return promessa;
+      const mia = azione || _svcAzioneLocale;
+      return promessa.then(function (risposta) {
+        try {
+          risposta.clone().json().then(function (dati) {
+            try {
+              const delLavoro = svcEsitoDelLavoro(url, dati);
+              if (delLavoro) { svcChiudiAzione(delLavoro, mia); return; }
+              if (azione) svcChiudiAzione(svcEsitoDellaRisposta(risposta.ok, dati, false), azione);
+            } catch (_e) {}
+          }).catch(function () {
+            // Risposta illeggibile: l'HTTP è l'unica cosa che resta da guardare.
+            try { if (azione) svcChiudiAzione(risposta.ok ? 'fatto' : 'rifiutato', azione); } catch (_e) {}
+          });
+        } catch (_e) {}
+        return risposta;
+      }, function (err) {
+        // 🚨 Una `fetch` che RIGETTA non dice «non è passata»: dice «non lo so». La richiesta può
+        //    essere uscita di casa e essere arrivata benissimo — è il caso da cui nasce la voce 23.
+        //    ⚠️ Vale solo per l'azione: un polling di lavoro che cade viene ritentato da chi lo fa,
+        //    e chiudere lì spegnerebbe una barra su un inciampo che non è successo a niente.
+        try { if (azione) svcChiudiAzione('ignoto', azione); } catch (_e) {}
+        throw err;
+      });
+    };
+  })();
 
   // Riaccende la cella dopo un ridisegno della griglia. Chiamata da `renderStaffCalendar`.
   function svcRiaccendiCellaDopoRidisegno() {
-    try { if (_svcUltimoSemaforo && _svcUltimoSemaforo.acceso) svcAccendiCella(_svcUltimoSemaforo.dove); } catch (_e) {}
+    // ⚠️ Ridisegna DA CAPO invece di riaccendere il solo remoto: da quando le fonti sono due,
+    //    guardarne una sola vorrebbe dire che dopo ogni ridisegno della griglia la cella del
+    //    gesto FATTO QUI si spegne — cioè proprio quella che si è appena accesa.
+    try { svcRidisegnaSemaforo(); } catch (_e) {}
   }
 
   async function svcPollQueueStatus() {
