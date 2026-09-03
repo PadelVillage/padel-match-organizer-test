@@ -2821,6 +2821,25 @@
     .svc-msg.staff { background:var(--accent-light); border:1px solid var(--accent); color:var(--text); align-self:flex-end; border-bottom-right-radius:2px; }
     .svc-msg.system { background:var(--surface2); border:1px solid var(--border); color:var(--text); align-self:flex-start; border-bottom-left-radius:2px; }
     .svc-msg.system.ok { border-color:var(--green); }
+    /* 🆕 VOCE 134 — L'ESITO DENTRO LA SCHEDA, sopra la barra del Salva.
+       Sta qui e non solo in chat perché è QUI che guarda chi ha appena cliccato: la barra dei
+       bottoni è l'ultimo elemento della scheda, e su una scheda alta il messaggio di chat nasce
+       centinaia di pixel più sotto — misurato 568px fuori dal bordo su PROD 6.281. */
+    .svc-edit-esito { margin-top:10px; padding:8px 10px; border-radius:8px; font-size:.8rem;
+      line-height:1.4; border:1px solid var(--border); background:var(--surface2); color:var(--text); }
+    .svc-edit-esito.wait { border-color:#f5d98a; background:#fff7e6; color:#92600a; }
+    .svc-edit-esito.ok   { border-color:var(--green); background:#ecfdf3; color:#067647; }
+    .svc-edit-esito.ko   { border-color:#fda29b; background:#fef3f2; color:#d92d20; }
+    /* 🆕 VOCE 134 — LA PASTIGLIA «↓ messaggio nuovo». `sticky` e non `fixed`: resta incollata al
+       bordo basso dell'area messaggi qualunque sia l'ordine dei blocchi (su mobile l'area messaggi
+       e la riga di scrittura si scambiano di posto), senza dover misurare niente a mano. */
+    .svc-chat-nuovi { position:sticky; bottom:6px; align-self:center; z-index:6; max-width:92%;
+      display:flex; align-items:center; gap:6px; margin-top:4px; padding:7px 12px; cursor:pointer;
+      border:1px solid var(--accent); border-radius:999px; background:var(--accent-light);
+      color:var(--text); font-size:.78rem; font-weight:600; text-align:left;
+      box-shadow:0 2px 10px rgba(16,24,40,.18); }
+    .svc-chat-nuovi[hidden] { display:none !important; }
+    .svc-chat-nuovi .svc-chat-nuovi-txt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     /* La riga di sincronizzazione NASCE VUOTA e resta invisibile finché non ha qualcosa da
        dire (avanzamento o esito). Prima ripeteva l'attesa già scritta in testa: la stessa
        cosa detta due volte con parole diverse. ⚠️ NON si può togliere l'elemento: è quello
@@ -8137,7 +8156,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.294';
+    const APP_VERSION = '6.295';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -41207,7 +41226,13 @@ Per confermare scrivi ELIMINA.`);
     // SIMULAZIONE (solo TEST): attiva quando NON si sta pilotando il percorso edge reale.
     const _simulate = PMO_PAYMENTS_SIMULATE && !_harness;
     const esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return String(s == null ? '' : s); };
-    const _setMsg = function (n, html) { try { const last = n && n.querySelector(':scope > div:last-child'); if (last) last.innerHTML = html; } catch (e) {} };
+    // 🆕 VOCE 134 — l'esito ANCHE dentro la scheda della partita, sopra la barra dei bottoni:
+    // i bottoni stanno lì, e su una scheda alta il messaggio di chat nasce fuori dal bordo
+    // (misurato 568px su PROD 6.281). Il `tipo` colora la riga; senza scheda aperta è un no-op.
+    const _setMsg = function (n, html, tipo) {
+      try { const last = n && n.querySelector(':scope > div:last-child'); if (last) last.innerHTML = html; } catch (e) {}
+      _svcSchedaEsito(html, tipo);
+    };
     // Gate di sicurezza: con write OFF, fuori harness e fuori simulazione non si incassa MAI.
     if (!PMO_PAYMENTS_COLLECT_ENABLED && !PMO_PAYMENTS_WRITE_ENABLED && !_harness && !_simulate) {
       try { svcAddMessage('system', 'ℹ️ Incasso non attivo: la scrittura pagamenti (Fase 2b) non è abilitata.'); } catch (e) {}
@@ -41313,6 +41338,42 @@ Per confermare scrivi ELIMINA.`);
     }
   }
 
+  /* 🆕⭐⭐ VOCE 134 — L'ESITO ANCHE DENTRO LA SCHEDA, sopra la barra dei bottoni.
+   *
+   * 🗣️ Sua richiesta del 03/09, dopo aver provato la 132: *«dove è giusto che io veda la conferma?»*
+   * — e poi, più preciso: *«è solo una questione di visualizzazione di un risultato che non deve
+   * essere nascosto, sia se scrivi sia se clicchi i bottoni»*.
+   *
+   * ⚖️ La risposta non è «in alto» né «in basso»: è **dove sta l'occhio nell'istante del gesto**.
+   * I bottoni (Salva · Cash · Card · Wallet · ↩︎) stanno DENTRO la scheda, quindi l'esito di un
+   * click va scritto lì — non 568px più sotto, in fondo a una chat che la scheda ha già superato.
+   * 📌 *Il posto giusto per una risposta è accanto alla domanda, non in fondo al foglio.*
+   *
+   * ⛔ NON sostituisce il messaggio in chat, lo AFFIANCA: la chat è il registro di ciò che è
+   * successo e resta anche quando la scheda si chiude; questa riga è l'eco immediata, e muore con
+   * la scheda. Due cose diverse, non due copie della stessa. */
+  function _svcSchedaEsito(html, tipo) {
+    try {
+      const box = document.querySelector('.svc-edit-box');
+      if (!box) return null; // nessuna scheda aperta: la chat basta e avanza
+      let riga = box.querySelector(':scope > .svc-edit-esito');
+      if (!riga) {
+        riga = document.createElement('div');
+        const barra = box.querySelector(':scope > .svc-edit-actions-bar');
+        if (barra) box.insertBefore(riga, barra); else box.appendChild(riga);
+      }
+      // ⭐ Se il tipo non è dichiarato lo si DEDUCE dal segno che la frase porta già in testa:
+      // così ogni punto che scriveva un esito in chat lo colora qui senza essere toccato — e
+      // nessuno può dimenticarsi di passarlo. 📌 *Una regola che vale per default non si scorda.*
+      const _t = tipo || (/^\s*(✅|👍)/.test(String(html)) ? 'ok'
+        : (/^\s*(⚠️|❌|🚫)/.test(String(html)) ? 'ko'
+        : (/^\s*(↻|⏳|⌛|🧪|🔄)/.test(String(html)) ? 'wait' : '')));
+      riga.className = 'svc-edit-esito' + (_t ? ' ' + _t : '');
+      riga.innerHTML = html;
+      return riga;
+    } catch (e) { return null; }
+  }
+
   // ── IMPORTO A CARICO (voce 132) — cambia QUANTO uno deve, non incassa niente ──────────────
   //
   // 🗣️ Sua richiesta del 03/09: «quando su una scheda cambio l'importo e poi clicco salva me lo
@@ -41348,7 +41409,13 @@ Per confermare scrivi ELIMINA.`);
 
     const _riga = function (c) { return esc(c.nome) + ' ' + _incassiEuro(c.daCents) + ' → ' + _incassiEuro(c.aCents); };
     const note = svcAddMessage('system', '↻ Salvo su Matchpoint ' + (changes.length === 1 ? 'l\'importo' : 'gli importi') + ' a carico… (non chiudere)<br><span style="color:var(--text-muted);font-size:.78rem;">' + changes.map(_riga).join('<br>') + '</span>');
-    const _setMsg = function (html) { try { const last = note && note.querySelector(':scope > div:last-child'); if (last) last.innerHTML = html; } catch (e) {} };
+    // VOCE 134 — l'esito va anche DENTRO la scheda, che qui resta aperta: è lì che guarda chi ha
+    // appena premuto Salva, e il messaggio di chat nasce sotto il bordo.
+    const _setMsg = function (html, tipo) {
+      try { const last = note && note.querySelector(':scope > div:last-child'); if (last) last.innerHTML = html; } catch (e) {}
+      _svcSchedaEsito(html, tipo);
+    };
+    _setMsg('↻ Salvo su Matchpoint ' + (changes.length === 1 ? 'l\'importo' : 'gli importi') + ' a carico… (non chiudere)<br><span style="font-size:.78rem;">' + changes.map(_riga).join('<br>') + '</span>', 'wait');
 
     let done = 0;
     const problemi = [];
@@ -41408,10 +41475,10 @@ Per confermare scrivi ELIMINA.`);
 
     const failed = changes.length - done;
     if (!failed && !problemi.length) {
-      _setMsg('✅ ' + (changes.length === 1 ? 'Importo aggiornato' : 'Importi aggiornati') + ' su Matchpoint<br><span style="color:var(--text-muted);font-size:.78rem;">' + changes.map(_riga).join('<br>') + '</span>');
+      _setMsg('✅ ' + (changes.length === 1 ? 'Importo aggiornato' : 'Importi aggiornati') + ' su Matchpoint<br><span style="font-size:.78rem;">' + changes.map(_riga).join('<br>') + '</span>', 'ok');
     } else {
       _setMsg('⚠️ ' + (done ? (done + ' su ' + changes.length + ' aggiornati. ') : 'Nessun importo aggiornato. ')
-        + '<br><span style="color:var(--text-muted);font-size:.78rem;">' + problemi.join('<br>') + '</span>');
+        + '<br><span style="font-size:.78rem;">' + problemi.join('<br>') + '</span>', 'ko');
     }
     try { if (typeof staffCalRenderPlayersEditor === 'function' && staffCalPlayersState) staffCalRenderPlayersEditor(); } catch (e) {}
     return { ok: !failed && !problemi.length, done: done, failed: failed };
@@ -41439,7 +41506,13 @@ Per confermare scrivi ELIMINA.`);
     const _harness = PMO_IS_TEST_ENV && typeof window !== 'undefined' && window.__pmoPayHarness === true;
     const _simulate = PMO_PAYMENTS_SIMULATE && !_harness;
     const esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return String(s == null ? '' : s); };
-    const _setMsg = function (n, html) { try { const last = n && n.querySelector(':scope > div:last-child'); if (last) last.innerHTML = html; } catch (e) {} };
+    // 🆕 VOCE 134 — l'esito ANCHE dentro la scheda della partita, sopra la barra dei bottoni:
+    // i bottoni stanno lì, e su una scheda alta il messaggio di chat nasce fuori dal bordo
+    // (misurato 568px su PROD 6.281). Il `tipo` colora la riga; senza scheda aperta è un no-op.
+    const _setMsg = function (n, html, tipo) {
+      try { const last = n && n.querySelector(':scope > div:last-child'); if (last) last.innerHTML = html; } catch (e) {}
+      _svcSchedaEsito(html, tipo);
+    };
     // 🔀 Lo storno ha il SUO flag: acceso su sua richiesta, mentre l'incasso resta spento.
     if (!PMO_PAYMENTS_VOID_ENABLED && !_harness && !_simulate) {
       try { svcAddMessage('system', 'ℹ️ Storno non attivo: la scrittura pagamenti (Fase 2b) non è abilitata.'); } catch (e) {}
@@ -46502,6 +46575,72 @@ Per confermare scrivi ELIMINA.`);
   // un singolo scroll nel punto-messaggio non basta. Un MutationObserver sul contenitore riporta la
   // chat in fondo a OGNI aggiunta (messaggi e pulsanti, qualunque sia il percorso), ma solo se
   // l'utente è già vicino al fondo → non lo strappa via mentre scorre la cronologia. Installato 1 volta.
+  /* 🆕⭐⭐ VOCE 134 — LA PASTIGLIA «↓ messaggio nuovo».
+   *
+   * 🗣️ Sua richiesta del 03/09: *«è solo una questione di visualizzazione di un risultato che non
+   * deve essere nascosto, sia se scrivi sia se clicchi i bottoni»*.
+   *
+   * 📏 Il fatto, misurato su PROD 6.281 con la console remota (1440×900): con la scheda della
+   * partita aperta — alta **1216px** contro **711px** di pannello — la conferma nasce **568px
+   * SOTTO il bordo**, e non è visibile. Vale sia per la risposta a una frase scritta in chat, sia
+   * per l'esito di un bottone.
+   *
+   * ⚖️ La cura NON è alzare il tetto della 127: quel tetto è giusto, la scheda si legge dall'alto.
+   * È che quando il nuovo non si può raggiungere da soli, lo si deve poter **leggere e raggiungere
+   * con un dito** — e la pastiglia porta con sé il TESTO, così l'esito si legge senza cliccare
+   * niente. 📌 *Un risultato fuori dallo schermo non è «da scorrere»: è nascosto.* */
+  function _svcPastiglia(cont) {
+    if (!cont) return null;
+    let p = cont.querySelector(':scope > .svc-chat-nuovi');
+    if (!p) {
+      p = document.createElement('button');
+      p.type = 'button';
+      p.className = 'svc-chat-nuovi';
+      p.hidden = true;
+      p.innerHTML = '<span aria-hidden="true">↓</span><span class="svc-chat-nuovi-txt"></span>';
+      p.addEventListener('click', function () {
+        // ⭐ Qui il tetto si SCAVALCA di proposito: è un gesto esplicito di chi vuole andare in
+        // fondo, non un salto deciso dal programma. La differenza fra i due è tutto il difetto.
+        cont.scrollTop = cont.scrollHeight;
+        _svcAggiornaPastiglia(cont);
+      });
+      cont.appendChild(p);
+    } else if (p !== cont.lastElementChild) {
+      cont.appendChild(p); // resta sempre l'ultimo: un messaggio nuovo la scavalcherebbe
+    }
+    return p;
+  }
+
+  /** L'ultimo messaggio si vede? Da qui dipende se la pastiglia serve. */
+  function _svcUltimoMsgVisibile(cont) {
+    try {
+      const msgs = cont.querySelectorAll(':scope > .svc-msg');
+      const u = msgs[msgs.length - 1];
+      if (!u) return { visibile: true, testo: '' };
+      const c = cont.getBoundingClientRect(), m = u.getBoundingClientRect();
+      return {
+        visibile: (m.top < c.bottom - 4 && m.bottom > c.top + 4),
+        testo: String(u.textContent || '').replace(/^\s*(🤖 Sistema|👤 Staff)\s*/, '').replace(/\s+/g, ' ').trim(),
+      };
+    } catch (e) { return { visibile: true, testo: '' }; }
+  }
+
+  function _svcAggiornaPastiglia(cont) {
+    if (!cont) return;
+    const st = _svcUltimoMsgVisibile(cont);
+    const p = _svcPastiglia(cont);
+    if (!p) return;
+    if (st.visibile) {
+      cont.__pmoNonVisti = 0;
+      p.hidden = true;
+      return;
+    }
+    const n = cont.__pmoNonVisti || 0;
+    const txt = p.querySelector('.svc-chat-nuovi-txt');
+    if (txt) txt.textContent = (n > 1 ? (n + ' nuovi · ') : '') + (st.testo || 'messaggio nuovo');
+    p.hidden = false;
+  }
+
   function _svcEnsureAutoScroll(container) {
     if (!container || container.__pmoAutoScroll) return;
     container.__pmoAutoScroll = true;
@@ -46513,6 +46652,16 @@ Per confermare scrivi ELIMINA.`);
       });
       obs.observe(container, { childList: true, subtree: true });
     } catch (e) { /* niente observer → resta lo scroll puntuale di svcAddMessage */ }
+    // La pastiglia segue lo SCROLL A MANO: sparisce appena il messaggio nuovo entra nel bordo,
+    // senza che nessuno la debba cliccare. In `rAF` per non pesare sullo scorrimento.
+    try {
+      let inCoda = false;
+      container.addEventListener('scroll', function () {
+        if (inCoda) return;
+        inCoda = true;
+        requestAnimationFrame(function () { inCoda = false; _svcAggiornaPastiglia(container); });
+      }, { passive: true });
+    } catch (e) {}
   }
 
   function svcAddMessage(role, html, extraClass) {
@@ -46531,12 +46680,26 @@ Per confermare scrivi ELIMINA.`);
     // WhatsApp: il messaggio nuovo va IN FONDO (ultimo), subito sopra la barra di scrittura,
     // e si scrolla in basso così resta visibile. Coerente in tutta la web app.
     container.appendChild(div);
-    _svcAutoScroll(container);
+    // 🩹🚨⭐⭐ VOCE 134 — `true` = **solo in giù**, e prima era senza.
+    //
+    // 📏 Misurato su PROD 6.281: cliccando un bottone della scheda (il Salva sta in fondo, quindi
+    // l'operatore è **in basso**), il messaggio d'esito riportava la vista a `scrollTop = 0`. Non
+    // era il messaggio ad andare in fondo: era la **vista a tornare in cima**, perché il tetto
+    // della 127 veniva applicato anche verso l'ALTO — `cont.scrollTop = meta` con `meta` = cima
+    // della scheda, che quando sei sotto è uno **strappo all'indietro**.
+    // ⚖️ Il tetto resta e resta giusto (una scheda si legge dall'alto): quello che cambia è che
+    // non trascina più indietro chi è già più avanti. L'observer questa regola ce l'aveva **già**
+    // (`soloInGiu`), questa chiamata no: due strade per lo stesso gesto, e una sola protetta.
+    // 📌 *Un tetto dice «non oltre», non «torna indietro».*
+    _svcAutoScroll(container, true);
+    _svcAggiornaPastiglia(container);
     // Auto-pulizia: il timer parte SOLO alla conferma reale di Matchpoint
     // (svcMpSyncConfirmed) o a fine di un'operazione sincrona; qui ogni nuovo
     // messaggio annulla un eventuale timer pendente, così un errore tardivo o una
     // nuova azione restano sempre visibili.
     svcCancelAutoClear();
+    try { if (!_svcUltimoMsgVisibile(container).visibile) container.__pmoNonVisti = (container.__pmoNonVisti || 0) + 1; } catch (e) {}
+    _svcAggiornaPastiglia(container);
     return div;
   }
 
