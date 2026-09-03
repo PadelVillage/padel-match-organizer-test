@@ -46424,14 +46424,20 @@ Per confermare scrivi ELIMINA.`);
     const campoLbl=lbl('Campo'); campoLbl.style.marginBottom='0';
     const dateSpan=document.createElement('span'); dateSpan.style.cssText='font-size:'+FS.date+'px;color:var(--text);font-weight:700;'; dateSpan.textContent='📅 '+ddmm;
     campoLblRow.appendChild(campoLbl); campoLblRow.appendChild(dateSpan); fCampo.appendChild(campoLblRow);
-    const campoRow=document.createElement('div'); campoRow.style.cssText='display:flex;gap:6px;flex-wrap:nowrap;align-items:center;';
+    // 🚨📏 GRIGLIA e non flex, ed è una correzione MISURATA: con `display:flex` e `flex:1 1 0` i
+    // quattro bottoni restavano larghi 43px su una riga da 220 — il `flex-grow` risultava 1 e la
+    // base 0, eppure non crescevano, e la riga finiva con 32px di vuoto in coda. Con la stessa
+    // griglia usata qui sotto per i Tipo (`repeat(4,minmax(0,1fr))` + `width:100%` sul bottone)
+    // riempiono la riga. 📌 *Un bottone non si comporta come un div né in griglia né in flex:
+    // la larghezza gliela si dà, non gliela si chiede.*
+    const campoRow=document.createElement('div'); campoRow.style.cssText='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-items:center;';
     const campoBtns=[];
     for (let i=1;i<=4;i++){
       const b=document.createElement('button'); b.type='button';
       // `flex:1 1 0` + `min-width:0`: i quattro si dividono la riga in parti uguali e nessuno la
       // allarga oltre. Senza `min-width:0` varrebbe la dimensione minima automatica dei flex item
       // e la riga sborderebbe invece di stringersi — è la stessa trappola della stellina (v6.129).
-      b.style.cssText='flex:1 1 0;min-width:0;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:'+FS.btn+'px;padding:'+PAD.pill4+';border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;';
+      b.style.cssText='width:100%;box-sizing:border-box;min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:'+FS.btn+'px;padding:'+PAD.pill4+';border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;';
       const d=document.createElement('span'); d.style.cssText='width:9px;height:9px;border-radius:50%;flex:0 0 auto;background:'+FIELD_COLORS[i-1]+';'; b.appendChild(d);
       b.appendChild(document.createTextNode(String(i)));
       const col=FIELD_COLORS[i-1], idx=i;
