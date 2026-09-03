@@ -8250,7 +8250,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.305';
+    const APP_VERSION = '6.306';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -13401,6 +13401,31 @@ Grazie.`
       if (!vivo) return '';
       return String((locale && locale.matchpointIdInterno) || '') === vivo ? '' : vivo;
     }
+    // 🔢 IL CODICE CLIENTE ha lo STESSO difetto e conseguenze PEGGIORI (03/09/2026, misurato
+    // curando la 138). Neanche `memberId` sta in `PMO_MEMBER_CLOUD_FIELDS` ⇒ una copia locale
+    // che non ce l'ha non lo impara mai. Ma qui non si spegne un nome cliccabile: si spegne la
+    // GUARDIA ANTI-OMONIMIA DELLE SCRITTURE.
+    // 📏 Misurato nel worker: `searchAndAddPlayer` usa `expectedClientCode` come termine di
+    // ricerca e per scartare i candidati con codice diverso PRIMA di cliccare. Senza,
+    // `searchTerm` ripiega sul NOME e il controllo sul codice non scatta affatto.
+    // 📏 E gli omonimi ci sono davvero: su PROD **13 gruppi, 27 soci** con nome e cognome
+    // identici. ⇒ Un codice mancante non è un dettaglio: è la differenza fra aggiungere a una
+    // partita la persona giusta e aggiungerne un'altra con lo stesso nome.
+    // ⛔ LA REGOLA È QUELLA DI `chooseMemberId` NELL'IMPORT, non una inventata qui: un codice
+    //    Matchpoint vero (sole cifre, 3+) vince su un segnaposto `PMO-…` o sul vuoto; per il
+    //    resto **vince quello che c'è già**. Un codice vero locale NON viene sostituito da un
+    //    codice vero diverso del cloud: sarebbero due persone, e sceglierne una in silenzio è
+    //    lo stesso azzardo della 138.
+    // 📌 Fuori dal confronto sulla freschezza per la stessa ragione dell'id: un codice cliente
+    //    è un indirizzo, non un dato che invecchia.
+    function pmoCodiceClienteDalCloud(locale, cloud) {
+      const vero = (v) => /^\d{3,}$/.test(v);
+      const vivo = cleanCell(cloud && cloud.memberId);
+      const mio = String((locale && locale.memberId) || '').trim();
+      if (!vero(vivo)) return '';        // il cloud non ha un codice vero: niente da imparare
+      if (vero(mio)) return '';          // ne ho già uno vero: non si sostituisce
+      return vivo === mio ? '' : vivo;
+    }
     function pmoMemberFieldsFromCloud(locale, cloud, cloudRowAt) {
       if (!locale || !cloud) return { changed: false, next: locale };
       if (!(pmoCloudTsMs(cloudRowAt) > pmoCloudTsMs(locale.updatedAt))) return { changed: false, next: locale };
@@ -13712,12 +13737,15 @@ Grazie.`
           const idInternoVivo = pmoIdInternoDalCloud(g, m);
           const idImparato = !!idInternoVivo;
           if (idImparato) g.matchpointIdInterno = idInternoVivo;
+          const codiceVivo = pmoCodiceClienteDalCloud(g, m);
+          const codiceImparato = !!codiceVivo;
+          if (codiceImparato) g.memberId = codiceVivo;
           const esito = pmoMemberFieldsFromCloud(g, m, rowAt.get(id));
           if (esito.changed) giocatori[i] = esito.next;
           // Un solo conteggio per riga: `updated` non è una statistica, è ciò che fa scattare il
           // `save('giocatori')` qui sotto — e senza quel salvataggio l'id imparato si perde al
           // ricaricamento, cioè la cura durerebbe una sessione sola.
-          if (idImparato || esito.changed) updated++;
+          if (idImparato || codiceImparato || esito.changed) updated++;
         });
         if (updated > 0) console.log('PMO_CLOUD_MEMBERS_REFRESHED', { updated, total: giocatori.length });
         // Dedup consistente con l'import (pmoImportContactKey = nome+telefono, STRETTA):
