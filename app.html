@@ -2812,8 +2812,21 @@
        prima antenata posizionata, che qui è la pagina — e finirebbe in fondo allo schermo invece
        che sul bordo basso della griglia. */
     .svc-grid-col { flex:1; min-width:0; overflow:hidden; position:relative; }
+    /* 🚨⭐⭐ `fixed` E NON `absolute`, e la riga vecchia diceva l'opposto — corretta il 03/09 a
+       tarda notte, PAGATA con una promozione in PROD che non si vedeva.
+       📏 Misurato sulla pagina viva di PROD 6.307 con la console remota: la barra esisteva,
+       l'aggancio era attivo, il markup e il CSS erano quelli giusti — e stava a `top: 894` con
+       la finestra alta **900**. Ancorata a `.svc-grid-col` con `bottom:0`, finiva in fondo alla
+       COLONNA, che è alta quanto il calendario e sfora sotto il bordo dello schermo: più righe
+       ha la griglia, più la barra è giù. Fuori vista, sempre.
+       ⚖️ È la 24ª — la sonda che guarda nel cassetto sbagliato: il DOM diceva «la barra c'è, è
+       larga quanto la colonna, sta sul suo bordo basso» e ogni parola era vera. Nessuna di
+       quelle misure chiedeva *si vede?*, che è l'unica cosa che conta per una barra.
+       ⇒ Ora è ancorata al **fondo della finestra**; `left` e `width` li allinea alla colonna del
+         calendario `svcAllineaSemaforoAllaColonna()`, così la disposizione D resta quella che
+         lui ha scelto. `position:relative` su `.svc-grid-col` resta: serve alla CELLA. */
     .svc-semaforo {
-      position:absolute; left:0; right:0; bottom:0; z-index:30;
+      position:fixed; bottom:0; left:0; width:100%; z-index:30;
       display:flex; align-items:center; gap:8px;
       padding:7px 12px; box-sizing:border-box;
       font-size:.76rem; font-weight:600; line-height:1.25;
@@ -8267,7 +8280,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.308';
+    const APP_VERSION = '6.309';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -47040,9 +47053,40 @@ Per confermare scrivi ELIMINA.`);
     } catch (e) {}
   }
 
+  /** 🚦 VOCE 137 ⑤ — I MESSAGGI DI AVANZAMENTO ESCONO DALLA SCHEDA (03/09/2026, tarda notte).
+   *
+   *  🗣️ Sua richiesta, dopo aver visto la barra e la scheda dire la stessa cosa due volte:
+   *     «Vorrei levare tutti i messaggi dentro la scheda.»
+   *
+   *  ⚖️ SI TOLGONO SOLO GLI AVANZAMENTI, e la riga va letta per quello che dice: sono i messaggi
+   *  che raccontano *«sta succedendo»*, cioè esattamente ciò che adesso la barra racconta meglio
+   *  — in un posto solo, sempre nello stesso punto dello schermo, senza far scorrere la scheda.
+   *  ⛔ Gli ESITI e gli ERRORI restano dove sono, ed è una scelta dichiarata: la barra li mostra
+   *  per 6-14 secondi, mentre un rifiuto con dentro il motivo («il campo è già prenotato») serve
+   *  anche cinque minuti dopo, a chi torna a guardare cos'era andato storto.
+   *  📌 *Togliere un messaggio che si ripete è pulizia; togliere l'unico posto in cui una cosa è
+   *     scritta è perdita di informazione, e le due si somigliano molto mentre le fai.*
+   *
+   *  PURA, così il banco la esegue invece di rileggerla. */
+  function svcMessaggioVaSoloNellaBarra(html) {
+    const t = String(html == null ? '' : html);
+    // `mp-sync-head` è la classe del «⏳ Sto elaborando la richiesta su Matchpoint», in tutti e
+    // quattro i punti da cui nasce: è l'avanzamento per eccellenza, ed è quello che lui ha
+    // fotografato con la barra vuota di fianco.
+    if (/mp-sync-head/.test(t)) return true;
+    if (/Aggiorno la lista giocatori/i.test(t)) return true;
+    if (/Lista giocatori aggiornata da Matchpoint/i.test(t)) return true;
+    return false;
+  }
+
   function svcAddMessage(role, html, extraClass) {
     const container = document.getElementById('svcChatMessages');
     if (!container) { const d = document.createElement('div'); return d; }
+    // ⭐ Si torna un div ORFANO invece di `null`: chi ha chiamato ci scrive sopra per aggiornare
+    //   il proprio testo (`_setNote` riscrive `innerHTML` a ogni secondo che passa) e con `null`
+    //   esploderebbe. Così quel codice continua a funzionare, parlando a un elemento che nessuno
+    //   guarda — che è esattamente ciò che serve.
+    if (svcMessaggioVaSoloNellaBarra(html)) { const d = document.createElement('div'); d.innerHTML = html; return d; }
     _svcEnsureAutoScroll(container);
     const div = document.createElement('div');
     div.className = 'svc-msg ' + role + (extraClass ? ' ' + extraClass : '');
@@ -48331,6 +48375,22 @@ Per confermare scrivi ELIMINA.`);
    *  sappiamo vera **in questo istante**. La coda arriva con quattro secondi di polling e un
    *  giro di rete in mezzo: quando le due parlano dello stesso gesto, la coda sta dicendo il
    *  passato di qualcosa che qui è già andato avanti. */
+  /** Mette la barra sopra la colonna del calendario, restando ancorata al fondo della FINESTRA.
+   *  ⚖️ Due cose in una, e nessuna si può togliere: `fixed` la tiene visibile comunque scorra la
+   *  pagina, e queste due misure le ridanno la larghezza della colonna — che è la disposizione D
+   *  che lui ha scelto. Senza la seconda sarebbe una fascia da bordo a bordo, sopra anche la
+   *  chat; senza la prima non si vedrebbe affatto, ed è il difetto che questa riga cura. */
+  function svcAllineaSemaforoAllaColonna(el) {
+    try {
+      const col = document.querySelector('.svc-grid-col');
+      if (!col) return;                       // niente colonna: resta a tutta larghezza, e si VEDE
+      const r = col.getBoundingClientRect();
+      if (!r || r.width < 40) return;
+      el.style.left = Math.round(r.left) + 'px';
+      el.style.width = Math.round(r.width) + 'px';
+    } catch (_e) {}
+  }
+
   function svcRidisegnaSemaforo() {
     const el = document.getElementById('svcQueueStatus');
     if (!el) return;
@@ -48386,6 +48446,7 @@ Per confermare scrivi ELIMINA.`);
       el.appendChild(coda);
     }
     el.hidden = false;
+    svcAllineaSemaforoAllaColonna(el);
     // ⛔ Su un'azione FINITA la cella si spegne: l'accesa dice «qui sta succedendo adesso», e su
     //    un esito non sta più succedendo niente. La barra resta a raccontare com'è andata.
     svcAccendiCella(finita ? null : dove);
@@ -48401,6 +48462,17 @@ Per confermare scrivi ELIMINA.`);
         rigetto viene rilanciato tale e quale, ogni passo sta sotto `try`. Se questo blocco
         esplodesse, l'app scriverebbe lo stesso — **una barra non deve poter far fallire una
         prenotazione**. */
+  // La colonna si sposta quando la finestra cambia (e su un telefono che ruota cambia tutto):
+  // la barra è `fixed`, quindi da sola resterebbe dov'era.
+  try {
+    window.addEventListener('resize', function () {
+      try {
+        const el = document.getElementById('svcQueueStatus');
+        if (el && !el.hidden) svcAllineaSemaforoAllaColonna(el);
+      } catch (_e) {}
+    });
+  } catch (_e) {}
+
   (function svcAggancioDelleAzioni() {
     if (typeof window === 'undefined' || typeof window.fetch !== 'function') return;
     if (window.__svcAzioniAgganciate) return;
