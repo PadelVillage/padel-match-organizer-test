@@ -8137,7 +8137,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.290';
+    const APP_VERSION = '6.291';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -46188,6 +46188,18 @@ Per confermare scrivi ELIMINA.`);
   // 📌 *Una regola che vale per i messaggi non vale per un modulo che sta nello stesso contenitore:
   // il contenitore è lo stesso, il gesto di lettura no.*
 
+  /** 🚨⭐⭐ LE SCHEDE che dentro la chat si leggono DALL'ALTO, e che quindi il tetto deve
+   *  proteggere. È un ELENCO, e va tenuto completo: qui il 02/09 c'era la sola `.svc-edit-box`
+   *  (la scheda della partita), e il 03/09 lui ha segnalato **lo stesso identico difetto** sulla
+   *  scheda «Nuova prenotazione», che è `.svc-flow-card` — riprodotto su PROD 6.277: contenitore
+   *  da 500px ⇒ testa tagliata di 171px, da 600px ⇒ di 71px.
+   *  ⚖️ La cura era giusta, l'elenco era corto: *una cura si scrive sulla FAMIGLIA, non
+   *  sull'esemplare che si aveva davanti* — e finché la famiglia è un elenco a mano, chi ne
+   *  aggiunge un membro deve aggiungerlo QUI. Il banco lo verifica.
+   *  ⛔ Non ci vanno le BOLLE dei messaggi (`.svc-msg`): quelle sono righe di chat, si leggono
+   *  dove capita, e il messaggio nuovo deve continuare ad andare in fondo. */
+  const SVC_SCHEDE_CHE_SI_LEGGONO_DALLALTO = '.svc-edit-box, .svc-flow-card';
+
   /** Dove deve fermarsi lo scroll. Funzione PURA (nessun DOM): è ciò che il banco prova.
    *  `cimaScheda` = offset di scroll a cui la scheda comincia, oppure null se scheda non c'è. */
   function _svcTettoScroll(m) {
@@ -46206,7 +46218,7 @@ Per confermare scrivi ELIMINA.`);
       // `.svc-edit-box` e non `.svc-edit-host`: staffCalBringEditorToTop sposta il BOX in fondo al
       // contenitore, fuori dalla sua bolla ⇒ una guardia agganciata all'host lo perderebbe proprio
       // nel percorso dell'assistente (aggiunta/rimozione giocatore), che è uno di quelli che scrolla.
-      const scheda = cont.querySelector('.svc-edit-box');
+      const scheda = cont.querySelector(SVC_SCHEDE_CHE_SI_LEGGONO_DALLALTO);
       if (scheda) {
         const pad = parseFloat(getComputedStyle(cont).paddingTop) || 0;
         cimaScheda = cont.scrollTop + (scheda.getBoundingClientRect().top - cont.getBoundingClientRect().top) - pad;
@@ -46376,8 +46388,11 @@ Per confermare scrivi ELIMINA.`);
       : ((window.innerWidth || 999) < 900 ? 1 : 0);
     const _l  = function(a,b){ return Math.round(a + (b - a) * _t); };
     const _lp = function(a,b){ return _l(a,b) + 'px'; };
-    const FS  = { title:_l(15,29), label:_l(12,22), ctrl:_l(14,24), btn:_l(13,23), date:_l(13,22), fine:_l(12,22), chip:_l(13,22), sugg:_l(13,22), foot:_l(14,24), x:_l(16,30), plus:_l(16,30) };
-    const PAD = { ctrl:_lp(6,12)+' '+_lp(8,14), pill:_lp(5,11)+' '+_lp(11,18), tipo:_lp(6,12)+' '+_lp(11,18), gioc:_lp(7,13)+' '+_lp(10,16), foot:_lp(8,15)+' '+_lp(14,22), sugg:_lp(8,14)+' '+_lp(10,16) };
+    const FS  = { title:_l(15,29), label:_l(12,22), ctrl:_l(14,24), btn:_l(13,23), date:_l(13,22), fine:_l(12,22), chip:_l(13,22), sugg:_l(13,22), foot:_l(14,24), x:_l(16,30), plus:_l(16,30), tipo:_l(12,21) };
+    // v6.291 — le quattro pastiglie dei campi e i quattro tipi stanno su UNA riga: a 250px il
+    // fianco largo di prima (11px) non ci sta in quattro. Misurato: 250 − 28 di padding − 3 spazi
+    // = 213px per quattro, cioè ~51px l'uno, dentro cui deve entrare «Partita».
+    const PAD = { ctrl:_lp(6,12)+' '+_lp(8,14), pill:_lp(5,11)+' '+_lp(11,18), pill4:_lp(5,11)+' '+_lp(8,14), tipo:_lp(6,12)+' '+_lp(11,18), tipo4:_lp(6,12)+' '+_lp(4,10), gioc:_lp(7,13)+' '+_lp(10,16), foot:_lp(8,15)+' '+_lp(14,22), sugg:_lp(8,14)+' '+_lp(10,16) };
     const inSel = 'width:100%;font-size:'+FS.ctrl+'px;padding:'+PAD.ctrl+';border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text);';
 
     const card = document.createElement('div');
@@ -46393,20 +46408,37 @@ Per confermare scrivi ELIMINA.`);
 
     function lbl(t){ const l=document.createElement('div'); l.textContent=t; l.style.cssText='font-size:'+FS.label+'px;color:var(--text-muted);margin-bottom:5px;'; return l; }
 
-    const fCampo=document.createElement('div'); fCampo.style.marginBottom='12px'; fCampo.appendChild(lbl('Campo'));
-    const campoRow=document.createElement('div'); campoRow.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center;';
+    // ⭐ v6.291 (voce 131, sua richiesta, disposizione «A» scelta da lui su tre disegnate):
+    //   ① LA DATA VA DOPO LA PAROLA «Campo», sulla riga dell'etichetta — sue parole: *«la data la
+    //      metti dopo il testo campo»*. Non è solo un posto diverso: stando a destra sulla riga
+    //      delle pastiglie se ne prendeva ~55px e mandava il CAMPO 4 a capo da solo.
+    //   ② I QUATTRO CAMPI SU UNA RIGA (`flex-wrap:nowrap`, ognuno `flex:1 1 0`) — *«ottimizza i
+    //      campi mettendoli tutti su una riga»*.
+    // 📏 Misurato prima: nel pannello di destra la scheda è larga 250px, e il blocco Campo pesava
+    // 103px dei 660 totali proprio perché le pastiglie andavano a capo.
+    // ⭐ I pallini colorati RESTANO, ed è la ragione per cui la «A» è stata consigliata contro la
+    // «B» (che li perdeva in un menu a tendina): il colore del campo è la stessa lingua del
+    // calendario, dove il campo si riconosce dal colore prima che dal numero.
+    const fCampo=document.createElement('div'); fCampo.style.marginBottom='12px';
+    const campoLblRow=document.createElement('div'); campoLblRow.style.cssText='display:flex;align-items:baseline;gap:7px;margin-bottom:5px;';
+    const campoLbl=lbl('Campo'); campoLbl.style.marginBottom='0';
+    const dateSpan=document.createElement('span'); dateSpan.style.cssText='font-size:'+FS.date+'px;color:var(--text);font-weight:700;'; dateSpan.textContent='📅 '+ddmm;
+    campoLblRow.appendChild(campoLbl); campoLblRow.appendChild(dateSpan); fCampo.appendChild(campoLblRow);
+    const campoRow=document.createElement('div'); campoRow.style.cssText='display:flex;gap:6px;flex-wrap:nowrap;align-items:center;';
     const campoBtns=[];
     for (let i=1;i<=4;i++){
       const b=document.createElement('button'); b.type='button';
-      b.style.cssText='display:inline-flex;align-items:center;gap:6px;font-size:'+FS.btn+'px;padding:'+PAD.pill+';border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;';
-      const d=document.createElement('span'); d.style.cssText='width:9px;height:9px;border-radius:50%;background:'+FIELD_COLORS[i-1]+';'; b.appendChild(d);
-      b.appendChild(document.createTextNode(' '+i));
+      // `flex:1 1 0` + `min-width:0`: i quattro si dividono la riga in parti uguali e nessuno la
+      // allarga oltre. Senza `min-width:0` varrebbe la dimensione minima automatica dei flex item
+      // e la riga sborderebbe invece di stringersi — è la stessa trappola della stellina (v6.129).
+      b.style.cssText='flex:1 1 0;min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:'+FS.btn+'px;padding:'+PAD.pill4+';border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;';
+      const d=document.createElement('span'); d.style.cssText='width:9px;height:9px;border-radius:50%;flex:0 0 auto;background:'+FIELD_COLORS[i-1]+';'; b.appendChild(d);
+      b.appendChild(document.createTextNode(String(i)));
       const col=FIELD_COLORS[i-1], idx=i;
       b.addEventListener('click',function(){ svcFlowState.campo=idx; campoBtns.forEach(function(x){x.style.background='var(--surface)';x.style.borderColor='var(--border)';x.style.fontWeight='400';}); b.style.background='var(--surface2)'; b.style.borderColor=col; b.style.fontWeight='700'; });
       campoBtns.push(b); campoRow.appendChild(b);
     }
-    const dateSpan=document.createElement('span'); dateSpan.style.cssText='margin-left:auto;font-size:'+FS.date+'px;color:var(--text-muted);'; dateSpan.textContent='📅 '+ddmm;
-    campoRow.appendChild(dateSpan); fCampo.appendChild(campoRow); card.appendChild(fCampo);
+    fCampo.appendChild(campoRow); card.appendChild(fCampo);
 
     const fTime=document.createElement('div'); fTime.style.cssText='display:flex;gap:12px;margin-bottom:6px;';
     const colOra=document.createElement('div'); colOra.style.flex='1'; colOra.appendChild(lbl('Ora inizio'));
@@ -46420,10 +46452,18 @@ Per confermare scrivi ELIMINA.`);
     const fineRow=document.createElement('div'); fineRow.style.cssText='font-size:'+FS.fine+'px;color:var(--text-muted);margin-bottom:14px;'; card.appendChild(fineRow);
 
     const fTipo=document.createElement('div'); fTipo.style.marginBottom='14px'; fTipo.appendChild(lbl('Tipo'));
-    const tipoRow=document.createElement('div'); tipoRow.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;'; const tipoBtns=[];
+    // v6.291 — anche il Tipo passa da 2\u00d72 a UNA riga da quattro: era il secondo blocco per
+    // peso (107px su 660). 🚨 A 250px «Manutenzione» in una colonna da ~51px non ci sta, quindi
+    // sotto una certa larghezza si accorcia in «Manut.» — ⛔ ma solo il TESTO MOSTRATO: `tp.key`
+    // resta intero perché è la chiave con cui si cercano le durate (`SVC_DURATE_PER_TIPO`) e il
+    // valore che finisce in `svcFlowState.tipoLabel`, cioè quello che il riepilogo scrive al
+    // posto di «🎾 Partita». È la stessa distinzione della voce 128: l'etichetta si
+    // accorcia, la chiave no.
+    const _tipoTesto=function(k){ return (k==='Manutenzione' && _t<0.5) ? 'Manut.' : k; };
+    const tipoRow=document.createElement('div'); tipoRow.style.cssText='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;'; const tipoBtns=[];
     TIPI.forEach(function(tp){
-      const b=document.createElement('button'); b.type='button'; b.textContent=tp.key;
-      b.style.cssText='font-size:'+FS.btn+'px;padding:'+PAD.tipo+';border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;';
+      const b=document.createElement('button'); b.type='button'; b.textContent=_tipoTesto(tp.key); b.title=tp.key;
+      b.style.cssText='min-width:0;font-size:'+FS.tipo+'px;padding:'+PAD.tipo4+';border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;';
       if(tp.disabled){ b.disabled=true; b.style.opacity='0.45'; b.style.cursor='not-allowed'; } else { b.addEventListener('click',function(){ selectTipo(tp); }); }
       tipoBtns.push({b:b,tp:tp}); tipoRow.appendChild(b);
     });
