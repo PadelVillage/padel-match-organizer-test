@@ -8250,7 +8250,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.304';
+    const APP_VERSION = '6.305';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -43653,21 +43653,6 @@ Per confermare scrivi ELIMINA.`);
           // ⛔ Su una riga segnata per la RIMOZIONE non si aggancia: là il nome è barrato e
           //    l'unica cosa che deve dire è «questo sta per uscire».
           const _socio = marked ? null : _staffCalSocioDelGiocatore(p);
-          // 🔬 SONDA TEMPORANEA — SOLO TEST, e va tolta appena la 138 è capita (03/09/2026 notte).
-          // Il nome non prende il tratteggio e da fuori non si distinguono due guasti diversi:
-          // «il roster non porta l'id» e «l'id c'è ma non aggancia nessun socio». La differenza
-          // sta in UN numero che nessuna misura fatta dal cloud può vedere — la console remota
-          // non può aprire una scheda partita (blocca la strada verso il worker), e il flag che
-          // la sbloccherebbe è rifiutato dall'ambiente. ⇒ Lo fa dire alla pagina.
-          // ⛔ Gated su TEST: in PROD questo codice non deve mai comparire (regola 3 di CLAUDE.md).
-          if (typeof PMO_IS_TEST_ENV !== 'undefined' && PMO_IS_TEST_ENV) {
-            const _sonda = document.createElement('span');
-            _sonda.style.cssText = 'font-size:.68rem;color:#b45309;font-weight:700;margin-left:6px;';
-            const _raw = (p && p.idCliente != null) ? String(p.idCliente) : '';
-            _sonda.textContent = '[idCli=' + (_raw === '' ? '(vuoto)' : _raw) + (_socio ? ' ✓' : ' ✗') + ']';
-            _sonda.title = 'Sonda temporanea voce 138: id interno letto dal roster, e se ha agganciato un socio.';
-            nm.appendChild(_sonda);
-          }
           if (_socio) {
             nm.classList.add('svc-pl-name-apri');
             nm.setAttribute('role', 'link');
