@@ -2945,6 +2945,18 @@
     .svc-pl-paid { flex:0 0 auto; font-size:.76rem; font-weight:700; color:var(--green); white-space:nowrap; }
     .svc-pl-eur { flex:0 0 auto; display:inline-flex; align-items:center; gap:2px; border:1px solid var(--accent); border-radius:8px; padding:0 6px; height:30px; background:var(--surface); }
     .svc-pl-eur-sym { color:var(--text-muted); font-size:.74rem; }
+    /* 👛 VOCE 139 — la pastiglia del borsellino: è un'INFORMAZIONE, non un bottone.
+       Niente bordo, niente sfondo, `cursor:default`: sta accanto all'importo e si legge. Sua
+       decisione «pastiglia muta» — in una scheda dove ogni cosa cliccabile tocca il circolo, un
+       bottone innocuo in mezzo a bottoni che scrivono su Matchpoint è un invito a sbagliare mira.
+       ⭐ L'emoji al posto dell'icona `ti-wallet` è voluta due volte: è quello che ha chiesto lui
+       («un'iconcina con un emoticon di un borsellino») ED è ciò che distingue a colpo d'occhio
+       questa pastiglia dal BOTTONE Wallet qui sotto, che l'icona monocroma ce l'ha già.
+       ⚠️ `-ignoto` è il caso «non l'ho letto»: grigio e in corsivo, perché un trattino che ha
+       l'aria di un numero è peggio dell'assenza del trattino. */
+    .svc-pl-wallet { flex:0 0 auto; display:inline-flex; align-items:center; gap:3px; font-size:.74rem; font-weight:700; color:var(--text); white-space:nowrap; cursor:default; }
+    .svc-pl-wallet-ic { font-size:13px; line-height:1; }
+    .svc-pl-wallet-ignoto { color:var(--text-muted); font-weight:600; font-style:italic; }
     /* 🩹 VOCE 135 (03/09/2026) — L'IMPORTO ERA INCOLLATO A DESTRA, lontano dal suo `€`.
        🗣️ Sua segnalazione provando la 134: *«quando scrivo l'importo è troppo allineato a destra»*.
        📏 Misurato sulla pagina viva di PROD 6.282: casella **58px** con `text-align:right`, e il
@@ -3074,6 +3086,8 @@
       .svc-pl-method { font-size:.92rem; height:44px; }
       .svc-pl-paidmeth { font-size:.85rem; padding:3px 10px; }
       .svc-pl-paidmeth i { font-size:15px; }
+      .svc-pl-wallet { font-size:.9rem; }
+      .svc-pl-wallet-ic { font-size:16px; }
       .svc-pl-iconbtn { width:34px; height:34px; font-size:19px; }
       .svc-chat-fab { display:flex; position:fixed; bottom:20px; right:20px; z-index:250; width:52px; height:52px; border-radius:50%; background:var(--accent); border:none; color:#fff; font-size:1.4rem; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 4px 16px rgba(37,99,235,.40); transition:background .15s,transform .15s; }
       .svc-chat-fab:hover { background:var(--accent-hover); transform:scale(1.08); }
@@ -8172,7 +8186,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.297';
+    const APP_VERSION = '6.298';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -24628,6 +24642,28 @@ Grazie!`
     function _incassiEuro(cents) {
       const v = (Number(cents) || 0) / 100;
       return v.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    }
+    // 👛 VOCE 139 — la pastiglia del borsellino, accanto all'importo (03/09/2026).
+    // Regola tenuta PURA e fuori dal disegno perché è l'unico punto in cui questa voce può fare
+    // danno: `null` NON è zero. Il worker mette `saldoCents` su OGNI riga del roster leggendolo
+    // dalla ficha Matchpoint (`server.mjs:7818`); quando la cella manca o la lettura scade
+    // (timeout 1500ms) arriva `null`, che vuol dire «non l'ho letto», non «non ha credito».
+    // 🚨 Scrivere `0,00 €` su un saldo IGNOTO direbbe «non ha credito» a chi fa cassa la sera:
+    // può rinunciare a un Wallet che invece funzionava, o mandare a pagare in contanti chi il
+    // credito ce l'aveva. È lo stesso bivio della voce 114 («Libero» invece di «non lo so»).
+    // ⚖️ Lo ZERO invece si DICHIARA (`0,00 €`, sua decisione del 03/09): «non ha credito» è
+    // un'informazione, e chi fa cassa la usa. È proprio quella decisione a rendere obbligatoria
+    // la distinzione qui sopra: se lo zero è una dichiarazione esplicita, scriverlo quando il
+    // dato manca non è più un'omissione — è una bugia netta.
+    // ⚠️ Il committente ha misurato su Matchpoint che la SCHEDA CLIENTE scrive «0,00» sullo zero.
+    // Vero, ma è un'ALTRA pagina: il saldo della riga viene dalla colonna dentro la ficha della
+    // partita, quindi quel fatto non elimina il caso «non l'ho letto».
+    function _pmoWalletPastiglia(saldoCents) {
+      if (typeof saldoCents !== 'number' || !Number.isFinite(saldoCents)) {
+        return { testo: '—', titolo: 'Saldo Wallet non disponibile', ignoto: true };
+      }
+      const eur = _incassiEuro(saldoCents);
+      return { testo: eur, titolo: 'Saldo del Wallet: ' + eur, ignoto: false };
     }
     // Parse importo digitato dall'operatore ("8,00" / "8.00" / "8" / "8,5") → cents.
     // Ritorna null se non interpretabile come importo > 0.
@@ -43501,6 +43537,37 @@ Per confermare scrivi ELIMINA.`);
               nome: p.nome,
             });
             if (stato == null) _anyUnknown = true;
+          }
+          // 👛 VOCE 139 — quanto ha nel borsellino, in coda alla riga dei soldi.
+          // 🗣️ Sua richiesta: «sotto il nome c'è solamente l'importo… un'iconcina con un
+          // emoticon di un borsellino, così da capire al volo quanto il socio ha dentro. È un
+          // colpo d'occhio molto carino per chi fa segreteria e cassa la sera».
+          // 📏 Non costa una chiamata in più: `saldoCents` arriva GIÀ su ogni riga del roster,
+          // letto dalla ficha nello stesso giro dei giocatori — finora l'app lo usava per una cosa
+          // sola (accendere il bottone Wallet) e poi lo buttava via.
+          // ⚠️ Sta dentro `payRow`, cioè la stessa condizione dell'importo: chi è segnato per la
+          // rimozione e la manutenzione non hanno riga dei soldi, e qui non si allarga niente.
+          // Vale per la partita E per la lezione — è la stessa scheda, e non va ristretta.
+          // ⛔ IL NOME CHE L'OPERATORE LEGGE È «Wallet» — sua decisione della voce 128, e a
+          // farla rispettare c'è una guardia che questa pastiglia ha già fatto scattare una volta
+          // (la prima stesura diceva «Borsellino di …»). Matchpoint continua a dire «Portafoglio»
+          // sulla scheda cliente e «Saldo disponibile» sul dialog dell'incasso, e quei due NON si
+          // toccano: il worker lì dentro clicca PER TESTO.
+          // 📌 *Un nome che l'utente legge e un nome che una macchina cerca sono due cose diverse
+          //    anche quando indicano lo stesso oggetto.*
+          if (money) {
+            const _w = _pmoWalletPastiglia(p.saldoCents);
+            const wChip = document.createElement('span');
+            wChip.className = 'svc-pl-wallet' + (_w.ignoto ? ' svc-pl-wallet-ignoto' : '');
+            wChip.title = _w.titolo;
+            wChip.setAttribute('aria-label', _w.ignoto ? (_w.titolo + ' per ' + p.nome) : ('Wallet di ' + p.nome + ': ' + _w.testo));
+            const wIc = document.createElement('span');
+            wIc.className = 'svc-pl-wallet-ic';
+            wIc.setAttribute('aria-hidden', 'true');
+            wIc.textContent = '\uD83D\uDC5B';
+            wChip.appendChild(wIc);
+            wChip.appendChild(document.createTextNode(_w.testo));
+            money.appendChild(wChip);
           }
           if (money) item.appendChild(money);
           // Con che cosa ha pagato (solo per chi ha già pagato): una pastiglia per metodo —
