@@ -8299,7 +8299,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.324';
+    const APP_VERSION = '6.325';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -41537,18 +41537,34 @@ Per confermare scrivi ELIMINA.`);
     try {
       const box = document.querySelector('.svc-edit-box');
       if (!box) return null; // nessuna scheda aperta: la chat basta e avanza
-      let riga = box.querySelector(':scope > .svc-edit-esito');
-      if (!riga) {
-        riga = document.createElement('div');
-        const barra = box.querySelector(':scope > .svc-edit-actions-bar');
-        if (barra) box.insertBefore(riga, barra); else box.appendChild(riga);
-      }
       // ⭐ Se il tipo non è dichiarato lo si DEDUCE dal segno che la frase porta già in testa:
       // così ogni punto che scriveva un esito in chat lo colora qui senza essere toccato — e
       // nessuno può dimenticarsi di passarlo. 📌 *Una regola che vale per default non si scorda.*
       const _t = tipo || (/^\s*(✅|👍)/.test(String(html)) ? 'ok'
         : (/^\s*(⚠️|❌|🚫)/.test(String(html)) ? 'ko'
         : (/^\s*(↻|⏳|⌛|🧪|🔄)/.test(String(html)) ? 'wait' : '')));
+      let riga = box.querySelector(':scope > .svc-edit-esito');
+      // 🩹⭐⭐ VOCE 145 (04/09/2026) — L'AVANZAMENTO NON SI SCRIVE QUI: lo racconta la BARRA.
+      // 🗣️ Sua segnalazione dal telefono: *«c'è ancora un doppio banner di messaggio, non va bene.
+      //    Ce ne deve essere solo uno.»* — schermata di PROD 6.323 con la riga gialla «↻ Salvo su
+      //    Matchpoint l'importo a carico… (non chiudere)» DENTRO la scheda e, nello stesso
+      //    istante, la striscia «💶 Cambio l'importo» in fondo allo schermo.
+      // ⚖️ È la regola della voce 137 ⑤ — *«gli avanzamenti escono dalla scheda, gli esiti
+      //    restano»* — che questa funzione non applicava: la 136 aveva tolto il doppione fra
+      //    scheda e PASTIGLIA, e nessuno aveva guardato quello fra scheda e BARRA. Due cure sullo
+      //    stesso difetto, con in mezzo un terzo oggetto che non era stato censito.
+      // 📏 Misurato prima di toccare: i **tre** punti che chiamano questa funzione con un `wait`
+      //    sono tutti pagamenti (`matchpoint-payment-write`, `-payment-void`, `-charge-write`,
+      //    `-wallet-correct`) e **tutti e quattro** sono classificati in `SVC_AZIONI_DELLAPP` ⇒ la
+      //    barra li racconta davvero. Non si toglie l'unico posto in cui la cosa è scritta.
+      // ⛔ Si toglie anche la riga VECCHIA: un esito di prima lasciato lì accanto a un gesto in
+      //    corso è peggio del doppione — è un doppione che dice un'altra cosa.
+      if (_t === 'wait') { try { if (riga) riga.remove(); } catch (e) {} return null; }
+      if (!riga) {
+        riga = document.createElement('div');
+        const barra = box.querySelector(':scope > .svc-edit-actions-bar');
+        if (barra) box.insertBefore(riga, barra); else box.appendChild(riga);
+      }
       riga.className = 'svc-edit-esito' + (_t ? ' ' + _t : '');
       riga.innerHTML = html;
       return riga;
