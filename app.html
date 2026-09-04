@@ -3228,16 +3228,23 @@
             nessuno: qualunque riga ci passava sotto — e accanto.
          🔨 Ora la fascia è **opaca e a tutta larghezza**: ciò che le scorre sotto è coperto, e
             quindi **non è nemmeno cliccabile** — la mira sbagliata non trova più niente da
-            colpire. E il `padding-top` è quanto la fascia è alta davvero, non un numero a occhio.
+            colpire (misurato: nel punto che prima rispondeva «Rimuovi giocatore» ora risponde la
+            fascia, cioè nessun bottone).
+         🩹 E l'altezza è **DICHIARATA**, non dedotta: al primo giro avevo calcolato «bottone +
+            padding = 38 px» e la pagina viva ne misurava **48** — dieci pixel di contenuto
+            nascosti sotto la fascia all'apertura, e una guardia che confrontava due numeri veri
+            solo per finta. 📌 *Un'altezza che nessuno dichiara la deduce ognuno a modo suo: se un
+            numero deve combaciare con un altro, il modo di farli combaciare è scriverli, non
+            calcolarne uno.*
          ⛔ NON si rimette la testata che la 141 aveva tolto: quella era una **barra nel flusso**
             che si mangiava lo spazio del contenuto: questa è una striscia sovrapposta, dentro uno
             spazio che era **già riservato**. Il costo è di 8 px, non di 50.
          📌 *Due bottoni identici a 8 px di distanza non sono un problema di grafica: sono un
             problema di mira, e la mira si misura in pixel, non a occhio.* */
-      .svc-chat-panel:not(.svc-card-mode) .svc-chat-header { position:absolute; top:0; right:0; left:0; width:auto; padding:4px 8px; border-bottom:none; background:var(--surface); z-index:3; }
+      .svc-chat-panel:not(.svc-card-mode) .svc-chat-header { position:absolute; top:0; right:0; left:0; width:auto; height:44px; box-sizing:border-box; padding:4px 8px; border-bottom:none; background:var(--surface); z-index:3; }
       .svc-chat-header::before { display:none; }
       .svc-chat-close-btn { background:rgba(241,245,249,.9); border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; }
-      .svc-chat-panel:not(.svc-card-mode) .svc-chat-messages { padding-top:38px; }
+      .svc-chat-panel:not(.svc-card-mode) .svc-chat-messages { padding-top:44px; }
       .svc-chat-panel.svc-card-mode { height:auto; max-height:90vh; }
       .svc-chat-panel.svc-card-mode .svc-chat-header { display:none; }
       /* La schedina è un form alto: ancorala in ALTO (column, non column-reverse) così l'header
@@ -8320,7 +8327,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.327';
+    const APP_VERSION = '6.328';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -28484,8 +28491,23 @@ Per confermare scrivi ELIMINA.`);
 	    function pmoBlockWriteIfReadonly(actionLabel) {
 	      if (!pmoIsReadonlyStaff()) return false;
 	      const msg = '🔒 Sei in modalità Solo lettura: non puoi ' + (actionLabel || 'modificare i dati') + '.';
-	      try { if (typeof svcAddMessage === 'function') svcAddMessage('system', msg, 'error'); } catch (e) {}
-	      try { if (typeof showAlert === 'function') showAlert(msg, 'warning'); } catch (e) {}
+	      // 🩹 VOCE 146 (04/09/2026) — UN POSTO SOLO, e prima erano DUE: la stessa identica frase
+	      // andava in chat E come toast in alto, uno sopra l'altro.
+	      // 📏 Misurato sulla pagina viva mentre cercavo tutt'altro: premuto «Salva», sono comparsi
+	      // il messaggio nella scheda e il toast con lo STESSO testo, parola per parola.
+	      // ⚖️ Vince la CHAT, cioè la scheda: è dove chi ha premuto sta già guardando, e resta lì
+	      // finché serve. Il toast passa dopo tre secondi e si porta via il perché.
+	      // ⛔ Ma se la chat NON c'è (nessuna scheda aperta, un gesto nato altrove nella pagina) il
+	      // toast è l'unico posto rimasto: si mostra allora, e solo allora. 📌 *Un avviso di troppo
+	      // è disturbo; un avviso di meno è un gesto che sparisce senza spiegazione.*
+	      let detto = false;
+	      try {
+	        if (typeof svcAddMessage === 'function' && document.getElementById('svcChatMessages')) {
+	          svcAddMessage('system', msg, 'error');
+	          detto = true;
+	        }
+	      } catch (e) {}
+	      if (!detto) { try { if (typeof showAlert === 'function') showAlert(msg, 'warning'); } catch (e) {} }
 	      return true;
 	    }
 	    function pmoFriendlyCloudError(value, actionLabel='questa operazione') {
