@@ -2860,6 +2860,17 @@
     .svc-semaforo.svc-semaforo-pastiglia:hover { filter:brightness(.98); }
     .svc-semaforo.svc-semaforo-pastiglia .svc-semaforo-dove { display:none; }
     .svc-semaforo.svc-semaforo-pastiglia .svc-semaforo-corpo { gap:0; }
+    /* 🚨⭐⭐ `hidden` DEVE NASCONDERE, e per otto giorni non l'ha fatto — visto in una schermata
+       di PROD 6.315, non rileggendo: `[hidden] { display:none }` è una regola del BROWSER, e
+       perde contro una classe che dice `display:flex`. ⇒ La striscia a riposo restava dipinta:
+       una fascia azzurra vuota, alta 52px, in fondo a OGNI schermata dell'app — misurata a
+       `848→900` su una finestra alta 900.
+       ⚖️ Ed era invisibile a chi la cercava: `pointer-events:none` la rende trasparente al
+       puntatore, quindi `elementFromPoint` in fondo allo schermo risponde «il calendario» e
+       ogni sonda che chieda «chi c'è lì?» dice che non c'è niente. Si vede solo GUARDANDO.
+       📌 *Un attributo che nasconde non nasconde più, appena qualcuno scrive `display` in una
+       classe: la regola del browser è la più debole che ci sia.* */
+    .svc-semaforo[hidden] { display:none !important; }
     /* Il puntino che pulsa: dice «adesso», che è l'unica cosa che questa barra promette. */
     .svc-semaforo-dot {
       flex:0 0 auto; width:8px; height:8px; border-radius:50%; background:#0284c7;
@@ -8336,7 +8347,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.316';
+    const APP_VERSION = '6.317';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
