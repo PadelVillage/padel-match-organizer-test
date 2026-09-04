@@ -3286,6 +3286,34 @@
     .svc-edit-actions-bar { border-top:1px solid #e6e8ee; padding-top:10px; margin-top:4px; }
     @media (min-width:900px) {
       .svc-layout { flex-direction:row; height:min(80vh, 860px); }
+      /* 🖥️⭐⭐ VOCE 153/C — IL CALENDARIO PRENDE QUELLO CHE RESTA, non una frazione del tutto.
+         🚨 Il difetto, MISURATO su PROD 6.349 a quattro altezze di finestra: la pagina è alta
+              190 (sopra il calendario) + 80% dell'altezza finestra (il calendario) + 203 (sotto)
+            e il modello prevede esattamente il misurato — 265 · 233 · 213 px da scorrere a
+            640 · 800 · 900. ⇒ La pagina entrerebbe solo con una finestra alta **1.966 px**: il
+            calendario non era «stretto su schermi piccoli», era fuori **SEMPRE**, anche su un 1920.
+         ⚖️ La causa è la riga qui sopra: `min(80vh, 860px)` è una frazione della FINESTRA, e
+            ignora i 393 px di cornice che stanno intorno al calendario.
+         🚨🚨 E quella riga GOVERNA DUE COSE — la scheda partita **e** la shell del calendario:
+            cambiarla avrebbe mosso anche la scheda, cioè le voci 149-157 appena confermate una
+            per una. ⇒ Si scrive **dopo**, con un selettore più specifico che prende il solo
+            calendario, e la scheda resta esattamente dov'era.
+         🩹⭐⭐ E QUESTA RIGA È STATA SCRITTA UNA VOLTA NEL POSTO SBAGLIATO: dentro
+            `@media (max-width:899px)`, cioè sul TELEFONO — dove non serviva e avrebbe fatto
+            danno, e dove su desktop non si sarebbe applicata mai. La sonda l'ha vista subito
+            (512px, cioè ancora 80vh) ma la prima spiegazione che viene in mente è «il deploy non
+            è ancora arrivato», che avrebbe fatto perdere il giro.
+            📌 *«Un selettore già scoped al calendario» non dice in quale `@media` sta: lo scope
+            dell'ELEMENTO e lo scope della LARGHEZZA sono due cose diverse, e se ne controlla una
+            sola per volta senza accorgersene.*
+         📌 Il numero sta in UNA variabile con un nome, non sparso dentro il calc: se un domani la
+            cornice cambia (una fascia in più sopra, un blocco tolto sotto) si rimisura quella e
+            basta. Un numero che descrive i propri vicini va tenuto dove si vede che li descrive —
+            è la lezione della 157 (`grid-row:2`) applicata prima di ripagarla.
+         ⛔ Il pavimento di 360px non è ornamentale: sotto, la griglia diventa illeggibile, e da lì
+            in giù è giusto che a scorrere torni la pagina invece di schiacciare le righe. */
+      #staffCalV36 { --pmo-cal-cornice: 393px; }
+      #staffCalV36 > .svc-layout { height: max(360px, calc(100vh - var(--pmo-cal-cornice))); }
       .svc-grid-col { overflow:auto; }
       /* 🪟 La scheda è una FINESTRA sopra il calendario (restyling del 04/09/2026): non è più
          una colonna a destra né il pannello della sidebar. Misure prese dalla scheda socio
@@ -3478,28 +3506,7 @@
       .smc-team-menu[hidden] { display:none; }
       .smc-team-item { display:flex; align-items:center; gap:8px; width:100%; text-align:left; background:none; border:none; border-radius:8px; padding:10px 12px; font-size:.9rem; font-family:inherit; color:var(--text,#1f2430); cursor:pointer; white-space:nowrap; }
       .smc-team-item:hover, .smc-team-item:focus { background:var(--accent-light,rgba(37,99,235,0.10)); outline:none; }
-      /* 🖥️⭐⭐ VOCE 153/C — IL CALENDARIO PRENDE QUELLO CHE RESTA, non una frazione del tutto.
-         🚨 Il difetto, MISURATO su PROD 6.349 a quattro altezze di finestra: la pagina è alta
-              190 (sopra il calendario) + 80% dell'altezza finestra (il calendario) + 203 (sotto)
-            e prevede esattamente ciò che si misurava — 265 · 233 · 213 px da scorrere a 640 · 800
-            · 900. ⇒ La pagina entrerebbe solo con una finestra alta **1.966 px**: il calendario
-            non era «stretto su schermi piccoli», era fuori **SEMPRE**, anche su un 1920.
-         ⚖️ La causa è che l'altezza veniva da `.svc-layout { height:min(80vh,860px) }`, che è una
-            frazione della FINESTRA e ignora i 393 px di cornice che gli stanno intorno.
-         🚨🚨 E QUELLA RIGA GOVERNA DUE COSE: la scheda partita **e** questa shell. Cambiare il
-            numero là dentro avrebbe mosso anche la scheda — cioè le voci 149-157 appena
-            confermate una per una. ⇒ Si scrive l'altezza **qui**, dove il selettore è già scoped
-            al solo calendario, e la scheda non se ne accorge.
-         📌 Il numero sta in UNA variabile con un nome, e non sparso nel calc: se un domani la
-            cornice cambia (una fascia in più sopra, un blocco tolto sotto), si rimisura QUELLA e
-            basta. Un numero che descrive i propri vicini va tenuto dove si vede che li descrive.
-         ⛔ Il pavimento non è ornamentale: sotto i 360px la griglia diventa illeggibile, e da lì
-            in giù è giusto che a scorrere torni la pagina invece di schiacciare le righe. */
-      #staffCalV36 { --pmo-cal-cornice: 393px; }
-      #staffCalV36 > .svc-layout {
-        flex:1 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column;
-        height: max(360px, calc(100vh - var(--pmo-cal-cornice)));
-      }
+      #staffCalV36 > .svc-layout { flex:1 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
       .svc-grid-col { flex:1 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
       #staffCalV36 .agenda-wrap { flex:1 1 auto; overflow-y:auto; min-height:0; display:flex; flex-direction:column; }
       #staffCalMobileChatBar { display:flex; flex:0 0 auto; align-items:center; gap:8px; padding:8px 12px; background:#fff; border-top:1px solid #e5e7eb; box-shadow:0 -2px 8px rgba(0,0,0,.06); }
@@ -8516,7 +8523,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.351';
+    const APP_VERSION = '6.352';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
