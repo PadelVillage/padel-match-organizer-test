@@ -3033,6 +3033,60 @@
     #svcChatMessages > .svc-msg.svc-edit-host:last-child { background:transparent !important; border:none !important; box-shadow:none !important; padding:0 !important; max-width:100%; }
     .svc-edit-section-head { display:flex; align-items:center; gap:6px; font-size:.72rem; font-weight:600; color:var(--text-muted); margin-bottom:8px; }
     .svc-edit-section-head i { font-size:14px; }
+
+    /* 🆕📐⭐⭐ VOCE 152 — LA SCHEDA SU DUE COLONNE, da 900 px in su.
+     *
+     * 🗣️ Sua richiesta: «a livello grafico puoi migliorarla così da far entrare tutte le
+     *    informazioni dentro la scheda aperta». Mockup `scheda-entra-tutta-mockup.html`,
+     *    variante A, approvata da lui.
+     *
+     * 📏 MISURATO su PROD 6.338 a 1440×900, sulla partita che lui ha autorizzato: la finestra è
+     *    **860 px** e la scheda ne usava **612** — 231 vuoti a destra — mentre **453 px** di
+     *    contenuto finivano sotto il bordo. ⇒ Lo spazio c'era, ed era dalla parte sbagliata.
+     *
+     * 🚨⭐⭐ **SOLO CSS, IL DOM NON SI TOCCA — e non è pigrizia, è la 150.** La strada ovvia era
+     *    incartare le sezioni in due `<div>` colonna. ⛔ Ma `_svcSchedaEsito` inserisce la riga
+     *    dell'esito come **figlio diretto** del box (`:scope > .svc-edit-actions-bar`), e la
+     *    guardia della 150 la cerca con `.svc-edit-box > .svc-edit-esito`: due involucri in mezzo
+     *    e **tutte e due smettono di trovarla**, senza che niente si rompa a voce alta — il
+     *    doppione dei messaggi tornerebbe, e il banco resterebbe verde.
+     *    📌 *Una disposizione si cambia con la disposizione. Chi cambia la PARENTELA per ottenere
+     *       un layout paga in guardie che muoiono in silenzio.*
+     *
+     * ⚖️ La soglia è **900 px**, quella che l'app usa già per dire «sono su un telefono»
+     *    (`svcAutoCloseIfMobile`): sotto resta **una colonna sola**, perché due colonne su 390 px
+     *    sarebbero illeggibili tutte e due. Non se ne inventa una nuova — due soglie per la stessa
+     *    domanda divergono al primo cambio.
+     *
+     * 🩹 `span 10` e non `-1`: le righe qui sono **implicite**, quindi `-1` finirebbe sulla fine
+     *    della griglia *esplicita* (la riga del titolo) e la colonna dei giocatori resterebbe alta
+     *    una riga. Dieci è più di quante ne avrà mai la colonna sinistra; e se un giorno non
+     *    bastassero, il guasto è **cosmetico** (la colonna destra finisce prima), non un pezzo che
+     *    sparisce. È il verso giusto in cui sbagliare. */
+    @media (min-width:900px) {
+      .svc-edit-box {
+        display:grid;
+        grid-template-columns:330px minmax(0,1fr);
+        column-gap:12px;
+        align-items:start;
+      }
+      /* Per difetto TUTTO va a sinistra: un figlio nuovo non finisce mai in mezzo ai giocatori. */
+      .svc-edit-box > * { grid-column:1; min-width:0; }
+      .svc-edit-box > .svc-edit-title { grid-column:1 / -1; }
+      .svc-edit-box > [data-feature="players-payments"] { grid-column:2; grid-row:2 / span 10; }
+      /* Le sezioni non hanno più bisogno del margine sotto: a separarle ci pensa la griglia. */
+      .svc-edit-box > .svc-edit-section { margin-bottom:10px; }
+    }
+    /* 💰 Il conto della partita (voce 152). Volutamente SENZA cornice di sezione: non è una
+       sezione in cui si opera, è la somma di quello che c'è sopra. */
+    .svc-edit-conto { border:1px solid #e8eaf0; border-radius:12px; background:#fbfdff; padding:11px 13px; margin-bottom:10px; }
+    .svc-edit-conto-riga { display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:.82rem; padding:5px 0; }
+    .svc-edit-conto-riga + .svc-edit-conto-riga { border-top:1px solid #eef2f8; }
+    .svc-edit-conto-riga b { font-weight:800; font-variant-numeric:tabular-nums; }
+    .svc-edit-conto-riga.tot { border-top:2px solid #e3e8f0; margin-top:3px; padding-top:8px; font-weight:800; }
+    .svc-edit-conto-riga.tot b { color:#b45309; }
+    .svc-edit-conto-riga.tot.saldata b { color:var(--green,#067647); }
+    .svc-edit-conto-parziale { margin-top:8px; font-size:.72rem; line-height:1.45; color:#8a4b06; background:#fff7e6; border:1px solid #f5d98a; border-radius:8px; padding:6px 8px; }
     .svc-edit-title { display:flex; align-items:flex-start; gap:8px; margin-bottom:10px; }
     .svc-edit-title i { font-size:20px; color:var(--accent); }
     .svc-edit-title-main { font-size:15px; font-weight:600; color:var(--text); }
@@ -8334,7 +8388,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.339';
+    const APP_VERSION = '6.340';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -24942,6 +24996,42 @@ Grazie!`
       if (!daLettoAt) return eur;
       const q = quando(daLettoAt);
       return eur + ' (letto ' + (q || 'prima') + ')';
+    }
+    /** 🆕💰⭐⭐ VOCE 152 — IL CONTO DELLA PARTITA: a carico · già incassato · manca.
+     *
+     * 🗣️ Nato dal mockup «La scheda entra tutta», variante **A**, scelta da lui: *«fai la A»*.
+     *
+     * ⚖️ **Perché queste tre righe e non un totale solo**: «Totale da incassare» risponde a una
+     *    domanda sola — *quanto resta da prendere*. Chi fa cassa la sera ne ha **tre**: quanto
+     *    vale la partita, quanto è già entrato, quanto manca. Le prime due oggi non erano scritte
+     *    da nessuna parte, e si ricavavano contando le pastiglie a occhio.
+     *
+     * 🚨⭐⭐ **E LA PARTE CHE CONTA È `ignoti`, non i totali.** Se anche **una** riga ha l'importo
+     *    non letto, la somma non è il conto della partita: è un **minimo**. Stamparla come un
+     *    numero tondo sarebbe la 149 al piano di sopra — là era una casella che diceva `0,00` per
+     *    «non lo so», qui sarebbe un TOTALE che dice `24,00` per «24,00 più qualcosa».
+     *    📌 *Un totale che ha saltato una riga non è un totale approssimato: è un totale falso,
+     *       e non si distingue da uno vero guardandolo.*
+     *    ⇒ Chi disegna deve dichiararlo. La funzione non decide come, ma **obbliga a saperlo**.
+     *
+     * ⛔ Non somma il **borsellino**: quello è quanto una persona ha in tasca, non quanto deve a
+     *    questa partita. PURA, così il banco la ESEGUE invece di riscriverla. */
+    function _pmoContoPartita(voci) {
+      let incassato = 0, manca = 0, ignoti = 0;
+      (Array.isArray(voci) ? voci : []).forEach(function (v) {
+        if (!v) return;
+        const c = (typeof v.cents === 'number' && isFinite(v.cents)) ? v.cents : null;
+        // ⛔ `null` non è zero: una riga senza importo letto NON entra nella somma, si conta a parte.
+        if (c == null) { ignoti++; return; }
+        if (v.incassato) incassato += c; else manca += c;
+      });
+      return {
+        incassatoCents: incassato,
+        mancaCents: manca,
+        aCaricoCents: incassato + manca,
+        ignoti: ignoti,
+        completo: ignoti === 0,
+      };
     }
     function _pmoEuroToCents(txt) {
       if (txt == null) return null;
@@ -43775,6 +43865,10 @@ Per confermare scrivi ELIMINA.`);
 
     if (st.hasPlayers && _loadingRoster) {
       const playersSec = mkSection('ti-users', 'Giocatori e pagamenti');
+      // 🆕📐 VOCE 152 — lo stesso aggancio del ramo pieno: senza, mentre i giocatori si leggono
+      //    la scheda starebbe su UNA colonna e salterebbe su due appena arrivano. Un layout che
+      //    cambia sotto gli occhi è peggio dell'attesa (è la ragione della `rosterRefreshing`).
+      playersSec.setAttribute('data-feature', 'players-payments');
       const load = document.createElement('div');
       load.className = 'svc-players-empty';
       load.style.cssText = 'margin-top:0;display:flex;align-items:center;gap:7px;font-style:normal;';
@@ -43836,6 +43930,11 @@ Per confermare scrivi ELIMINA.`);
       // resa (`st.payRows` lo referenzia, non lo copia).
       const _payAmtRows = [];
       st.payRows = _payAmtRows;
+      // 🆕💰 VOCE 152 — le righe GIÀ RISCOSSE non hanno una casella (al loro posto c'è la
+      //    pastiglia «✓ pagato»), quindi dal `payRows` non si vedono: si raccolgono qui, o il
+      //    conto direbbe «incassato 0,00» su una partita pagata per intero.
+      const _contoPagate = [];
+      st.contoPagate = _contoPagate;
       if (_payShow && _paySimUi) {
         const simNote = document.createElement('div');
         simNote.style.cssText = 'font-size:.74rem;color:#92600a;background:#fff7e6;border:1px solid #f5d98a;border-radius:8px;padding:6px 8px;margin-bottom:8px;';
@@ -43890,6 +43989,11 @@ Per confermare scrivi ELIMINA.`);
           let _payInfo = null;
           if (isPaid) { try { _payInfo = _staffCalPaidInfo(st.isoDate, st.campo, st.ora, p.nome); } catch (e) { _payInfo = null; } }
           const _payBadge = isPaid ? _payPaidBadge(stato, importoCents, _payInfo && _payInfo.methods) : null;
+          // 🆕💰 VOCE 152 — quanto è già entrato per questa riga. Si usa `importoCents` (che
+          //    viene da Matchpoint) e non `_payInfo.cents` (che viene dal report 11.13, e può
+          //    essere indietro). ⛔ Se non è un numero la riga è IGNOTA, non zero: entra nel
+          //    conto come tale e il totale si dichiara parziale.
+          if (isPaid) _contoPagate.push({ cents: (typeof importoCents === 'number' ? importoCents : null), incassato: true });
           const isGift = !!(_payBadge && _payBadge.kind === 'gift');
           const item = document.createElement('div');
           item.className = 'svc-pl';
@@ -44282,22 +44386,22 @@ Per confermare scrivi ELIMINA.`);
       addBtn.disabled = st.busy;
       addBtn.addEventListener('click', function () { if (!st.busy) staffCalPlayersAdd(); });
       playersSec.appendChild(addBtn);
-      // Totale live (somma dei "€ a carico") — solo con incasso attivo.
-      if (_payShow && _payCollectActive && _payAmtInputs.length) {
-        const totWrap = document.createElement('div');
-        totWrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;padding-top:8px;border-top:1px dashed #e3e6ea;font-size:.84rem;font-weight:700;';
-        const totLbl = document.createElement('span'); totLbl.textContent = 'Totale da incassare';
-        const totVal = document.createElement('span'); totVal.style.cssText = 'font-weight:800;';
-        totWrap.appendChild(totLbl); totWrap.appendChild(totVal);
-        const _updatePayTotal = function () {
-          let s = 0;
-          _payAmtInputs.forEach(function (inp) { const c = _pmoEuroToCents(inp.value); if (c != null && c > 0) s += c; });
-          totVal.textContent = _incassiEuro(s);
-        };
-        _payAmtInputs.forEach(function (inp) { inp.addEventListener('input', _updatePayTotal); });
-        _updatePayTotal();
-        playersSec.appendChild(totWrap);
-      }
+      /* 🩹💰⭐⭐ VOCE 152 — QUI C'ERA «Totale da incassare», ed è stato SPOSTATO, non aggiunto.
+       *
+       * ⚖️ La riga vecchia rispondeva a **una** domanda: *quanto resta da prendere*. Il conto
+       *    nuovo ne risponde a **tre** (a carico · già incassato · manca) e la contiene tutta:
+       *    tenerle **tutte e due** vorrebbe dire due somme quasi uguali nella stessa scheda, a
+       *    due centimetri l'una dall'altra.
+       * 🚨 È il difetto che questo progetto ha già pagato **quattro volte** — 136, 145, 147, 150 —
+       *    e ogni volta con la stessa forma: *due oggetti che dicono lo stesso fatto, e chi legge
+       *    non sa quale guardare*. Aggiungere il conto lasciando il totale sarebbe stato il quinto
+       *    giro, stavolta sui soldi.
+       * 📌 *Una cosa che dice di più non si affianca a quella che diceva di meno: la sostituisce.*
+       *
+       * ⛔ E il totale vecchio aveva un difetto che il conto non eredita: sommava con
+       *    `c != null && c > 0`, quindi una quota **offerta** (0,00 letto) e una **non letta**
+       *    finivano nello stesso silenzio. Il conto le distingue, ed è la regola della 149.
+       */
       if (_payShow) {
         const payHint = document.createElement('div');
         payHint.style.cssText = 'font-size:11px;color:var(--text-muted);margin-top:8px;';
@@ -44383,6 +44487,75 @@ Per confermare scrivi ELIMINA.`);
     delBtn.addEventListener('click', function() { if (st.busy) return; staffCalAskCancel(st.origIso, st.origCampo, st.origOra, st.nome || ''); });
     actions.appendChild(delBtn);
     box.appendChild(actions);
+
+    /* 🆕💰⭐⭐ VOCE 152 — IL CONTO DELLA PARTITA. Variante A del mockup, scelta da lui.
+     *
+     * 📍 Sta DOPO i bottoni perché è la posizione che ha approvato guardandola: su scrivania
+     *    finisce in fondo alla colonna sinistra, dove c'era lo spazio vuoto. ⚠️ Su telefono, dove
+     *    la colonna è una sola, finisce sotto «Annulla prenotazione»: se preferisce vederlo sopra
+     *    i bottoni è UNA riga da spostare, e va chiesto a lui — non cambiato di nascosto rispetto
+     *    a un disegno approvato.
+     * ⛔ Si disegna solo dove ha senso: niente giocatori (manutenzione) ⇒ niente conto. */
+    if (st.hasPlayers && Array.isArray(st.payRows)) {
+      /** Lo zero LETTO è un dato, la casella vuota no — e `_pmoEuroToCents` da solo non basta:
+       *  rifiuta lo zero di proposito (per il cambio importo uno zero non è una modifica da
+       *  mandare). Qui invece uno `0,00` è l'omaggio della 149, e va contato. */
+      const _centsPerConto = function (txt) {
+        const raw = String(txt == null ? '' : txt).trim();
+        if (!raw) return null;                       // casella vuota = importo non letto
+        const c = _pmoEuroToCents(raw);
+        if (c != null) return c;
+        return /^0+([.,]0*)?$/.test(raw.replace(/[€\s]/g, '')) ? 0 : null;
+      };
+      const _vociConto = function () {
+        const v = (Array.isArray(st.contoPagate) ? st.contoPagate : []).slice();
+        (st.payRows || []).forEach(function (r) {
+          if (!r || !r.input) return;
+          v.push({ cents: _centsPerConto(r.input.value), incassato: false });
+        });
+        return v;
+      };
+      const conto = document.createElement('div');
+      conto.className = 'svc-edit-conto';
+      const _riga = function (etichetta, extra) {
+        const d = document.createElement('div');
+        d.className = 'svc-edit-conto-riga' + (extra || '');
+        const l = document.createElement('span'); l.textContent = etichetta;
+        const b = document.createElement('b');
+        d.appendChild(l); d.appendChild(b);
+        conto.appendChild(d);
+        return { riga: d, valore: b, etichetta: l };
+      };
+      const rCarico = _riga('A carico');
+      const rIncassato = _riga('Già incassato');
+      const rManca = _riga('Manca all\'appello', ' tot');
+      const avviso = document.createElement('div');
+      avviso.className = 'svc-edit-conto-parziale';
+      avviso.hidden = true;
+      conto.appendChild(avviso);
+
+      const _disegnaConto = function () {
+        const c = _pmoContoPartita(_vociConto());
+        rCarico.valore.textContent = _incassiEuro(c.aCaricoCents);
+        rIncassato.valore.textContent = _incassiEuro(c.incassatoCents);
+        rManca.valore.textContent = _incassiEuro(c.mancaCents);
+        rManca.riga.classList.toggle('saldata', c.completo && c.mancaCents === 0);
+        // 🚨 La parte che vale più dei tre numeri: se una riga non ha l'importo letto, questi
+        //    NON sono il conto della partita — sono un minimo, e va scritto. Un totale che ha
+        //    saltato una riga non si distingue da uno vero guardandolo.
+        avviso.hidden = c.completo;
+        if (!c.completo) {
+          avviso.textContent = '⚠️ Conto parziale: ' + c.ignoti
+            + (c.ignoti === 1 ? ' importo non ancora letto da Matchpoint. I numeri qui sopra sono un minimo, non il totale.'
+                              : ' importi non ancora letti da Matchpoint. I numeri qui sopra sono un minimo, non il totale.');
+        }
+      };
+      (st.payRows || []).forEach(function (r) {
+        if (r && r.input) r.input.addEventListener('input', _disegnaConto);
+      });
+      _disegnaConto();
+      box.appendChild(conto);
+    }
   }
 
   // Traduce l'errore GREZZO del worker in un messaggio CHIARO per l'operatore: niente codici interni
