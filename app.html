@@ -8327,7 +8327,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.331';
+    const APP_VERSION = '6.332';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -44644,11 +44644,37 @@ Per confermare scrivi ELIMINA.`);
     // prima della conferma è esattamente il difetto della voce 75, applicato al denaro.
     if (chargesChanged) {
       const _idResCharge = st.idReserva || _staffCalLookupIdReserva(st.origIso, st.origCampo, st.origOra);
-      await _pmoSetCharges({ idReserva: _idResCharge, changes: chargeChanges });
-      // Solo importi toccati ⇒ non c'è niente da mandare a `matchpoint-bookings-edit`: la scheda
-      // resta aperta (i nuovi valori sono già quelli mostrati) e non si finge una modifica alla
-      // prenotazione che nessuno ha chiesto.
-      if (!moveChanged && !playersChanged && !noteChanged && !descrChanged && !istruttoreChanged) return;
+      const _esitoCharge = await _pmoSetCharges({ idReserva: _idResCharge, changes: chargeChanges });
+      // Solo importi toccati ⇒ non c'è niente da mandare a `matchpoint-bookings-edit`: non si
+      // finge una modifica alla prenotazione che nessuno ha chiesto.
+      if (!moveChanged && !playersChanged && !noteChanged && !descrChanged && !istruttoreChanged) {
+        // 🩹⭐⭐ VOCE 148 (04/09/2026) — SU TELEFONO LA SCHEDA SI CHIUDE, e prima restava lì.
+        //
+        // 🗣️ Sua segnalazione, subito dopo il primo cambio importo vero su PROD 6.330: *«poi la
+        //    scheda è rimasta aperta e non si è più chiusa sul cellulare. Quindi ce l'ho sempre
+        //    aperta in sovraimpressione.»*
+        //
+        // 🚨 **Non era un guasto: era una riga scritta apposta** — qui c'era il commento «la
+        //    scheda resta aperta (i nuovi valori sono già quelli mostrati)», e su DESKTOP è
+        //    giusto: lì la scheda è un pannello accanto al calendario, e chi ha appena cambiato
+        //    un importo spesso ne cambia un altro. Su TELEFONO la stessa scheda è un foglio a
+        //    **tutto schermo** che copre il calendario, e «resta aperta» diventa «non se ne va».
+        // 📌 *Una scelta giusta su una larghezza non è una scelta: è una scelta più una
+        //    larghezza sottintesa. Se la larghezza non è scritta, la si è decisa senza saperlo.*
+        //
+        // ⚖️ **Perché passa da `svcAutoCloseIfMobile` e non da `svcCloseChat`**: quella funzione
+        //    porta dentro la soglia (`< 900px`) e i 700 ms che lasciano leggere l'esito. ⇒ Il
+        //    desktop resta **esattamente com'era** e la scelta della 132 non viene ribaltata: si
+        //    aggiunge la larghezza che le mancava.
+        // 🚨 **E si chiude SOLO sul verde**, che è la regola di `svcMpSyncConfirmed` applicata
+        //    qui: se la scrittura è fallita, l'esito col motivo vive nella riga della scheda —
+        //    chiuderla se lo porterebbe via, e il socio resterebbe con un importo non cambiato e
+        //    nessuna spiegazione. *Un foglio che si chiude su un errore è un errore nascosto.*
+        // ⛔ Non si tocca `staffCalPlayersState`: la ✕ non lo tocca (il suo gestore è
+        //    `svcCloseChat` e basta), e questa cura deve fare quello che farebbe il suo dito.
+        if (_esitoCharge && _esitoCharge.ok) { try { svcAutoCloseIfMobile(); } catch (e) {} }
+        return;
+      }
       // Misto: la scheda che segue è ancora quella aperta prima, quindi si rilegge lo stato.
       if (!staffCalPlayersState) return;
     }
