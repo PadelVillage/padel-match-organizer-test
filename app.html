@@ -3085,6 +3085,13 @@
     .svc-pl-paid { flex:0 0 auto; font-size:.76rem; font-weight:700; color:var(--green); white-space:nowrap; }
     .svc-pl-eur { flex:0 0 auto; display:inline-flex; align-items:center; gap:2px; border:1px solid var(--accent); border-radius:8px; padding:0 6px; height:30px; background:var(--surface); }
     .svc-pl-eur-sym { color:var(--text-muted); font-size:.74rem; }
+    /* 💶 VOCE 151 — la casella col numero RICORDATO (letto in una lettura precedente, non ancora
+       riletto). ⚖️ Il segno è **minimo di proposito**: un bordo tratteggiato e nient'altro. Il
+       numero è **vero**, si legge e si cambia come sempre — quello che manca è la freschezza, non
+       il dato ⇒ un avviso vistoso direbbe «attenzione, forse è sbagliato», che è più di quello
+       che sappiamo. 📌 *Il grado dell'avviso deve corrispondere al grado del dubbio.*
+       ⏳ Dura pochi secondi: appena la lettura viva atterra il bordo torna pieno da sé. */
+    .svc-pl-eur-ricordato { border-style:dashed; }
     /* 👛 VOCE 139 — la pastiglia del borsellino: è un'INFORMAZIONE, non un bottone.
        Niente bordo, niente sfondo, `cursor:default`: sta accanto all'importo e si legge. Sua
        decisione «pastiglia muta» — in una scheda dove ogni cosa cliccabile tocca il circolo, un
@@ -8327,7 +8334,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.337';
+    const APP_VERSION = '6.338';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -24877,15 +24884,64 @@ Grazie!`
      *  saprebbe più distinguere «gratis» da «non lo so». *Curare «zero non è non lo so»
      *  cancellando lo zero è la stessa malattia al rovescio.*
      *  PURA, così il banco la ESEGUE invece di riscriverla. */
-    function _pmoImportoCasella(importoCents, pendenteCents) {
+    /** 🆕⭐ VOCE 151 — IL TERZO ESITO: «ricordato». Fino al 04/09 questa funzione ne aveva DUE
+     *  — *letto* e *non letto* — e bastavano, perché l'unica fonte era la lettura viva del worker.
+     *  Da quando la copia locale **conserva** l'importo (write-back), la stessa casella può essere
+     *  riempita da un numero **vero ma vecchio**, e le due caselle non si distinguono guardandole.
+     *  ⇒ `lettoAt` è la sola cosa che le separa, e viaggia col dato invece di essere dedotta da chi
+     *  legge. 📌 *Un dato ricordato che non porta con sé QUANDO è stato letto è indistinguibile da
+     *  uno appena letto — e chi lo guarda non ha modo di sapere quale dei due ha davanti.*
+     *  ⛔ `ricordato` NON è un terzo modo di dire «ignoto»: il numero c'è, si mostra e si può
+     *  cambiare. Cambia **come lo si dichiara** quando si chiede a una persona di confermare del
+     *  denaro. PURA, così il banco la ESEGUE invece di riscriverla. */
+    function _pmoImportoCasella(importoCents, pendenteCents, lettoAt) {
       const ignoto = (importoCents == null && pendenteCents == null);
       const dovutoCents = (pendenteCents != null && pendenteCents > 0) ? pendenteCents
         : (importoCents != null ? importoCents : null);
+      const _quando = (lettoAt == null || lettoAt === '') ? null : String(lettoAt);
       return {
         ignoto: ignoto,
+        // 🚨 Un «ricordato» senza numero non esiste: se non si sa quanto, l'unica cosa vera è «—».
+        ricordato: !ignoto && !!_quando,
+        lettoAt: ignoto ? null : _quando,
         valore: ignoto ? '' : ((dovutoCents || 0) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         baseCents: ignoto ? null : (dovutoCents || 0),
       };
+    }
+
+    /** L'ora di `lettoAt` in italiano, per dirlo accanto al numero. Torna `''` se non si sa:
+     *  un'ora inventata sarebbe peggio dell'assenza dell'ora. PURA. */
+    function _pmoQuandoLetto(lettoAt) {
+      if (!lettoAt) return '';
+      const d = new Date(lettoAt);
+      if (isNaN(d.getTime())) return '';
+      const oggi = new Date();
+      const stessoGiorno = d.getFullYear() === oggi.getFullYear() && d.getMonth() === oggi.getMonth() && d.getDate() === oggi.getDate();
+      const ora = d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+      return stessoGiorno ? ('alle ' + ora) : (d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }) + ' alle ' + ora);
+    }
+
+    /** 🆕⭐⭐ VOCE 151 — IL «DA» DI UN CAMBIO IMPORTO HA **TRE** ESITI, e stanno scritti qui una
+     *  volta sola perché i posti che lo stampano sono **due** (il popup di conferma e la riga in
+     *  chat/scheda) e fino al 04/09 la regola era ricopiata in tutti e due.
+     *  📌 *Una regola scritta a mano in due punti non è una regola: è due regole che oggi
+     *     coincidono.* — è la stessa lezione della 149, un piano più in là.
+     *
+     *  ① **non letto** → `(non letto)`, la regola della 149: un «da» che nessuno ha letto non si
+     *     inventa a 0,00, o si chiederebbe a una persona di confermare che quel giocatore non
+     *     doveva niente;
+     *  ② **ricordato** → `8,00 (letto alle 21:03)`. 🚨 È il caso NUOVO, e senza di lui la 151
+     *     avrebbe **rotto** la 149 al contrario: un numero vecchio stampato come se fosse appena
+     *     letto è un «da» inventato esattamente come lo zero, solo più credibile perché è un
+     *     numero vero — è stato vero, prima;
+     *  ③ **letto adesso** → `8,00` e basta, che è il caso normale e non deve ingrassare.
+     *  PURA (il formato dei soldi e l'ora arrivano da fuori). */
+    function _pmoImportoDa(daCents, daLettoAt, euro, quando) {
+      if (daCents == null) return '(non letto)';
+      const eur = euro(daCents);
+      if (!daLettoAt) return eur;
+      const q = quando(daLettoAt);
+      return eur + ' (letto ' + (q || 'prima') + ')';
     }
     function _pmoEuroToCents(txt) {
       if (txt == null) return null;
@@ -40797,6 +40853,79 @@ Per confermare scrivi ELIMINA.`);
   // incompleto; la sync arricchisce le occupancy, NON gli staff_booking). Qui riscriviamo i nomi
   // autorevoli nel record staff_booking (locale + cloud) così il calendario si allinea — su tutti i
   // device — dopo aver aperto la prenotazione una volta. Sicuro: la sync non tocca gli staff_booking.
+  /** 🆕⭐⭐ VOCE 151 — CHE COSA DELLA LETTURA SI RICORDA, e soprattutto che cosa NO.
+   *
+   * 🗣️ Sua osservazione del 04/09: *«sull'importo c'è un trattino, dopo circa otto secondi appare
+   *    l'importo. Ma questo non è normale perché ci siamo detti che dovrebbe apparire già
+   *    l'importo visto che ogni due minuti andiamo a leggere Matchpoint attraverso il worker.»*
+   * 🗣️ Sua approvazione: *«Sì, procedi col salvare l'importo quando si legge.»*
+   *
+   * 📏 **La premessa della sua frase è FALSA, ed è la misura che ha deciso la strada** — il sync
+   *    ogni 2 minuti **non legge gli importi**: in `matchpoint-bookings-sync` il tipo è
+   *    `giocatori?: string[]`, **solo nomi**, perché la fonte è la *descrizione* dell'export
+   *    Excel. Gli importi stanno nella **ficha** della singola prenotazione, che il sync non apre.
+   *    ⇒ Aprirle tutte non si può: **206** prenotazioni × un giro ogni 2 minuti sul worker
+   *    **condiviso** ≈ 150.000 visite al giorno. ⇒ L'unica lettura che vede gli importi è quella
+   *    che parte **all'apertura della scheda** — e fino a oggi la si buttava via.
+   *
+   * ⛔⛔ **QUELLO CHE NON SI RICORDA VALE PIÙ DI QUELLO CHE SI RICORDA:**
+   *   · **`saldoCents` (il borsellino) NO.** Non è un fatto di *questa* prenotazione: è quanto ha
+   *     in tasca una persona, e si muove per gesti che con questa partita non c'entrano — un
+   *     borsellino ricordato sarebbe **falso per cause esterne**, e nessuno lo saprebbe. La
+   *     pastiglia della 139 continua a dire «—» finché non ha il dato vivo, ed è giusto così.
+   *   · **il `costo` NO**: è il listino, non il dovuto, e chi legge la casella cerca il dovuto.
+   *
+   *   · 🚨⭐⭐ **`stato` (riscosso / in sospeso) NO, ed è la scelta che costa di più spiegare.**
+   *     Ricordarlo renderebbe la riga *più stabile* — niente numero che si trasforma in pastiglia
+   *     dopo otto secondi — ma il verso in cui può sbagliare è quello caro: un «✓ pagato»
+   *     ricordato, su un pagamento **stornato** nel frattempo, fa saltare un incasso vero. Un
+   *     importo vecchio si corregge da sé alla prima rilettura; un incasso non fatto no.
+   *     ⚖️ Senza `stato` la riga resta **modificabile** per quei secondi, e non è un buco: chi
+   *     provasse a cambiare l'importo di una riga già riscossa si sente rispondere `ALREADY_PAID`
+   *     dal worker (voce 132). *Dove la protezione esiste già a valle, a monte si può scegliere di
+   *     non sapere.*
+   *
+   * ✅ **Si ricorda `importoCents`, `pendenteCents`, `idCliente`, `idx`** — i campi con cui la
+   *    casella si disegna — **più `lettoAt`**, che è la parte che rende il ricordo onesto: senza,
+   *    un numero vecchio e uno nuovo sono la stessa cosa sullo schermo.
+   *
+   * 🚨 E `lettoAt` si scrive **solo dove c'è un soldo letto**: appiccicarlo a una riga senza
+   *    importo produrrebbe un «ricordato» che non ricorda niente. PURA. */
+  function _pmoRosterDaRicordare(roster, quando) {
+    const _num = function (v) { return (typeof v === 'number' && isFinite(v)) ? v : null; };
+    return (Array.isArray(roster) ? roster : []).map(function (p) {
+      const nome = String((p && typeof p === 'object') ? (p.nome || '') : (p || '')).trim();
+      const riga = { nome: nome };
+      if (!p || typeof p !== 'object') return riga;
+      if (p.idx != null && String(p.idx) !== '') riga.idx = String(p.idx);
+      if (p.idCliente != null && String(p.idCliente) !== '') riga.idCliente = String(p.idCliente);
+      const imp = _num(p.importoCents), pen = _num(p.pendenteCents);
+      if (imp != null) riga.importoCents = imp;
+      if (pen != null) riga.pendenteCents = pen;
+      // ⛔ niente `lettoAt` senza un soldo letto: sarebbe un ricordo di niente.
+      if (imp != null || pen != null) riga.lettoAt = String(quando || '');
+      return riga;
+    }).filter(function (r) { return !!r.nome; });
+  }
+
+  /** È cambiato qualcosa che valga la pena riscrivere? Nomi **e** soldi, nell'ordine in cui stanno.
+   *  ⛔ `lettoAt` è escluso di proposito: cambia a **ogni** lettura, e includerlo vorrebbe dire
+   *  riscrivere il record e ripingare il cloud ogni volta che qualcuno apre una scheda — un
+   *  campanello che suona sempre non dice più niente. PURA. */
+  function _pmoRosterCambiato(vecchio, nuovo) {
+    const _chiave = function (p) {
+      if (!p) return '';
+      if (typeof p === 'string') return p.trim() + '|||';
+      return String(p.nome || '').trim() + '|'
+        + (p.importoCents == null ? '' : p.importoCents) + '|'
+        + (p.pendenteCents == null ? '' : p.pendenteCents);
+    };
+    const a = (Array.isArray(vecchio) ? vecchio : []).map(_chiave);
+    const b = (Array.isArray(nuovo) ? nuovo : []).map(_chiave);
+    if (a.length !== b.length) return true;
+    return a.some(function (x, i) { return x !== b[i]; });
+  }
+
   function _staffCalPersistRosterFromWorker(iso, campoNum, ora, roster) {
     try {
       if (!Array.isArray(roster)) return;
@@ -40815,9 +40944,16 @@ Per confermare scrivi ELIMINA.`);
           && String(x.ora).trim() === String(ora).trim();
       });
       if (!b || !b.id) return; // solo staff_booking esistenti (le occupancy le gestisce la sync)
+      const righe = _pmoRosterDaRicordare(roster, new Date().toISOString());
       const cur = _names(b.giocatori);
-      if (cur.length === next.length && cur.every(function (n, i) { return n === next[i]; })) return; // già allineato
-      b.giocatori = next.map(function (n) { return { nome: n }; });
+      // 🆕⭐⭐ VOCE 151 — SI CONFRONTANO ANCHE I SOLDI, e prima no.
+      // 🚨 Questa riga era l'uscita anticipata «già allineato» sui soli NOMI: con gli importi nel
+      //    record, un cambio importo su Matchpoint (stessi giocatori) non sarebbe mai stato
+      //    ricordato — la funzione sarebbe uscita di qui dicendo «uguale» guardando metà del dato.
+      //    📌 *Una guardia «è cambiato?» che confronta meno di quello che salva non protegge:
+      //       congela.*
+      if (cur.length === next.length && !_pmoRosterCambiato(b.giocatori, righe)) return;
+      b.giocatori = righe;
       if (typeof save === 'function') save('staffBookings', list);
       try { if (typeof staffCalCloudSyncEdit === 'function') staffCalCloudSyncEdit(iso, campoNum, ora); } catch (e) {}
       try { if (typeof renderStaffCalendar === 'function') renderStaffCalendar(); } catch (e) {}
@@ -41686,7 +41822,9 @@ Per confermare scrivi ELIMINA.`);
     // VOCE 149 — il «da» si scrive solo se lo sappiamo: `daCents` è `null` quando l'importo non
     // era stato letto da Matchpoint, e stampare «0,00 →» sarebbe un valore di partenza inventato.
     const _riga = function (c) {
-      return esc(c.nome) + ' ' + (c.daCents == null ? '→ ' : (_incassiEuro(c.daCents) + ' → ')) + _incassiEuro(c.aCents);
+      // VOCE 151 — stessa regola del popup, eseguita e non ricopiata.
+      return esc(c.nome) + ' ' + esc(_pmoImportoDa(c.daCents, c.daLettoAt, _incassiEuro, _pmoQuandoLetto))
+        + ' → ' + _incassiEuro(c.aCents);
     };
     const note = svcAddMessage('system', '↻ Salvo su Matchpoint ' + (changes.length === 1 ? 'l\'importo' : 'gli importi') + ' a carico… (non chiudere)<br><span style="color:var(--text-muted);font-size:.78rem;">' + changes.map(_riga).join('<br>') + '</span>');
     // VOCE 134 — l'esito va anche DENTRO la scheda, che qui resta aperta: è lì che guarda chi ha
@@ -43938,10 +44076,15 @@ Per confermare scrivi ELIMINA.`);
             // 🚨 E `baseCents` resta **`null`**, non `0`: così il riepilogo scrive «→ 9,00» e non
             //    «**0,00** → 9,00», che sarebbe un «da» inventato. Un valore di partenza che
             //    nessuno ha letto non si dichiara.
-            const _cas = _pmoImportoCasella(importoCents, pendenteCents);
+            // 🆕 VOCE 151 — `p.lettoAt` c'è solo sulle righe che vengono dalla COPIA LOCALE: il
+            //    worker non lo manda, lo scrive il write-back. ⇒ Appena la lettura viva atterra,
+            //    `st.roster` viene sostituito con le righe del worker e il «ricordato» sparisce da
+            //    sé, senza che nessuno lo spenga. *Lo stato più difficile da sbagliare è quello che
+            //    nessuno deve ricordarsi di azzerare.*
+            const _cas = _pmoImportoCasella(importoCents, pendenteCents, p.lettoAt);
             const _importoIgnoto = _cas.ignoto;
             const eur = document.createElement('div');
-            eur.className = 'svc-pl-eur';
+            eur.className = 'svc-pl-eur' + (_cas.ricordato ? ' svc-pl-eur-ricordato' : '');
             const sym = document.createElement('span'); sym.className = 'svc-pl-eur-sym'; sym.textContent = '€';
             amt = document.createElement('input');
             amt.type = 'text'; amt.inputMode = 'decimal'; amt.className = 'svc-pl-eur-input';
@@ -43951,9 +44094,17 @@ Per confermare scrivi ELIMINA.`);
               amt.title = st.rosterRefreshing
                 ? 'Importo non ancora letto da Matchpoint — sto rileggendo'
                 : 'Importo non letto da Matchpoint: qui non c\'è uno zero, c\'è un dato che manca';
+            } else if (_cas.ricordato) {
+              // ⚖️ Il numero c'è e si può cambiare: quello che cambia è la PROMESSA che porta.
+              //    Detto nel titolo e con un puntino, non con una scritta che allunghi la riga —
+              //    la 133 ha già stabilito che i soldi stanno su una riga sola.
+              const _q = _pmoQuandoLetto(_cas.lettoAt);
+              amt.title = 'Importo letto da Matchpoint ' + (_q || 'in una lettura precedente')
+                + (st.rosterRefreshing ? ' — sto rileggendo adesso' : ' — non ancora riletto');
             }
             amt.disabled = !_payCollectActive;
-            amt.setAttribute('aria-label', 'Importo a carico di ' + p.nome);
+            amt.setAttribute('aria-label', 'Importo a carico di ' + p.nome
+              + (_cas.ricordato ? ' (letto ' + (_pmoQuandoLetto(_cas.lettoAt) || 'prima') + ', non ancora riletto)' : ''));
             eur.appendChild(sym); eur.appendChild(amt);
             money.appendChild(eur);
             _payAmtInputs.push(amt);
@@ -43961,6 +44112,10 @@ Per confermare scrivi ELIMINA.`);
               input: amt,
               // VOCE 149 — `null` quando l'importo non è stato letto: il «da» non si inventa.
               baseCents: _cas.baseCents,
+              // VOCE 151 — e quando è solo RICORDATO il «da» esiste ma va dichiarato: il riepilogo
+              // che chiede di confermare del denaro non può far passare un numero vecchio per uno
+              // appena letto.
+              baseLettoAt: (_cas.ricordato ? _cas.lettoAt : null),
               idCliente: (p.idCliente != null ? String(p.idCliente) : ''),
               idx: (p.idx != null ? String(p.idx) : ''),
               nome: p.nome,
@@ -44673,7 +44828,7 @@ Per confermare scrivi ELIMINA.`);
         if (r.idx != null && st.remove[r.idx]) return;
         const c = _pmoEuroToCents(r.input.value);
         if (c == null || !(c >= 0) || c === r.baseCents) return;
-        out.push({ idCliente: r.idCliente, idx: r.idx, nome: r.nome, daCents: r.baseCents, aCents: c });
+        out.push({ idCliente: r.idCliente, idx: r.idx, nome: r.nome, daCents: r.baseCents, daLettoAt: (r.baseLettoAt || null), aCents: c });
       });
       return out;
     })();
@@ -44702,9 +44857,10 @@ Per confermare scrivi ELIMINA.`);
         // 🚨 VOCE 149 — se il «da» non è stato letto da Matchpoint lo si DICHIARA, non lo si
         //    inventa a 0,00: qui si sta chiedendo a una persona di confermare del denaro, e
         //    «0,00 → 9,00» le farebbe credere che quel giocatore non dovesse niente.
+        // VOCE 151 — tre esiti, non due: la regola sta in `_pmoImportoDa` e qui la si esegue.
         parts.push('Importo ' + c.nome + ': '
-          + (c.daCents == null ? '(non letto) → ' : (_incassiEuro(c.daCents) + ' → '))
-          + _incassiEuro(c.aCents));
+          + _pmoImportoDa(c.daCents, c.daLettoAt, _incassiEuro, _pmoQuandoLetto)
+          + ' → ' + _incassiEuro(c.aCents));
       });
     }
     // skipConfirm = chiamata dall'assistente ("salva" a voce): la conferma è già stata data a voce,
