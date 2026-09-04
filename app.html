@@ -3073,7 +3073,14 @@
       /* Per difetto TUTTO va a sinistra: un figlio nuovo non finisce mai in mezzo ai giocatori. */
       .svc-edit-box > * { grid-column:1; min-width:0; }
       .svc-edit-box > .svc-edit-title { grid-column:1 / -1; }
-      .svc-edit-box > [data-feature="players-payments"] { grid-column:2; grid-row:2 / span 10; }
+      /* 🔼 VOCE 157 — la riga di partenza è la 1, non più la 2, e il perché va scritto o
+         qualcuno la rimette indietro: la 2 esisteva perché la riga 1 era del TITOLO, che a
+         tutta larghezza spingeva giù entrambe le colonne. Ora il titolo è fuori dal flusso
+         (sta nella testata) e la riga 1 è libera: lasciando `2` i giocatori restavano
+         inchiodati sotto lo Slot — misurato sulla pagina viva di TEST 6.348, Slot a 118 e
+         giocatori a 280. 📌 Un numero che descriveva una vicina, non sé stesso: tolta la
+         vicina, quel numero non voleva più dire niente e nessuna prova poteva accorgersene. */
+      .svc-edit-box > [data-feature="players-payments"] { grid-column:2; grid-row:1 / span 10; }
       /* Le sezioni non hanno più bisogno del margine sotto: a separarle ci pensa la griglia. */
       .svc-edit-box > .svc-edit-section { margin-bottom:10px; }
 
@@ -8488,7 +8495,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.348';
+    const APP_VERSION = '6.349';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
