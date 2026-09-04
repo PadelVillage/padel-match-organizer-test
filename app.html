@@ -3172,7 +3172,10 @@
          📌 Rileggendo il CSS non si vedeva: si è visto aprendola. */
       .svc-chat-panel .svc-chat-messages { flex:0 1 auto; }
       .svc-chat-panel.svc-chat-open { display:flex; }
-      .svc-chat-header { display:flex; }
+      /* La testata è solo la ✕: la scheda dentro ha già il suo titolo. Sottile, senza riga di
+         separazione — 50px di bianco sopra un titolo sono una testata che non dice niente. */
+      .svc-chat-header { display:flex; padding:6px 8px 0; border-bottom:none; }
+      .svc-chat-panel .svc-chat-messages { padding-top:4px; }
       .svc-chat-overlay { display:block; position:fixed; inset:0; background:rgba(0,0,0,0); z-index:2550; pointer-events:none; transition:background .25s; }
       .svc-chat-overlay.active { background:rgba(16,32,60,.36); pointer-events:auto; }
       .svc-chat-fab { display:none !important; }
@@ -8333,7 +8336,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.314';
+    const APP_VERSION = '6.315';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
