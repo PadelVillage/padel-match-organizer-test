@@ -8327,7 +8327,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.333';
+    const APP_VERSION = '6.334';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -24865,6 +24865,28 @@ Grazie!`
     }
     // Parse importo digitato dall'operatore ("8,00" / "8.00" / "8" / "8,5") → cents.
     // Ritorna null se non interpretabile come importo > 0.
+    /** 🩹⭐⭐ VOCE 149 — «non letto» e «zero» sono due cose diverse, e questa funzione è il posto
+     *  in cui la differenza vive. Gemella di `_pmoWalletPastiglia` (139), e nata per la stessa
+     *  ragione: quella regola era già stata scritta due volte (114, 139) e ogni volta **a mano**,
+     *  nel punto in cui qualcuno se n'era ricordato.
+     *  📌 *Una regola scritta a mano in tre punti non è una regola: è un'abitudine, e le abitudini
+     *     hanno buchi. Messa in una funzione, il quarto punto la eredita senza chiederlo.*
+     *
+     *  ⛔ E la METÀ CHE PROTEGGE: uno zero **letto** resta `0,00`. Un omaggio è un importo letto
+     *  che vale zero — trasformarlo in «—» perderebbe l'informazione opposta, e chi guarda non
+     *  saprebbe più distinguere «gratis» da «non lo so». *Curare «zero non è non lo so»
+     *  cancellando lo zero è la stessa malattia al rovescio.*
+     *  PURA, così il banco la ESEGUE invece di riscriverla. */
+    function _pmoImportoCasella(importoCents, pendenteCents) {
+      const ignoto = (importoCents == null && pendenteCents == null);
+      const dovutoCents = (pendenteCents != null && pendenteCents > 0) ? pendenteCents
+        : (importoCents != null ? importoCents : null);
+      return {
+        ignoto: ignoto,
+        valore: ignoto ? '' : ((dovutoCents || 0) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        baseCents: ignoto ? null : (dovutoCents || 0),
+      };
+    }
     function _pmoEuroToCents(txt) {
       if (txt == null) return null;
       let s = String(txt).trim().replace(/[€\s]/g, '');
@@ -41647,7 +41669,11 @@ Per confermare scrivi ELIMINA.`);
       return { ok: false, done: 0, failed: changes.length, message: 'NO_IDRESERVA' };
     }
 
-    const _riga = function (c) { return esc(c.nome) + ' ' + _incassiEuro(c.daCents) + ' → ' + _incassiEuro(c.aCents); };
+    // VOCE 149 — il «da» si scrive solo se lo sappiamo: `daCents` è `null` quando l'importo non
+    // era stato letto da Matchpoint, e stampare «0,00 →» sarebbe un valore di partenza inventato.
+    const _riga = function (c) {
+      return esc(c.nome) + ' ' + (c.daCents == null ? '→ ' : (_incassiEuro(c.daCents) + ' → ')) + _incassiEuro(c.aCents);
+    };
     const note = svcAddMessage('system', '↻ Salvo su Matchpoint ' + (changes.length === 1 ? 'l\'importo' : 'gli importi') + ' a carico… (non chiudere)<br><span style="color:var(--text-muted);font-size:.78rem;">' + changes.map(_riga).join('<br>') + '</span>');
     // VOCE 134 — l'esito va anche DENTRO la scheda, che qui resta aperta: è lì che guarda chi ha
     // appena premuto Salva, e il messaggio di chat nasce sotto il bordo.
@@ -43870,15 +43896,48 @@ Per confermare scrivi ELIMINA.`);
               money.appendChild(sBtn);
             }
           } else if (payRow) {
-            // Da incassare → campo € inline editabile (default = pendente o importo letto, sennò 0).
-            const dovutoCents = (pendenteCents != null && pendenteCents > 0) ? pendenteCents
-              : (importoCents != null ? importoCents : 0);
+            // Da incassare → campo € inline editabile.
+            //
+            // 🩹⭐⭐ VOCE 149 (04/09/2026) — ZERO NON È «NON LO SO», ed è la TERZA volta.
+            //
+            // 🗣️ Sua segnalazione dal cellulare: *«ho aperto la scheda della partita ma gli importi
+            //    sono a zero»* — mentre su Matchpoint quella partita porta **8,00** e **10,00**.
+            //
+            // 🚨 **Gli importi NON stanno nella copia locale.** Il roster che apre la scheda
+            //    (voce 142) nasce da `staffBookings` e porta i **nomi**; importo e stato pagamento
+            //    arrivano dalla **rilettura del worker** (`partecipantiFinali`). ⇒ Finché quella non
+            //    atterra `importoCents` è **`null`**, e questa riga lo disegnava come **`0,00`**.
+            // ⚖️ `null` vuol dire «non l'ho letto»; `0,00` dice «non deve niente». Sono due cose
+            //    diverse, e chi fa cassa la sera legge la seconda: **non incassa**.
+            // 📌 *È la lezione della **114** e della **139**, già scritta due volte in questo
+            //    progetto e mai applicata a QUESTA casella. Una regola applicata dove ci si è
+            //    ricordati non è una regola: è un'abitudine, e le abitudini hanno buchi.*
+            // 🚨 **E la 142 l'ha resa PEGGIORE senza toccarla**: prima la rotellina copriva tutto e
+            //    non si vedeva nessun numero; da quando la scheda si apre subito, al posto del velo
+            //    onesto c'è uno **zero falso**. È esattamente il rischio che la 142 aveva previsto
+            //    per i NOMI (*«una sezione vuota sembra una risposta»*) e non per i SOLDI.
+            //
+            // 🔨 Non letto ⇒ casella **vuota con il segnaposto `—`**, come la pastiglia del wallet
+            //    della 139. ⛔ Ma **NON disabilitata**: toglierebbe la possibilità di cambiare
+            //    l'importo proprio quando il worker non risponde, cioè di curare a mano il caso in
+            //    cui serve di più. *Non mentire non deve costare una funzione.*
+            // 🚨 E `baseCents` resta **`null`**, non `0`: così il riepilogo scrive «→ 9,00» e non
+            //    «**0,00** → 9,00», che sarebbe un «da» inventato. Un valore di partenza che
+            //    nessuno ha letto non si dichiara.
+            const _cas = _pmoImportoCasella(importoCents, pendenteCents);
+            const _importoIgnoto = _cas.ignoto;
             const eur = document.createElement('div');
             eur.className = 'svc-pl-eur';
             const sym = document.createElement('span'); sym.className = 'svc-pl-eur-sym'; sym.textContent = '€';
             amt = document.createElement('input');
             amt.type = 'text'; amt.inputMode = 'decimal'; amt.className = 'svc-pl-eur-input';
-            amt.value = ((dovutoCents || 0) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            amt.value = _cas.valore;
+            if (_importoIgnoto) {
+              amt.placeholder = '—';
+              amt.title = st.rosterRefreshing
+                ? 'Importo non ancora letto da Matchpoint — sto rileggendo'
+                : 'Importo non letto da Matchpoint: qui non c\'è uno zero, c\'è un dato che manca';
+            }
             amt.disabled = !_payCollectActive;
             amt.setAttribute('aria-label', 'Importo a carico di ' + p.nome);
             eur.appendChild(sym); eur.appendChild(amt);
@@ -43886,7 +43945,8 @@ Per confermare scrivi ELIMINA.`);
             _payAmtInputs.push(amt);
             _payAmtRows.push({
               input: amt,
-              baseCents: (dovutoCents || 0),
+              // VOCE 149 — `null` quando l'importo non è stato letto: il «da» non si inventa.
+              baseCents: _cas.baseCents,
               idCliente: (p.idCliente != null ? String(p.idCliente) : ''),
               idx: (p.idx != null ? String(p.idx) : ''),
               nome: p.nome,
@@ -44625,7 +44685,12 @@ Per confermare scrivi ELIMINA.`);
     // dove, non «3 importi cambiati» — è denaro che qualcuno pagherà al banco.
     if (chargesChanged) {
       chargeChanges.forEach(function (c) {
-        parts.push('Importo ' + c.nome + ': ' + _incassiEuro(c.daCents) + ' → ' + _incassiEuro(c.aCents));
+        // 🚨 VOCE 149 — se il «da» non è stato letto da Matchpoint lo si DICHIARA, non lo si
+        //    inventa a 0,00: qui si sta chiedendo a una persona di confermare del denaro, e
+        //    «0,00 → 9,00» le farebbe credere che quel giocatore non dovesse niente.
+        parts.push('Importo ' + c.nome + ': '
+          + (c.daCents == null ? '(non letto) → ' : (_incassiEuro(c.daCents) + ' → '))
+          + _incassiEuro(c.aCents));
       });
     }
     // skipConfirm = chiamata dall'assistente ("salva" a voce): la conferma è già stata data a voce,
