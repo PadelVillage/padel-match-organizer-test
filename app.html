@@ -2628,8 +2628,7 @@
     .staff-cal-cell.partita .staff-cal-slot-name { color:#1e40af; }
     .staff-cal-cell.lezione .staff-cal-slot-name { color:#14532d; }
     .staff-cal-input-bar { position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:2px solid #e5e7eb; padding:10px 16px 12px; z-index:300; box-shadow:0 -4px 16px rgba(0,0,0,.09); }
-    body:not(.sidebar-collapsed) .staff-cal-input-bar { left:304px; }
-    @media(max-width:899px) { body:not(.sidebar-collapsed) .staff-cal-input-bar { left:0; } }
+    /* 🗑️ 04/09/2026: scansava la colonna a sinistra, che su desktop non c'è più. */
     .staff-cal-input-wrap { display:flex; align-items:flex-end; gap:8px; max-width:760px; margin:0 auto; }
     .staff-cal-input-wrap textarea { flex:1; border:1.5px solid #d1d5db; border-radius:14px; padding:10px 14px; font-size:14px; resize:none; line-height:1.45; min-height:44px; max-height:140px; font-family:inherit; color:#111827; outline:none; transition:border-color .2s; }
     .staff-cal-input-wrap textarea:focus { border-color:var(--primary); }
@@ -2837,6 +2836,30 @@
          accende per pochi secondi sarebbe uno slot che ogni tanto non si riesce a prenotare. */
       pointer-events:none;
     }
+    /* 🚦 RESTYLING 04/09/2026 — LE DUE CASE DELLA STRISCIA (sua decisione, mockup approvato).
+       ① DENTRO LA SCHEDA: non è più una barra sovrapposta ma il fondo della finestra, quindi
+          esce dal `fixed` e torna nel flusso. Qui i click SERVONO (la ✕ del rifiuto), perciò
+          `pointer-events` torna in vita — il divieto di sopra difendeva gli slot del calendario,
+          e dentro la scheda non c'è nessuno slot da coprire. */
+    .svc-semaforo.svc-semaforo-in-scheda {
+      position:static; width:auto; z-index:auto; border-radius:0;
+      box-shadow:none; pointer-events:auto; flex:0 0 auto; order:3;
+    }
+    /*  ② PASTIGLIA, a scheda chiusa: piccola, in alto a destra del calendario, e CLICCABILE —
+          è la sola via per aprire la scheda del gesto, quindi qui i click passano per forza.
+       ⚠️ `max-width` + troncamento: la pastiglia dice *cosa* sta succedendo, il *dove* lo dice
+          la cella accesa nella griglia. Se crescesse fino a contenere tutto tornerebbe a essere
+          la barra, cioè la cosa che stiamo togliendo. */
+    .svc-semaforo.svc-semaforo-pastiglia {
+      position:fixed; bottom:auto; width:auto; max-width:min(460px, calc(100vw - 32px));
+      min-height:0; padding:7px 14px; border-radius:999px;
+      border:1px solid #7dd3fc; border-top:1px solid #7dd3fc;
+      box-shadow:0 6px 18px rgba(2,132,199,.20);
+      pointer-events:auto; cursor:pointer; z-index:2400;
+    }
+    .svc-semaforo.svc-semaforo-pastiglia:hover { filter:brightness(.98); }
+    .svc-semaforo.svc-semaforo-pastiglia .svc-semaforo-dove { display:none; }
+    .svc-semaforo.svc-semaforo-pastiglia .svc-semaforo-corpo { gap:0; }
     /* Il puntino che pulsa: dice «adesso», che è l'unica cosa che questa barra promette. */
     .svc-semaforo-dot {
       flex:0 0 auto; width:8px; height:8px; border-radius:50%; background:#0284c7;
@@ -3132,10 +3155,20 @@
     @media (min-width:900px) {
       .svc-layout { flex-direction:row; height:min(80vh, 860px); }
       .svc-grid-col { overflow:auto; }
-      /* La chat NON è più una colonna a destra: su desktop vive nella sidebar (#sideNavChatHost). */
-      .svc-chat-header { display:none !important; }
+      /* 🪟 La scheda è una FINESTRA sopra il calendario (restyling del 04/09/2026): non è più
+         una colonna a destra né il pannello della sidebar. Misure prese dalla scheda socio
+         (.member-card-overlay), così le due schede dell'app si aprono uguali. */
+      .svc-chat-panel {
+        position:fixed; top:74px; bottom:24px; left:50%; transform:translateX(-50%);
+        width:min(860px, calc(100vw - 48px)); max-height:calc(100vh - 98px);
+        z-index:2600; display:none; border:1px solid #b7c7e3; border-radius:12px;
+        box-shadow:0 18px 55px rgba(15,23,42,.26); overflow:hidden;
+      }
+      .svc-chat-panel.svc-chat-open { display:flex; }
+      .svc-chat-header { display:flex; }
+      .svc-chat-overlay { display:block; position:fixed; inset:0; background:rgba(0,0,0,0); z-index:2550; pointer-events:none; transition:background .25s; }
+      .svc-chat-overlay.active { background:rgba(16,32,60,.36); pointer-events:auto; }
       .svc-chat-fab { display:none !important; }
-      .svc-chat-overlay { display:none !important; }
     }
     @media (max-width:899px) {
       .svc-chat-panel { position:fixed; bottom:0; left:0; right:0; height:auto; max-height:85vh; border-top:2px solid var(--border); border-radius:8px 8px 0 0; box-shadow:0 -8px 32px rgba(0,0,0,.18); z-index:300; transform:translateY(100%); transition:transform .3s cubic-bezier(.4,0,.2,1); }
@@ -3163,6 +3196,8 @@
       /* La schedina è un form alto: ancorala in ALTO (column, non column-reverse) così l'header
          con la ✕ resta visibile e si scorre verso il basso fino a Conferma. */
       .svc-chat-panel.svc-card-mode .svc-chat-messages { flex-direction:column; }
+      /* La striscia della 137 è l'ultima cosa del foglio, sotto i messaggi. */
+      .svc-semaforo.svc-semaforo-in-scheda { order:3; }
       .svc-chat-overlay { display:block; position:fixed; inset:0; background:rgba(0,0,0,0); z-index:200; pointer-events:none; transition:background .3s; }
       .svc-chat-overlay.active { background:rgba(0,0,0,.35); pointer-events:auto; }
       /* OMOGENEITÀ: tutto il pannello assistente alla stessa taglia (21px) su mobile.
@@ -3724,12 +3759,10 @@
     }
     @media (max-width:760px) { .fill-request-grid { grid-template-columns:1fr; } .fill-request-modal { padding:10px; } }
 
-    @media (min-width:900px) {
-      body:not(.sidebar-collapsed) .fill-request-modal { left:304px; }
-      body:not(.sidebar-collapsed) .side-nav { z-index:2500; overflow-y:scroll !important; min-height:0; }
-      body:not(.sidebar-collapsed) .side-nav-content { min-height:max-content; padding-bottom:96px; }
-      body:not(.sidebar-collapsed) #fillSlots .fill-calendar-stage .fill-detail-panel { inset:28px 36px 28px 328px; }
-    }
+    /* 🗑️ Restyling 04/09/2026 — qui c'erano quattro regole che scansavano la colonna a
+       sinistra (larga 304px): due la impaginavano, due spostavano di 304/328px la finestra
+       delle richieste e il pannello dei riempimenti. Su desktop quella colonna non esiste
+       più, quindi non c'è niente da scansare: chi la scansava restava spostato nel vuoto. */
 
     /* ── Riorganizzazione layout: chat nella sidebar + capitoli in barra orizzontale ──
        Solo desktop (≥900px). Sotto i 900px tutto resta com'era (drawer + chat bottom-sheet). */
@@ -3770,27 +3803,28 @@
          la nascondiamo in TUTTE le sezioni. Su mobile (<900px) resta: lì il ≡ Menu apre il drawer. */
       .top-nav-bar { display:none !important; }
 
-      /* 1) Sidebar: solo la chat. Calendario e gli altri capitoli vivono nella barra in alto,
-         quindi nascondiamo anche la voce Calendario qui (resta nel drawer su mobile <900px). */
-      .side-nav-chapters { display:none; }
-      .side-nav .side-nav-section-label { display:none; }
-      .side-nav .side-nav-main-item[data-section-key="dashboard"] { display:none; }
-      .side-nav { display:flex; flex-direction:column; }
-      body:not(.sidebar-collapsed) .side-nav { overflow:hidden !important; }
-      .side-nav-content { flex:1 1 auto; display:flex; flex-direction:column; min-height:0; }
-      body:not(.sidebar-collapsed) .side-nav-content { min-height:0; padding-bottom:12px; }
-      .side-nav-chat-host { flex:1 1 auto; min-height:0; display:flex; margin-top:8px; }
-      .side-nav-chat-host .svc-chat-panel { flex:1 1 auto; min-height:0; width:auto; background:var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow:0 2px 10px rgba(0,0,0,.22); overflow:hidden; border-top:1px solid var(--border); }
-      /* Chat stile WhatsApp: messaggi sopra (ultimo in fondo, autoscroll via JS), input in basso. */
-      .side-nav-chat-host .svc-chat-messages { order:0; flex:1 1 auto; min-height:0; flex-direction:column; }
-      .side-nav-chat-host .svc-chat-panel.svc-card-mode .svc-chat-messages { flex-direction:column; }
-      .side-nav-chat-host .svc-chat-input-row { order:1; border-top:1px solid var(--border); border-bottom:none; border-radius:0; }
-      /* Anti-flash / fallback: finché la chat non è stata spostata nella sidebar (o se il JS
-         fallisce) non mostrarla come colonna dentro al calendario. */
-      .svc-layout > .svc-chat-panel { display:none; }
+      /* 1) 🗑️ LA COLONNA A SINISTRA NON C'È PIÙ (restyling del 04/09/2026, sua decisione).
+         Su desktop teneva la chat (tolta), il marchio, la versione, il tasto Esci e una voce
+         «Calendario» che duplicava la tab: i primi tre sono passati nella barra dei capitoli,
+         il quarto è sparito perché era un doppione. I suoi 304px vanno al calendario.
+         ⚠️ Su telefono (<900px) quella stessa colonna È il menu, il cassetto del ≡: lì resta
+         intera, e infatti questa regola vive dentro `min-width:900px`. */
+      .side-nav, .sidebar-backdrop { display:none !important; }
+      /* 🗑️ Il posto della chat nella sidebar non esiste più: l'ospite resta a zero altezza
+         perché il markup lo cita ancora, ma non contiene nulla. */
+      .side-nav-chat-host { display:none; }
 
       /* 2) Barra capitoli orizzontale sopra il calendario */
       .pmo-chapter-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 16px; padding:8px 10px; background:#eef2f7; border:1px solid #e1e7ef; border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,.05); }
+      /* 🏷️ Marchio + ambiente + versione a sinistra della barra, Esci in fondo a destra:
+         è quello che teneva l'intestazione della colonna sparita. */
+      .pmo-chapter-brand { display:flex; align-items:center; gap:9px; padding-right:12px; margin-right:4px; border-right:1px solid #d5dfeb; }
+      .pmo-chapter-logo { width:34px; height:34px; border-radius:9px; overflow:hidden; flex:0 0 auto; background:#fff; box-shadow:0 1px 3px rgba(15,23,42,.14); }
+      .pmo-chapter-logo img { width:100%; height:100%; object-fit:cover; display:block; }
+      .pmo-chapter-brand-name { font-size:14px; font-weight:800; color:#1b3560; line-height:1.15; cursor:pointer; }
+      .pmo-chapter-brand-meta { display:flex; align-items:center; gap:5px; font-size:11px; color:#66799a; font-weight:600; margin-top:1px; }
+      .pmo-chapter-logout { margin-left:auto; display:inline-flex; align-items:center; gap:6px; border:1px solid #d5dfeb; background:#fff; color:#44557a; border-radius:9px; padding:8px 12px; font-size:13px; font-weight:700; cursor:pointer; line-height:1; }
+      .pmo-chapter-logout:hover { background:#f4f7fc; color:#1b3560; }
       .pmo-chapter-group { position:relative; }
       .pmo-chapter-item { border:1px solid transparent; border-radius:9px; padding:9px 14px; background:transparent; color:#274060; font-size:14px; font-weight:700; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:6px; line-height:1; }
       .pmo-chapter-item:hover { background:rgba(31,71,136,.08); }
@@ -5445,18 +5479,10 @@ body.assessment-public-mode .assessment-public-only-card {
     .member-card-overlay.open { display:block; }
     .member-card-overlay .member-card { margin:0; border:0; border-radius:0; box-shadow:none; }
     .member-card-overlay .member-card-head { position:sticky; top:0; z-index:2; background:#fff; box-shadow:0 1px 0 rgba(15,23,42,.08); }
-    /* Desktop: la scheda socio NON deve coprire la sidebar/chat (larga 304px a sinistra).
-       La ancoro a destra della side-nav e la centro nell'area rimanente. Con sidebar
-       collassata torna centrata su tutta la viewport (regola base sopra). */
-    @media (min-width:900px) {
-      body:not(.sidebar-collapsed) .member-card-overlay {
-        --pmo-card-w: min(1180px, calc(100vw - 304px - 48px));
-        width: var(--pmo-card-w);
-        left: calc(304px + (100vw - 304px - var(--pmo-card-w)) / 2);
-        right: auto;
-        transform: none;
-      }
-    }
+    /* 🗑️ Restyling 04/09/2026 — qui la scheda socio si spostava di 304px per non coprire la
+       colonna a sinistra. Tolta la colonna, quello spostamento la lasciava sbilenca: adesso
+       vale la regola base qui sopra, cioè centrata sulla finestra intera. La scheda partita
+       (#svcChatPanel) si apre con le stesse misure, così le due sono la stessa finestra. */
     .players-add-form {
       display:none;
       position:fixed;
@@ -6769,6 +6795,16 @@ body.assessment-public-mode .assessment-public-only-card {
          (switchTab / goToTabSection). data-section-key / data-subsection-key fanno sì che
          il gating ruoli (pmoApplyTabVisibility) nasconda le voci non consentite. -->
     <nav class="pmo-chapter-bar" id="pmoChapterBar">
+      <!-- 🏷️ Restyling 04/09/2026 — marchio, ambiente e versione erano nell'intestazione della
+           colonna a sinistra, che su desktop non c'è più: traslocano qui, a sinistra dei
+           capitoli. Il tasto Esci sta all'estremo opposto (vedi .pmo-chapter-logout). -->
+      <div class="pmo-chapter-brand">
+        <span class="pmo-chapter-logo"><img src="https://app.padelvillage.club/logo-padel-village.jpeg" alt="Padel Village" /></span>
+        <div class="pmo-chapter-brand-text">
+          <div class="pmo-chapter-brand-name" onclick="pmoShowVersionOverlay()" title="Mostra versione">Padel Village</div>
+          <div class="pmo-chapter-brand-meta"><span class="pmo-env-badge" data-env-label hidden></span><span data-app-version>v5.312</span></div>
+        </div>
+      </div>
       <button type="button" class="pmo-chapter-item" data-section-key="dashboard" onclick="switchTab('dashboard', this)">Calendario</button>
       <!-- Anagrafica soci sta SUBITO a destra di Calendario (scelta del committente, 2/08).
            ⚠️ La voce «Assistente AI» è iniettata a runtime e si àncora a QUESTO bottone: se lo
@@ -6795,6 +6831,7 @@ body.assessment-public-mode .assessment-public-only-card {
           <button type="button" data-subsection-key="view_admin_circoli" data-parent-tab="administration" onclick="goToTabSection('administration','Circoli')">Circoli</button>
         </div>
       </div>
+      <button type="button" class="pmo-chapter-logout" onclick="staffLogout()" title="Esci" aria-label="Esci"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Esci</button>
     </nav>
 
     <div id="globalAlerts"></div>
@@ -6921,25 +6958,18 @@ body.assessment-public-mode .assessment-public-only-card {
                     <div class="agenda-body" id="staffCalAgendaBody"></div>
                   </div>
                 </div>
+                <!-- 🪟 RESTYLING 04/09/2026 — la scheda non vive più nella sidebar: questo
+                     pannello È la finestra che si apre SOPRA il calendario (stessa forma della
+                     scheda socio in Anagrafica). Gli id restano quelli di prima, così tutto il
+                     codice che riempie #svcChatMessages non cambia di una riga. -->
                 <div class="svc-chat-panel" id="svcChatPanel">
                   <div class="svc-chat-header">
-                    <button class="svc-chat-close-btn" id="svcChatCloseBtn" title="Chiudi">✕</button>
-                  </div>
-                  <div class="svc-chat-input-row" id="svcChatInputRow">
-                    <textarea class="svc-chat-input" id="svcChatInput" rows="1" placeholder="Clicca uno slot libero per prenotare ↑" disabled></textarea>
-                    <button class="svc-chat-send" id="svcChatSend" aria-label="Invia (Invio)" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+                    <button class="svc-chat-close-btn" id="svcChatCloseBtn" title="Chiudi" aria-label="Chiudi">✕</button>
                   </div>
                   <div class="svc-chat-messages" id="svcChatMessages"></div>
                 </div>
               </div>
-              <!-- ── Tappa 2: barra chat mobile ── -->
-              <div id="staffCalMobileChatBar">
-                <input id="staffCalMobileInput" class="smc-input" type="text" placeholder="Clicca uno slot per prenotare ↑">
-                <button id="staffCalMobileMic" class="smc-mic-btn" type="button" title="Detta un comando" aria-label="Detta un comando" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg></button>
-                <button id="staffCalMobileSend" class="smc-send-btn">Invia</button>
-              </div>
               <div class="svc-chat-overlay" id="svcChatOverlay"></div>
-              <button class="svc-chat-fab" id="svcChatFab" title="Assistente prenotazioni">💬<span class="svc-fab-badge" id="svcFabBadge"></span></button>
               <!-- Tappa 33 — bottom-sheet Soci -->
               <div class="smc-soci-overlay" id="staffCalSociOverlay" onclick="staffCalCloseSociSheet()"></div>
               <div class="smc-soci-sheet" id="staffCalSociSheet" role="dialog" aria-label="Soci">
@@ -8296,7 +8326,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.312';
+    const APP_VERSION = '6.313';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -10428,15 +10458,13 @@ Grazie.`
     // #staffCalV36 e restava nascosto fuori dal calendario. Spostiamo il NODO (gli ID
     // restano, quindi la logica JS della chat non cambia).
     const PMO_DESKTOP_MQ = window.matchMedia('(min-width:900px)');
+    // 🪟 Restyling 04/09/2026: la finestra sta nel <body> a QUALSIASI larghezza — su desktop è
+    // la scheda centrata sopra il calendario, su telefono il foglio che sale dal basso. Prima
+    // su desktop veniva agganciata alla sidebar, che non c'è più.
     function pmoRelocateChat() {
       const panel = document.getElementById('svcChatPanel');
       if (!panel) return;
-      if (PMO_DESKTOP_MQ.matches) {
-        const host = document.getElementById('sideNavChatHost');
-        if (host && panel.parentElement !== host) host.appendChild(panel);
-      } else {
-        if (panel.parentElement !== document.body) document.body.appendChild(panel);
-      }
+      if (panel.parentElement !== document.body) document.body.appendChild(panel);
     }
     function pmoInitChatRelocation() {
       pmoRelocateChat();
@@ -45095,7 +45123,7 @@ Per confermare scrivi ELIMINA.`);
       iso: isoDate, campo: campoNum, ora: ora,
       nome: nome || '', durata: Number(durata) || 90, tipo: tipo || 'partita',
     };
-    if (window.innerWidth < 900 && typeof svcOpenChat === 'function') svcOpenChat();
+    if (typeof svcOpenChat === 'function') svcOpenChat();
     const dataIt = isoDate.split('-').reverse().join('/');
     svcAddMessage('system',
       '↔ <strong>Spostamento attivo</strong>: Campo ' + campoNum + ' \xb7 ' + dataIt + ' \xb7 ' + ora +
@@ -45217,7 +45245,7 @@ Per confermare scrivi ELIMINA.`);
 
   function staffCalClickFree(isoDate, campo, ora) {
     if (staffCalMoveState) { staffCalDoMove(isoDate, campo, ora); return; }
-    if (window.innerWidth < 900) svcOpenChat();
+    svcOpenChat();
     svcOpenBookingCard(campo, isoDate, ora);
   }
 
@@ -46760,16 +46788,16 @@ Per confermare scrivi ELIMINA.`);
   function svcOpenChat() {
     const panel = document.getElementById('svcChatPanel');
     const overlay = document.getElementById('svcChatOverlay');
-    // Mobile: il bottom-sheet è position:fixed ma se il suo contenitore è nascosto (es.
-    // si apre la chat dall'Anagrafica mentre il calendario è chiuso) NON si vede. Lo
-    // riattacco al <body> al volo, così è sempre visibile a prescindere dalla sezione.
+    // La finestra è position:fixed ma se il suo contenitore è nascosto (es. la si apre
+    // dall'Anagrafica mentre il calendario è chiuso) NON si vedrebbe: la riattacco al
+    // <body> al volo, così è sempre visibile a prescindere dalla sezione.
     try {
-      if (panel && window.innerWidth < 900 && panel.parentElement !== document.body) {
-        document.body.appendChild(panel);
-      }
+      if (panel && panel.parentElement !== document.body) document.body.appendChild(panel);
     } catch (e) {}
     if (panel) panel.classList.add('svc-chat-open');
     if (overlay) overlay.classList.add('active');
+    // 🚦 La striscia della 137 segue la scheda: aperta la finestra, il suo posto è là dentro.
+    try { svcRidisegnaSemaforo(); } catch (_e) {}
   }
 
   // Ripristina il pannello svc a stato neutro DOPO un'operazione conclusa con successo.
@@ -46822,6 +46850,10 @@ Per confermare scrivi ELIMINA.`);
       // sarebbe una nuova operazione in corso, non la chat da ripulire.
       try { if (svcFlowState || staffCalPlayersState || staffCalMoveState) return; } catch (e) {}
       try { svcClearLog(); } catch (e) {}
+      // 🪟 Su desktop la finestra si chiude INSIEME alla pulizia: prima restava aperta perché
+      // era il pannello fisso della sidebar, mentre una finestra svuotata è un rettangolo
+      // bianco sopra il calendario. Il ✅ resta visibile i 4 secondi dell'auto-pulizia.
+      try { svcCloseChat(); } catch (e) {}
     }, ms || 4000);
   }
   // Da chiamare quando la nota di sync di un'operazione cambia stato: programma la
@@ -46844,6 +46876,9 @@ Per confermare scrivi ELIMINA.`);
     if (panel) panel.classList.remove('svc-chat-open');
     if (panel) panel.classList.remove('svc-card-mode');
     if (overlay) overlay.classList.remove('active');
+    // Chiusa la scheda, il gesto in corso torna a dirsi con la pastiglia: senza questa riga
+    // resterebbe dentro una finestra invisibile, che è il silenzio.
+    try { svcRidisegnaSemaforo(); } catch (_e) {}
   }
 
   // Mobile: a fine operazione (creazione/modifica/annulla/spostamento) chiudi il bottom-sheet
@@ -46858,9 +46893,12 @@ Per confermare scrivi ELIMINA.`);
     const input = document.getElementById('svcChatInput');
     const send = document.getElementById('svcChatSend');
     const row = document.getElementById('svcChatInputRow');
-    if (!input || !send || !row) return;
     const panel = document.getElementById('svcChatPanel');
+    // 🪟 Il composer NON esiste più (restyling del 04/09/2026): la classe di modalità va
+    // messa PRIMA di uscire, o la scheda perde la sua disposizione. Il resto della funzione
+    // parla all'input e si salta da sé quando non c'è.
     if (panel) panel.classList.toggle('svc-card-mode', mode === 'flow-summary');
+    if (!input || !send || !row) return;
     const locked = (mode === 'flow-buttons' || mode === 'flow-summary');
     input.disabled = locked;
     send.disabled = locked;
@@ -48542,6 +48580,67 @@ Per confermare scrivi ELIMINA.`);
     } catch (_e) {}
   }
 
+  /* 🚦 RESTYLING 04/09/2026 — LA STRISCIA HA DUE CASE, e la scelta è sua:
+     · **scheda aperta** → la striscia sta IN FONDO ALLA SCHEDA, dove si sta già guardando;
+     · **scheda chiusa** → resta una **pastiglia** in alto a destra del calendario, che cliccata
+       apre la scheda giusta.
+     ⛔ Quello che NON si fa è aprire la scheda da sé: chi sta in segreteria è quasi sempre dentro
+     un altro gesto e nella scheda ogni bottone scrive su Matchpoint — una finestra che si apre
+     quando decide il socio col bot si prende il click già partito. È anche l'ingombro per cui il
+     banner del 3 giugno fu tolto (v5.627). */
+  function svcSchedaAperta() {
+    const p = document.getElementById('svcChatPanel');
+    return !!(p && p.classList.contains('svc-chat-open'));
+  }
+
+  /** La pastiglia si àncora al bordo destro della colonna del calendario, appena sopra la griglia.
+   *  🚨 E si tiene DENTRO la finestra a forza: la barra di ieri si era persa fuori schermo proprio
+   *  perché una misura presa da un elemento alto quanto il calendario finiva sotto il bordo. Qui
+   *  il valore calcolato è un suggerimento, il taglio è la regola. */
+  function svcPosizionaPastiglia(el) {
+    let destra = 22, alto = 84;
+    try {
+      const col = document.querySelector('.svc-grid-col');
+      const r = col && col.getBoundingClientRect();
+      if (r && r.width > 40) {
+        destra = Math.round(window.innerWidth - r.right) + 4;
+        alto = Math.round(r.top) - 40;
+      }
+    } catch (_e) {}
+    destra = Math.min(Math.max(destra, 8), Math.max(8, window.innerWidth - 120));
+    alto = Math.min(Math.max(alto, 8), Math.max(8, window.innerHeight - 56));
+    el.style.top = alto + 'px';
+    el.style.right = destra + 'px';
+    el.style.left = 'auto';
+    el.style.bottom = 'auto';
+    el.style.width = 'auto';
+  }
+
+  function svcAzzeraPosizioneStriscia(el) {
+    el.style.top = ''; el.style.right = ''; el.style.left = ''; el.style.bottom = ''; el.style.width = '';
+  }
+
+  /** Il click sulla pastiglia: apre la scheda del gesto. Se la cella di quelle coordinate è nella
+   *  griglia mostrata, si clicca QUELLA — così si riusa la strada normale invece di riscrivere
+   *  l'apertura di una scheda. Se non c'è (altro giorno, o coordinate assenti) si apre almeno la
+   *  finestra, dove la striscia si legge per intero. */
+  function svcApriDallaPastiglia() {
+    try {
+      const loc = _svcAzioneLocale;
+      const dove = (loc && loc.dove) || (_svcUltimoSemaforo && _svcUltimoSemaforo.dove) || null;
+      const griglia = document.getElementById('staffCalGridTable');
+      const inp = document.getElementById('staffCalDate');
+      const giorno = (inp && inp.value) ? String(inp.value).trim() : '';
+      if (dove && dove.campo && dove.ora && griglia && (!dove.data || !giorno || dove.data === giorno)) {
+        const celle = griglia.querySelectorAll('.cell[data-campo="' + String(dove.campo) + '"]');
+        for (let i = 0; i < celle.length; i++) {
+          if (celle[i].dataset.ora === String(dove.ora)) { celle[i].click(); return; }
+        }
+      }
+    } catch (_e) {}
+    try { svcOpenChat(); } catch (_e) {}
+  }
+
   function svcRidisegnaSemaforo() {
     const el = document.getElementById('svcQueueStatus');
     if (!el) return;
@@ -48620,11 +48719,20 @@ Per confermare scrivi ELIMINA.`);
       x.className = 'svc-semaforo-chiudi';
       x.textContent = '✕';
       x.setAttribute('aria-label', 'Ho letto, chiudi');
-      x.onclick = function (ev) { try { ev.stopPropagation(); } catch (_e) {} svcScacciaAzione(); };
+      x.onclick = function (ev) { try { ev.stopPropagation(); ev.preventDefault(); } catch (_e) {} svcScacciaAzione(); };
       el.appendChild(x);
     }
+    // 🏠 DOVE VIVE la striscia, deciso a ogni disegno perché la scheda si apre e si chiude sotto
+    //    di lei: dentro la scheda quando c'è, pastiglia quando la scheda è chiusa.
+    const dentro = svcSchedaAperta();
+    const casa = dentro ? document.getElementById('svcChatPanel') : document.body;
+    if (casa && el.parentElement !== casa) casa.appendChild(el);
+    el.classList.toggle('svc-semaforo-in-scheda', dentro);
+    el.classList.toggle('svc-semaforo-pastiglia', !dentro);
+    el.onclick = dentro ? null : svcApriDallaPastiglia;
+    if (dentro) { svcAzzeraPosizioneStriscia(el); }
+    else { svcPosizionaPastiglia(el); }
     el.hidden = false;
-    svcAllineaSemaforoAllaColonna(el);
     // ⛔ Su un'azione FINITA la cella si spegne: l'accesa dice «qui sta succedendo adesso», e su
     //    un esito non sta più succedendo niente. La barra resta a raccontare com'è andata.
     svcAccendiCella(finita ? null : dove);
@@ -48646,7 +48754,7 @@ Per confermare scrivi ELIMINA.`);
     window.addEventListener('resize', function () {
       try {
         const el = document.getElementById('svcQueueStatus');
-        if (el && !el.hidden) svcAllineaSemaforoAllaColonna(el);
+        if (el && !el.hidden && el.classList.contains('svc-semaforo-pastiglia')) svcPosizionaPastiglia(el);
       } catch (_e) {}
     });
   } catch (_e) {}
@@ -55689,70 +55797,10 @@ Per confermare scrivi ELIMINA.`);
       oggiBtn.style.display = (iso === today) ? 'none' : '';
     }
   }
-  (function staffCalMobileChatInit() {
-    var mInput = document.getElementById('staffCalMobileInput');
-    var mSend = document.getElementById('staffCalMobileSend');
-    var mMic = document.getElementById('staffCalMobileMic');
-    var realInput = document.getElementById('svcChatInput');
-    var realSend = document.getElementById('svcChatSend');
-    function aiOn() { try { return !!(window.PMOAi && PMOAi.isEnabled && PMOAi.isEnabled()); } catch (e) { return false; } }
-    // Apre il pannello assistente completo (il composer del desktop: mic, testo grande,
-    // a-capo e messaggi visibili) e sposta lì il focus, così la conversazione si vede.
-    function openAssistant() {
-      // Difesa anti-timing: se il profilo staff è arrivato dopo i tentativi al boot, la chat
-      // potrebbe non essere ancora inizializzata (svcChatInput disabilitato). initChatUI è
-      // idempotente: abilita l'input prima di aprire/focalizzare.
-      if (aiOn()) { try { PMOAi.initChatUI(); } catch (e) {} }
-      try { if (typeof svcOpenChat === 'function') svcOpenChat(); } catch (e) {}
-      var ri = document.getElementById('svcChatInput');
-      // iOS Safari apre la tastiera SOLO se .focus() è chiamato in modo SINCRONO dentro il
-      // gesto utente (tap). Un setTimeout — anche breve — perde la "user activation" e su
-      // iPhone la tastiera non compare (il pannello sale ma resta senza tastiera). svcOpenChat
-      // fa il suo lavoro sul DOM in modo sincrono (incluso l'appendChild una-tantum), quindi
-      // qui siamo ancora dentro il gesto: focus diretto, niente setTimeout.
-      try { if (ri && !ri.disabled) ri.focus(); } catch (e) {}
-    }
-    if (mInput && realInput) {
-      mInput.addEventListener('input', function () { realInput.value = mInput.value; });
-      // Con assistente attivo la barra è un "launcher": toccarla apre il pannello pieno.
-      // Senza assistente (PROD / niente permesso) resta la quick-bar prenotazioni invariata.
-      mInput.addEventListener('click', function () { if (aiOn()) openAssistant(); });
-      mInput.addEventListener('focus', function () { if (aiOn()) openAssistant(); });
-      var obs = new MutationObserver(function () {
-        var d = realInput.disabled;
-        if (!aiOn()) mInput.disabled = d;   // in modalità AI l'input è readonly-launcher, non disabled
-        if (mSend) mSend.disabled = realSend ? realSend.disabled : false;
-        if (mMic) mMic.disabled = d;
-      });
-      obs.observe(realInput, { attributes: true, attributeFilter: ['disabled'] });
-      if (!aiOn()) mInput.disabled = realInput.disabled;
-      if (mSend && realSend) mSend.disabled = realSend.disabled;
-    }
-    if (mMic) {
-      // Mic della barra → apre il pannello e avvia la dettatura (la trascrizione compare
-      // nel composer del pannello, col mic come "stop").
-      mMic.addEventListener('click', function () {
-        if (!aiOn()) return;
-        openAssistant();
-        setTimeout(function () { try { PMOAi.toggleDictation(); } catch (e) {} }, 120);
-      });
-    }
-    if (mSend) {
-      mSend.addEventListener('click', function () {
-        // Con assistente attivo l'invio NON deve dipendere dal timing dell'init: assicura
-        // l'inizializzazione (idempotente) così svcChatInput è abilitato e svcHandleSend non
-        // esce a vuoto (era la causa di "scrivo e premo Invia ma non succede nulla" su 4G).
-        if (aiOn()) { try { PMOAi.initChatUI(); } catch (e) {} }
-        var ri = document.getElementById('svcChatInput');
-        if (!ri || ri.disabled) return;
-        ri.value = mInput ? mInput.value : '';
-        if (typeof svcHandleSend === 'function') svcHandleSend();
-        if (mInput) mInput.value = '';
-        // Mostra la conversazione (e la risposta) anche se inviato dalla barra compatta.
-        if (aiOn()) { try { if (typeof svcOpenChat === 'function') svcOpenChat(); } catch (e) {} }
-      });
-    }
-  })();
+  // 🗑️ Restyling 04/09/2026 — qui viveva `staffCalMobileChatInit`, che teneva insieme la barra
+  // di scrittura del telefono e il composer del pannello (input, microfono, «Invia»). Tolto
+  // l'assistente dal calendario, quei cinque elementi non esistono più e la funzione parlava
+  // solo con dei `null`.
   staffCalMobileUpdateHeader();
 
   </script>
