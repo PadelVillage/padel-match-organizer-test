@@ -8327,7 +8327,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.329';
+    const APP_VERSION = '6.330';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -47096,11 +47096,37 @@ Per confermare scrivi ELIMINA.`);
     } catch (e) { return false; }
   }
 
+  /** 🩹⭐ VOCE 147 ② — «STA SUCCEDENDO» detto una volta sola, e la PASTIGLIA non è quella volta.
+   *
+   *  ⚖️ Riconosciuto da DUE segni insieme, e servono tutti e due:
+   *    · il **segno in testa** (↻ ⏳ 🔄 🧪), lo stesso con cui `_svcSchedaEsito` deduce il `wait`;
+   *    · il **«(non chiudere)»**, che è il distintivo di un gesto ancora in volo.
+   *  🚨 Il secondo non è ridondante, è il **freno**: senza, questa funzione prenderebbe anche
+   *     «⏳ Campo 3: dopo 4 tentativi non riesco a raggiungere Matchpoint…», che comincia uguale
+   *     ma è un **esito** e va visto; e la domanda «🧪 SIMULAZIONE — Stornare il pagamento?», che
+   *     aspetta un click. ⛔ Nascondere una domanda non pulisce la scheda: lascia l'assistente ad
+   *     aspettare la risposta a una cosa che nessuno ha potuto leggere.
+   *  📌 *Il messaggio resta nel registro: qui non si toglie l'informazione, si toglie la SECONDA
+   *     striscia che la ripete mentre la barra la sta già dicendo.* PURA. */
+  function svcEAvanzamentoInCorso(testo) {
+    const t = String(testo == null ? '' : testo);
+    if (!t) return false;
+    return /^\s*(↻|⏳|🔄|🧪)/.test(t) && /\(non chiudere\)/i.test(t);
+  }
+
   function _svcAggiornaPastiglia(cont) {
     if (!cont) return;
     const st = _svcUltimoMsgVisibile(cont);
     const p = _svcPastiglia(cont);
     if (!p) return;
+    // 🩹 VOCE 147 ② — la barra sta già raccontando questo gesto: la pastiglia sarebbe la stessa
+    //    cosa detta due volte, con in mezzo mezzo schermo. Vale anche dove la chat resta l'unica
+    //    casa dell'esito (il wallet): si leva il doppione, non il messaggio.
+    if (svcEAvanzamentoInCorso(st.testo)) {
+      cont.__pmoNonVisti = 0;
+      p.hidden = true;
+      return;
+    }
     if (_svcEsitoInSchedaVisibile(cont)) {
       // L'esito è già davanti agli occhi, dentro la scheda: la pastiglia sarebbe la stessa frase
       // detta due volte, e sul telefono finisce sopra i bottoni.
@@ -47168,6 +47194,8 @@ Per confermare scrivi ELIMINA.`);
     // ② GLI ESITI di un gesto verso Matchpoint. Elencati per come COMINCIANO, che è l'unica
     //    parte che non cambia: la coda porta il motivo, il campo, l'ora.
     if (SVC_ESITI_NELLA_SCHEDA.some(function (r) { return r.test(t); })) return true;
+    // ③ GLI AVANZAMENTI dei pagamenti (voce 147): la barra li racconta già per nome.
+    if (SVC_AVANZAMENTI_NELLA_BARRA.some(function (r) { return r.test(t); })) return true;
     return false;
   }
 
@@ -47186,6 +47214,36 @@ Per confermare scrivi ELIMINA.`);
    *  ⚖️ Elenco a mano, e il difetto lo conosce chi legge: se ne nasce uno nuovo, questo non lo
    *  toglie. Il fallimento è **sicuro** però — un messaggio in più nella scheda, non uno di meno
    *  sulla barra — ed è il verso giusto in cui sbagliare. */
+  /** 🩹⭐⭐ VOCE 147 (04/09/2026) — GLI AVANZAMENTI DEI PAGAMENTI: **terzo** giro sullo stesso difetto.
+   *
+   * 🗣️ Sua segnalazione dal telefono, con la schermata di PROD 6.328: *«trovo sulla scheda ancora
+   *    2 messaggi distinti»* — la pastiglia «↓ ↻ Salvo su Matchpoint l'impor…» e, nello stesso
+   *    istante, la striscia «💶 Cambio l'importo» in fondo allo schermo.
+   *
+   * 🚨⭐⭐ **E LA LEZIONE È CHE LA 145 HA RIAPERTO QUELLO CHE LA 136 AVEVA CHIUSO.** La 136 spegneva
+   *    la pastiglia con `_svcEsitoInSchedaVisibile()`, cioè *«la riga dentro la scheda è già
+   *    davanti agli occhi»*. La 145 ha tolto quella riga per i `wait` — giusto — e con lei è
+   *    caduta la condizione che teneva giù la pastiglia. ⇒ Il doppione è tornato, **in un punto
+   *    diverso**, curato da una guardia che poggiava su un oggetto che non c'è più.
+   *    📌 *Una protezione che poggia sull'ESISTENZA di un altro pezzo muore quando quel pezzo
+   *       viene tolto, e muore in silenzio: nessuno rompe, semplicemente non protegge più.*
+   *
+   * ⚖️ I posti in cui una frase può comparire sono **quattro**, non tre: chat · pastiglia · riga
+   *    nella scheda · barra. La 137 ⑤ ne governava uno, la 136 un altro, la 145 il terzo.
+   *
+   * 🔨 Qui l'avanzamento **non nasce più in chat** ⇒ non ha niente da mostrare né alla pastiglia
+   *    né a nessun altro. ⛔ Ci stanno **solo** i tre gesti il cui ESITO ha una casa nella scheda
+   *    (`_svcSchedaEsito`, voce 134) **e** un nome nella barra (`SVC_AZIONI_DELLAPP`):
+   *    `matchpoint-payment-write`, `-payment-void`, `-charge-write`. ⚠️ Il **wallet** resta fuori
+   *    di proposito: si fa dalla scheda del socio, dove `.svc-edit-box` non c'è ⇒ togliergli la
+   *    chat gli toglierebbe l'unico posto in cui il suo esito è scritto. Per lui c'è la guardia
+   *    ② dentro `_svcAggiornaPastiglia`, che leva il doppione senza levare l'informazione. */
+  const SVC_AVANZAMENTI_NELLA_BARRA = [
+    /^\s*(↻|🧪)\s*(Simulazione\s+)?Incasso\b/i,
+    /^\s*(↻|🧪)\s*(Simulazione\s+)?Storno\s+del pagamento\b/i,
+    /^\s*↻\s*Salvo su Matchpoint (l'importo|gli importi) a carico/i,
+  ];
+
   const SVC_ESITI_NELLA_SCHEDA = [
     /^\s*(❌|⛔|⌛|🧹|↩️|📝)?\s*(<[^>]+>)?\s*Modifica (non riuscita|chiusa)/i,
     /Annullamento (non riuscito|non partito)/i,
