@@ -3159,11 +3159,18 @@
          una colonna a destra né il pannello della sidebar. Misure prese dalla scheda socio
          (.member-card-overlay), così le due schede dell'app si aprono uguali. */
       .svc-chat-panel {
-        position:fixed; top:74px; bottom:24px; left:50%; transform:translateX(-50%);
-        width:min(860px, calc(100vw - 48px)); max-height:calc(100vh - 98px);
+        position:fixed; top:74px; bottom:auto; left:50%; transform:translateX(-50%);
+        width:min(860px, calc(100vw - 48px)); height:auto; max-height:calc(100vh - 98px);
         z-index:2600; display:none; border:1px solid #b7c7e3; border-radius:12px;
         box-shadow:0 18px 55px rgba(15,23,42,.26); overflow:hidden;
       }
+      /* 🚨 `height:auto` e non `bottom:24px`, e lo dice una SCHERMATA della pagina viva di TEST
+         6.313: con `bottom` la finestra è alta tutto lo schermo **anche quando la scheda è
+         corta**, e sotto le tre righe di una prenotazione restavano ~600px di bianco. La scheda
+         socio non lo mostrava perché è sempre lunga; questa no — una prenotazione nuova sono
+         quattro campi. ⇒ La finestra si adatta a quello che contiene e scorre solo quando serve.
+         📌 Rileggendo il CSS non si vedeva: si è visto aprendola. */
+      .svc-chat-panel .svc-chat-messages { flex:0 1 auto; }
       .svc-chat-panel.svc-chat-open { display:flex; }
       .svc-chat-header { display:flex; }
       .svc-chat-overlay { display:block; position:fixed; inset:0; background:rgba(0,0,0,0); z-index:2550; pointer-events:none; transition:background .25s; }
@@ -8326,7 +8333,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.313';
+    const APP_VERSION = '6.314';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
