@@ -3935,7 +3935,35 @@
       .side-nav-chat-host { display:none; }
 
       /* 2) Barra capitoli orizzontale sopra il calendario */
-      .pmo-chapter-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 16px; padding:8px 10px; background:#eef2f7; border:1px solid #e1e7ef; border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,.05); }
+      /* 📌⭐ VOCE 155 — LA BARRA DEI CAPITOLI RESTA FISSA, IL SOTTO SCORRE (04/09/2026).
+       *
+       * 🗣️ Suo: «questa barra su desktop deve rimanere sempre fissa e il sotto scollare».
+       *
+       * 📏 MISURATO sulla pagina viva di PROD 6.342 a 1440×900 PRIMA di scriverlo, perché
+       *    `sticky` non funziona «in generale»: funziona rispetto a un antenato preciso.
+       *    · a scorrere NON è il documento — `html` e `body` sono `overflow:hidden` e
+       *      `document.scrollHeight - clientHeight` vale **0**;
+       *    · lo scroller è **`main.main-content`** (`overflow-y:auto`, alto 100vh, con 213 px
+       *      da scorrere in quel momento);
+       *    · fra la barra e lo scroller c'è un solo antenato, `.container`, ed è
+       *      **`overflow:visible`** — che è la condizione perché lo sticky viva.
+       *    ⇒ La barra si aggancia allo scroller giusto. Con `.container` a `overflow:hidden`
+       *      si sarebbe agganciata a QUELLO e avrebbe smesso di seguire lo scorrimento **in
+       *      silenzio**: è il motivo per cui il banco controlla l'antenato e non solo la regola.
+       *
+       * ⚖️ `top:0` e non `top:20px`: i 20 px sopra sono il **padding di `.container`**, e
+       *    fermandosi lì il contenuto scorrerebbe dentro quella fascia, sopra la barra.
+       *    A zero la barra è a filo e non lascia nessuna fessura.
+       *
+       * 🚨 Il livello (1200) sta SOTTO il velo delle due schede (`.svc-chat-overlay`, 2550):
+       *    quando si apre la scheda di una partita o di un socio, la barra dev'essere coperta
+       *    come tutto il resto. Una barra che resta accesa sopra un velo scuro non sembra
+       *    fissa, sembra rotta.
+       *
+       * 📱 Sta dentro `@media (min-width:900px)` perché è dove la barra esiste: sotto i 900
+       *    è `display:none` e la navigazione è il cassetto del ≡. «Su desktop», parola sua. */
+      .pmo-chapter-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 16px; padding:8px 10px; background:#eef2f7; border:1px solid #e1e7ef; border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,.05);
+        position:sticky; top:0; z-index:1200; }
       /* 🏷️ Marchio + ambiente + versione a sinistra della barra, Esci in fondo a destra:
          è quello che teneva l'intestazione della colonna sparita. */
       .pmo-chapter-brand { display:flex; align-items:center; gap:9px; padding-right:12px; margin-right:4px; border-right:1px solid #d5dfeb; }
@@ -8412,7 +8440,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.343';
+    const APP_VERSION = '6.344';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
