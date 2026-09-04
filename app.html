@@ -3320,7 +3320,21 @@
          (.member-card-overlay), così le due schede dell'app si aprono uguali. */
       .svc-chat-panel {
         position:fixed; top:74px; bottom:auto; left:50%; transform:translateX(-50%);
-        width:min(860px, calc(100vw - 48px)); height:auto; max-height:calc(100vh - 98px);
+        /* 🖥️⭐ VOCE 153/A — la larghezza smette di essere UN NUMERO e diventa un intervallo.
+           📏 Misurato su PROD 6.349: `860px` fissi a qualunque monitor ⇒ **84%** dello schermo su
+              un 1024 (con 203 px di contenuto dietro uno scorrimento) e **45%** su un 1920, dove
+              avanzava spazio da tutte e due le parti. Non era «un po' stretta» o «un po' larga»:
+              era **la stessa misura** per schermi che differiscono del doppio.
+           🔨 `clamp(620px, 66vw, 1180px)`, ancora dentro `min(…, 100vw - 48px)` perché il margine
+              dalle sponde resta un fatto della finestra, non della proporzione.
+           ⚠️ **IL ROVESCIO, dichiarato e non nascosto**: su un 1024 la scheda diventa più STRETTA
+              (676 contro 860). È il senso della cura — smette di mangiarsi lo schermo — ma è meno
+              spazio per il contenuto; su un 1280 non cambia quasi nulla (845 contro 860). ⇒ A si
+              sente sui monitor **grandi** e sui **piccoli**, non in mezzo.
+           ⛔ Il pavimento di 620 non è ornamentale: sotto i 900 px la scheda è un foglio dal basso
+              — un'altra cosa — e il pavimento serve solo a non farla stringere nella striscia fra
+              900 e 940, dove sarebbe illeggibile senza essere ancora un telefono. */
+        width:min(clamp(620px, 66vw, 1180px), calc(100vw - 48px)); height:auto; max-height:calc(100vh - 98px);
         z-index:2600; display:none; border:1px solid #b7c7e3; border-radius:12px;
         box-shadow:0 18px 55px rgba(15,23,42,.26); overflow:hidden;
       }
@@ -8523,7 +8537,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.354';
+    const APP_VERSION = '6.355';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
