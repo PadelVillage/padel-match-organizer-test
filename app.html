@@ -3212,11 +3212,32 @@
       .svc-chat-panel .svc-chat-send { width:42px !important; height:42px !important; padding:0 !important; }
       .svc-chat-panel .svc-ai-mic { width:42px !important; height:42px !important; }
       .svc-chat-panel .svc-chat-send svg, .svc-chat-panel .svc-ai-mic svg { width:21px !important; height:21px !important; }
-      /* ✕ flottante in alto a destra sopra i messaggi: niente più barra-testata bianca */
-      .svc-chat-panel:not(.svc-card-mode) .svc-chat-header { position:absolute; top:0; right:0; left:auto; width:auto; padding:6px 8px; border-bottom:none; background:transparent; z-index:3; }
+      /* ✕ flottante in alto a destra sopra i messaggi: niente più barra-testata bianca.
+         🩹🚨⭐⭐ VOCE 146 (04/09/2026) — LA FASCIA È OPACA E LARGA QUANTO IL FOGLIO, e prima era
+         `left:auto` + `background:transparent`. Non è un ritocco: era un difetto di MIRA.
+         🗣️ Sua segnalazione con schermata dal telefono: *«penso che la doppia x sia qualcosa da
+            analizzare»* — due ✕ identiche, una accanto all'altra, in alto a destra.
+         🚨 E NON ERANO DUE CHIUSURE: una chiude la finestra (innocua), l'altra è la **✕ Rimuovi
+            giocatore** di una riga, che toglie qualcuno dalla partita e finisce su Matchpoint.
+         📏 Misurato sulla pagina viva a 390px, scorrendo come si scorre col dito: i due bottoni
+            si **SOVRAPPONGONO** su un'area di **8 × 28 px** (Chiudi 344-374, Rimuovi 318-352,
+            stessa altezza). Nel pezzo conteso vince «Chiudi» — ma bastano **5 px più a sinistra**
+            per prendere «Rimuovi giocatore» mentre si mira a chiudere.
+         ⚖️ La causa stava in due numeri che non si parlavano: la fascia della ✕ è alta **52 px**,
+            e i messaggi ne riservavano **30** (`padding-top`). Gli altri 22 px erano terra di
+            nessuno: qualunque riga ci passava sotto — e accanto.
+         🔨 Ora la fascia è **opaca e a tutta larghezza**: ciò che le scorre sotto è coperto, e
+            quindi **non è nemmeno cliccabile** — la mira sbagliata non trova più niente da
+            colpire. E il `padding-top` è quanto la fascia è alta davvero, non un numero a occhio.
+         ⛔ NON si rimette la testata che la 141 aveva tolto: quella era una **barra nel flusso**
+            che si mangiava lo spazio del contenuto: questa è una striscia sovrapposta, dentro uno
+            spazio che era **già riservato**. Il costo è di 8 px, non di 50.
+         📌 *Due bottoni identici a 8 px di distanza non sono un problema di grafica: sono un
+            problema di mira, e la mira si misura in pixel, non a occhio.* */
+      .svc-chat-panel:not(.svc-card-mode) .svc-chat-header { position:absolute; top:0; right:0; left:0; width:auto; padding:4px 8px; border-bottom:none; background:var(--surface); z-index:3; }
       .svc-chat-header::before { display:none; }
       .svc-chat-close-btn { background:rgba(241,245,249,.9); border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; }
-      .svc-chat-panel:not(.svc-card-mode) .svc-chat-messages { padding-top:30px; }
+      .svc-chat-panel:not(.svc-card-mode) .svc-chat-messages { padding-top:38px; }
       .svc-chat-panel.svc-card-mode { height:auto; max-height:90vh; }
       .svc-chat-panel.svc-card-mode .svc-chat-header { display:none; }
       /* La schedina è un form alto: ancorala in ALTO (column, non column-reverse) così l'header
@@ -8299,7 +8320,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.326';
+    const APP_VERSION = '6.327';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
