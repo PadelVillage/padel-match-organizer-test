@@ -3066,7 +3066,18 @@
     @media (min-width:900px) {
       .svc-edit-box {
         display:grid;
-        grid-template-columns:330px minmax(0,1fr);
+        /* 🖥️⭐ VOCE 153/B — le colonne diventano PROPORZIONALI, e solo adesso ha senso.
+           📏 Con `330px` fissi la sinistra non si stringeva mai ⇒ su uno schermo piccolo a
+              stringersi era **solo** la colonna dei giocatori, che è anche la più alta: a 1024 le
+              restavano 292 px contro i 330 intoccabili dello Slot.
+           ⚖️ **B non si poteva fare prima di A, e non per comodità**: col pannello fermo a 860 le
+              due colonne si spartiscono sempre la stessa torta, e cambiare **come** si divide
+              senza cambiare **quanto è grande** sposta il problema da una colonna all'altra invece
+              di toglierlo. ⇒ È l'ordine C → A → B, e ognuno apre il successivo.
+           ⛔ Il minimo di 280 non è ornamentale: sotto, i due campi affiancati dello Slot (Campo e
+              Data, poi Dalle e Alle) si spezzano su due righe e la colonna si allunga — cioè si
+              guadagna larghezza e si perde altezza, che è il contrario di quello che serve. */
+        grid-template-columns:minmax(280px, 0.85fr) minmax(0, 1.15fr);
         column-gap:12px;
         align-items:start;
       }
@@ -8537,7 +8548,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.356';
+    const APP_VERSION = '6.357';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
