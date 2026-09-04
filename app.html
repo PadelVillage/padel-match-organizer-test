@@ -3069,6 +3069,11 @@
     .svc-pl-ic-paid { font-size:16px; color:var(--green); flex:0 0 auto; }
     .svc-pl-ic-gift { font-size:16px; color:#c98a04; flex:0 0 auto; }
     .svc-pl-ic-due { font-size:16px; color:#dc2626; flex:0 0 auto; }
+    /* VOCE 142 — «non lo so ancora»: grigio e tratteggiato, cioè né il verde del pagato
+       né il rosso del dovuto. Il colore è quello del testo spento apposta: un'assenza di
+       informazione non deve avere l'aria di un allarme. */
+    .svc-pl-ic-unknown { font-size:16px; color:var(--text-muted,#94a3b8); flex:0 0 auto; }
+    .svc-pl-refresh { margin-left:8px; font-size:11px; font-weight:600; color:var(--text-muted,#94a3b8); display:inline-flex; align-items:center; gap:5px; }
     .svc-pl-name { flex:1 1 auto; min-width:0; font-size:.8rem; font-weight:600; line-height:1.2; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; }
     /* 🔗 VOCE 138 — il nome che apre la scheda del socio. Tratteggio, non bottone: in questa
        scheda ogni bottone scrive su Matchpoint, e uno innocuo in mezzo a quelli è un invito a
@@ -8294,7 +8299,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.322';
+    const APP_VERSION = '6.323';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -43194,10 +43199,25 @@ Per confermare scrivi ELIMINA.`);
         // Maestro (solo lezione): valore corrente + baseline per il confronto al salvataggio.
         istruttore: String(_localIstruttore || ''), origIstruttore: String(_localIstruttore || ''),
         idReserva: _initIdReserva || null,
-        // Per partita/lezione il roster locale può essere INCOMPLETO/stantio: mostriamo le sezioni
-        // Giocatori/Pagamenti in stato "caricamento" finché la lettura autorevole del worker non
-        // risponde (evita il "lampo" del roster sbagliato). Slot e Note restano subito editabili.
-        rosterLoading: hasPlayers,
+        // 🔄 VOCE 142 (04/09/2026) — LA SCHEDA SI APRE CON I GIOCATORI GIÀ VISIBILI, e qui c'era
+        // scritto il contrario. La riga vecchia diceva: «il roster locale può essere
+        // INCOMPLETO/stantio: mostriamo Giocatori/Pagamenti in caricamento finché la lettura
+        // autorevole del worker non risponde (evita il lampo del roster sbagliato)».
+        // 🗣️ Sua segnalazione dal cellulare: «continua a esserci la rotellina che pensa e mi dice
+        // "leggo i giocatori da Matchpoint": questo non dovrebbe più esistere, si dovrebbe aprire
+        // la scheda con già i giocatori visibili».
+        // ⇒ Il velo si tiene SOLO quando sotto non c'è niente da mostrare. Se i nomi locali ci
+        // sono (sync ogni 2 minuti), si vedono SUBITO e la rilettura li aggiorna quando arriva.
+        // ⚖️ Il rischio che il velo copriva resta e si accetta a occhi aperti: il roster locale
+        // può essere vecchio di un paio di minuti. ⛔ Ma NON può far rimuovere la persona
+        // sbagliata: la rimozione manda al worker il **nome** (`.map(p => p.nome)`), mai la
+        // posizione — un elenco stantio non sposta la mira.
+        rosterLoading: hasPlayers && !(Array.isArray(roster) && roster.length > 0),
+        // Il velo e la rilettura erano la STESSA cosa, e ora non lo sono più: `rosterLoading`
+        // dice «non ho niente da mostrare», `rosterRefreshing` dice «sto rileggendo». Senza il
+        // secondo, la scheda aperta piena non avrebbe modo di dire che i numeri stanno per
+        // arrivare — e un dato che cambia sotto gli occhi senza preavviso è peggio dell'attesa.
+        rosterRefreshing: hasPlayers,
       };
       const editor = svcAddMessage('system', '', 'flow');
       editor.classList.add('svc-edit-host'); // stile "senza cornice" applicato SUBITO (niente flash della bolla vecchia)
@@ -43282,6 +43302,17 @@ Per confermare scrivi ELIMINA.`);
       return (Array.isArray(arr) ? arr : [])
         .map(function (p) {
           if (!p) return null;
+          // 🆕 VOCE 142 (04/09/2026) — una voce può essere una STRINGA, non un oggetto: il sync
+          // scrive il roster come elenco di nomi (`["Mario Rossi","Anna Verdi"]`), il worker come
+          // oggetti. 📏 Misurato sui record veri di PROD: 173 staff_booking con oggetti, **67 con
+          // stringhe** — e prima di questa riga quei 67 uscivano da qui VUOTI (`p.nome` è
+          // `undefined` su una stringa ⇒ scartata). ⇒ Non era «la lista tarda ad arrivare»: per
+          // più di un quarto delle prenotazioni non c'era proprio niente da mostrare, e la
+          // rotellina era l'unica cosa possibile. Chi tocca questa funzione tenga i due casi.
+          if (typeof p === 'string') {
+            const _n = p.trim();
+            return _n ? { nome: _n } : null;
+          }
           if ((p.nome == null || String(p.nome).trim() === '') && _guestId(p.idCliente)) {
             return Object.assign({}, p, { nome: 'Ospite', ospite: true });
           }
@@ -43361,7 +43392,7 @@ Per confermare scrivi ELIMINA.`);
           }
           // Lettura conclusa (in qualunque esito): esci dallo stato "caricamento" così le sezioni
           // Giocatori/Pagamenti mostrano il dato disponibile (worker se valido, altrimenti il locale).
-          if (stillOpen) st.rosterLoading = false;
+          if (stillOpen) { st.rosterLoading = false; st.rosterRefreshing = false; }
           // WRITE-BACK calendario: allinea lo staff_booking ai partecipanti reali letti dal worker,
           // a meno che l'utente stia proprio modificando la lista (in quel caso sarà il salvataggio a
           // persistere). Vale anche a scheda chiusa (la card del calendario va comunque allineata).
@@ -43388,7 +43419,7 @@ Per confermare scrivi ELIMINA.`);
         } catch (err) {
           clearInterval(_timer);
           // Errore/timeout: esci dal "caricamento" e mostra i giocatori salvati in locale (fallback).
-          try { const _st = staffCalPlayersState; if (_st && _st === _stOpen && _st.rosterLoading) { _st.rosterLoading = false; staffCalRenderPlayersEditor(); } } catch (e) {}
+          try { const _st = staffCalPlayersState; if (_st && _st === _stOpen && (_st.rosterLoading || _st.rosterRefreshing)) { _st.rosterLoading = false; _st.rosterRefreshing = false; staffCalRenderPlayersEditor(); } } catch (e) {}
           _setNote((err && err.name === 'AbortError')
             ? 'Matchpoint lento: uso i giocatori salvati in locale (la scheda è già usabile).'
             : 'Uso i giocatori salvati in locale.');
@@ -43519,6 +43550,17 @@ Per confermare scrivi ELIMINA.`);
       // + i controlli di incasso (o "Storna" se già pagato). "+ Aggiungi giocatore" in fondo.
       const playersSec = mkSection('ti-users', 'Giocatori e pagamenti');
       playersSec.setAttribute('data-feature', 'players-payments');
+      // 🆕 VOCE 142 — la scheda è aperta e piena: qui si dice soltanto che una rilettura è in
+      // corso, in coda al titolo della sezione. È l'opposto della rotellina che copriva tutto:
+      // non toglie niente da vedere, e chi fa segreteria sa che gli importi possono ancora
+      // muoversi. Sparisce da sé quando la lettura finisce (in qualunque esito).
+      if (st.rosterRefreshing) {
+        const _rf = document.createElement('span');
+        _rf.className = 'svc-pl-refresh';
+        _rf.innerHTML = '<span class="pmo-spin" style="width:9px;height:9px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;display:inline-block;"></span> rileggo da Matchpoint…';
+        const _h = playersSec.querySelector('.svc-edit-section-head');
+        if (_h) _h.appendChild(_rf);
+      }
       const _payShow = PMO_PAYMENTS_UI_ENABLED && !st.isManut && Array.isArray(st.roster);
       // Incasso ATTIVO se write reale ON, oppure simulazione (TEST), oppure harness mockato.
       /* 🚨⭐⭐ DUE variabili, non una: fino al 02/09/2026 qui ce n'era una sola, e accendeva
@@ -43623,8 +43665,23 @@ Per confermare scrivi ELIMINA.`);
             icSlot.className = 'svc-pl-lead';
             const ic = document.createElement('i');
             // ✓ verde = pagato · ✗ rossa = da incassare (come «In sospeso» su MP) · 🎁 = offerta
-            ic.className = 'ti ' + (isGift ? 'ti-gift svc-pl-ic-gift' : (isPaid ? 'ti-circle-check svc-pl-ic-paid' : 'ti-circle-x svc-pl-ic-due'));
-            ic.setAttribute('aria-hidden', 'true');
+            // 🆕 VOCE 142 — TRE segni, non due. Finché i soldi non li ha letti Matchpoint lo
+            // stato è `null`, e la ✗ rossa direbbe «da incassare», che è una cosa che NON
+            // sappiamo: sulla scheda aperta subito capiterebbe a ogni apertura, e chi fa cassa
+            // andrebbe a chiedere soldi già pagati. ⇒ Il terzo segno è il cerchio tratteggiato
+            // grigio, che dice «non lo so ancora» — la stessa scelta di `esito_ignoto`: fra un
+            // sì e un no inventati, si risponde «non lo so».
+            const _statoIgnoto = (stato == null);
+            ic.className = 'ti ' + (isGift ? 'ti-gift svc-pl-ic-gift'
+              : (isPaid ? 'ti-circle-check svc-pl-ic-paid'
+                : (_statoIgnoto ? 'ti-circle-dashed svc-pl-ic-unknown' : 'ti-circle-x svc-pl-ic-due')));
+            if (_statoIgnoto) {
+              ic.setAttribute('role', 'img');
+              ic.setAttribute('aria-label', 'Stato del pagamento non ancora letto da Matchpoint');
+              ic.title = 'Sto ancora leggendo i pagamenti da Matchpoint: non so se ha pagato.';
+            } else {
+              ic.setAttribute('aria-hidden', 'true');
+            }
             icSlot.appendChild(ic);
             row.appendChild(icSlot);
           }
