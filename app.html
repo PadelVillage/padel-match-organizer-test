@@ -831,7 +831,7 @@
 
     /* 🚨 La barra dei CAPITOLI va tenuta in questo elenco. È nata dopo (v5.762+) e nessuno
        ce l'ha aggiunta: un socio che apriva l'autovalutazione DA COMPUTER si vedeva il menu
-       del gestionale — Calendario, Anagrafica soci, Incassi, Amministrazione — e ci poteva
+       del gestionale — Calendario, Anagrafica soci, Incassi, Impostazioni — e ci poteva
        cliccare dentro. Non si vedeva dal telefono perché la barra compare solo da 900px in
        su, ed è per questo che è passata inosservata: le prove si fanno sul telefono.
        ⇒ Chi aggiunge un elemento di navigazione lo aggiunge ANCHE qui. */
@@ -3987,7 +3987,7 @@
     }
 
     /* Header di sezione OMOGENEO e "sticky" (come Anagrafica soci) per i capitoli
-       Assistente AI / Messaggi WhatsApp / Amministrazione. Calendario escluso.
+       Assistente AI / Messaggi WhatsApp / Impostazioni. Calendario escluso.
        Resta fisso in alto durante lo scroll verticale di .main-content. */
     .pmo-section-head {
       position:sticky; top:0; z-index:15;
@@ -6778,7 +6778,7 @@ body.assessment-public-mode .assessment-public-only-card {
     <div class="pmo-mobile-gate-card">
       <div class="pmo-mobile-gate-icon">💻</div>
       <h2>Vista riservata a Desktop o Tablet</h2>
-      <p>Questa sezione di Amministrazione e cabina di regia richiede uno schermo più grande per garantire un'esperienza operativa ottimale.</p>
+      <p>Questa sezione Impostazioni e cabina di regia richiede uno schermo più grande per garantire un'esperienza operativa ottimale.</p>
       <p class="muted">Per favore, apri questa pagina da un computer o da un tablet.</p>
     </div>
   </div>
@@ -6789,7 +6789,7 @@ body.assessment-public-mode .assessment-public-only-card {
     <form id="pmoLoginCard" class="pmo-login-card" data-pmo-login-mode="login" onsubmit="return handleStaffLoginSubmit(event)">
       <img src="https://app.padelvillage.club/logo-padel-village.jpeg" alt="Padel Village" class="pmo-login-logo" />
       <h1 id="pmoLoginTitle">Padel Match Organizer</h1>
-      <p id="pmoLoginIntro">Accedi con l'email autorizzata in Amministrazione e la password personale. Se non hai ancora creato l'accesso, registrati.</p>
+      <p id="pmoLoginIntro">Accedi con l'email autorizzata in Impostazioni e la password personale. Se non hai ancora creato l'accesso, registrati.</p>
       <div id="pmoLoginModeName" class="pmo-login-mode-name">Accesso</div>
       <div class="pmo-login-row">
         <div class="pmo-login-field">
@@ -6836,7 +6836,7 @@ body.assessment-public-mode .assessment-public-only-card {
           <button type="button" class="btn-secondary" onclick="pmoCancelPasswordRecovery()">Annulla</button>
         </div>
       </div>
-      <p id="pmoLoginFootnote">La registrazione e' disponibile solo per email autorizzate in Amministrazione.</p>
+      <p id="pmoLoginFootnote">La registrazione e' disponibile solo per email autorizzate in Impostazioni.</p>
     </form>
   </div>
   <div id="sidebarBackdrop" class="sidebar-backdrop" onclick="toggleSidebar(false)"></div>
@@ -6901,7 +6901,7 @@ body.assessment-public-mode .assessment-public-only-card {
         </button>
 
         <button class="side-nav-parent side-nav-main-item" data-section-key="administration" data-submenu-target="subAdministration" aria-expanded="false" onclick="switchSidebarParent('administration','subAdministration')">
-          <span class="nav-copy"><span class="nav-main">Amministrazione</span><span class="nav-sub">Utenti, dati e controlli</span></span>
+          <span class="nav-copy"><span class="nav-main">Impostazioni</span><span class="nav-sub">Utenti, dati e controlli</span></span>
           <span class="nav-caret">▾</span>
         </button>
         <div id="subAdministration" class="side-submenu" data-section-key="administration">
@@ -6981,7 +6981,7 @@ body.assessment-public-mode .assessment-public-only-card {
       <button type="button" class="pmo-chapter-item" data-section-key="incassi" onclick="switchTab('incassi', this)">Incassi</button>
       <button type="button" class="pmo-chapter-item" data-section-key="contact" onclick="switchTab('contact', this)">Messaggi WhatsApp</button>
       <div class="pmo-chapter-group" data-section-key="administration">
-        <button type="button" class="pmo-chapter-item has-dropdown" data-section-key="administration" aria-haspopup="true" aria-expanded="false" onclick="pmoToggleChapterDropdown(this, event)">Amministrazione <span class="pmo-chapter-caret">▾</span></button>
+        <button type="button" class="pmo-chapter-item has-dropdown" data-section-key="administration" aria-haspopup="true" aria-expanded="false" onclick="pmoToggleChapterDropdown(this, event)">Impostazioni <span class="pmo-chapter-caret">▾</span></button>
         <div class="pmo-chapter-dropdown">
           <button type="button" data-subsection-key="view_admin_utenti" data-parent-tab="administration" onclick="goToTabSection('administration','Utenti')">Utenti Staff</button>
           <button type="button" data-subsection-key="view_admin_notifiche" data-parent-tab="administration" onclick="goToTabSection('administration','Notifiche staff')">Notifiche staff</button>
@@ -7964,7 +7964,7 @@ body.assessment-public-mode .assessment-public-only-card {
     <div id="administration" class="tab-content">
       <div class="section">
         <div class="dashboard-page-title pmo-section-head">
-          <h2>Amministrazione</h2>
+          <h2>Impostazioni</h2>
           <p>Utenti e controlli tecnici, notifiche staff, dati Matchpoint, bot Telegram e circoli della zona.</p>
         </div>
 
@@ -8440,7 +8440,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.345';
+    const APP_VERSION = '6.346';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -9330,15 +9330,15 @@ Grazie.`
       const passwordInput = document.getElementById('pmoStaffAuthPassword');
       if (intro) {
         intro.textContent = nextMode === 'signup'
-          ? "Crea l'accesso solo con un'email gia autorizzata in Amministrazione. Scegli una password ed entri subito."
-          : "Accedi con l'email autorizzata in Amministrazione e la password personale. Se non hai ancora creato l'accesso, registrati.";
+          ? "Crea l'accesso solo con un'email gia autorizzata in Impostazioni. Scegli una password ed entri subito."
+          : "Accedi con l'email autorizzata in Impostazioni e la password personale. Se non hai ancora creato l'accesso, registrati.";
       }
       if (modeName) modeName.textContent = nextMode === 'signup' ? 'Registrazione' : 'Accesso';
       if (passwordLabel) passwordLabel.textContent = nextMode === 'signup' ? 'Password da scegliere' : 'Password personale';
       if (footnote) {
         footnote.textContent = nextMode === 'signup'
           ? 'Scegli la password e accedi direttamente, senza altri passaggi.'
-          : "La registrazione e' disponibile solo per email autorizzate in Amministrazione.";
+          : "La registrazione e' disponibile solo per email autorizzate in Impostazioni.";
       }
       if (passwordInput) passwordInput.setAttribute('autocomplete', nextMode === 'signup' ? 'new-password' : 'current-password');
       if (nextMode === 'signup') pmoSetPasswordRecoveryPanelVisible(false);
@@ -9715,7 +9715,7 @@ Grazie.`
         const profile = await pmoLoadMyStaffProfile();
         if (!pmoIsStaffProfileActive(profile)) {
           pmoClearSupabaseStaffSession();
-          throw new Error('Email non abilitata o utente disattivato in Amministrazione.');
+          throw new Error('Email non abilitata o utente disattivato in Impostazioni.');
         }
         rememberStaffSession('supabase_auth', { email: profile.email, role: profile.role });
         if (emailInput) emailInput.value = '';
@@ -9826,7 +9826,7 @@ Grazie.`
         if (!pmoIsStaffProfileActive(profile)) {
           pmoClearSupabaseStaffSession();
           pmoSetPasswordRecoveryPanelVisible(false);
-          pmoSetLoginMessage('Password aggiornata, ma utente non attivo in Amministrazione.');
+          pmoSetLoginMessage('Password aggiornata, ma utente non attivo in Impostazioni.');
           return;
         }
         rememberStaffSession('supabase_auth', { email: profile.email, role: profile.role });
@@ -9872,7 +9872,7 @@ Grazie.`
           clearStaffSession();
           if (confirmedEmail) pmoSetStaffEmailValue(confirmedEmail);
           pmoSetLoginMode('login', { keepMessage: true });
-          pmoSetLoginMessage('Email confermata, ma utente non attivo in Amministrazione.');
+          pmoSetLoginMessage('Email confermata, ma utente non attivo in Impostazioni.');
           try { history.replaceState(null, document.title, window.location.pathname + window.location.search); } catch {}
           return false;
         }
@@ -10488,7 +10488,7 @@ Grazie.`
       fillSlots: '🎯 Apri Partite',
       contact: '💬 Messaggi WhatsApp',
       routines: '⚙️ Routine',
-      administration: '🔐 Amministrazione',
+      administration: '🔐 Impostazioni',
       inviteResponses: '🎾 Chiudi Partite',
       matchHistory: '📚 Storico partite',
       incassi: '💰 Incassi',
@@ -11083,7 +11083,7 @@ Grazie.`
       // a false, la riga torna DA SOLA. Cancellandola, il tab tornerebbe visibile e nessuno
       // potrebbe più limitarlo — una chiave assente dai permessi vale «visibile» (fail-open).
       ...(PMO_WHATSAPP_PARKED ? [] : [{ key:'view_contact', tab:'contact', label:'Messaggi WhatsApp' }]),
-      { key:'view_administration', tab:'administration', label:'Amministrazione', children:[
+      { key:'view_administration', tab:'administration', label:'Impostazioni', children:[
         { key:'view_admin_utenti', label:'Utenti Staff', adminSection:'users' },
         { key:'view_admin_notifiche', label:'Notifiche staff', adminSection:'notifications' },
         { key:'view_admin_matchpoint', label:'Dati', adminSection:'matchpoint-data' },
@@ -15599,7 +15599,7 @@ Grazie.`
 
     // 🚨 ESENTE DAL DISARMO, e non è un'eccezione di comodo: `gmail-check` NON spedisce niente,
     // verifica solo che l'account mittente sia ancora collegato. Serve all'INVITO STAFF, che è vivo
-    // ed è l'unica email che il gestionale manda: il bottone «Verifica Gmail» in Amministrazione ›
+    // ed è l'unica email che il gestionale manda: il bottone «Verifica Gmail» in Impostazioni ›
     // Utenti passa di qui. Il primo disarmo (6.217/6.218) se l'era portato via insieme al canale —
     // sbagliato, perché appartiene a una funzione che abbiamo deciso di TENERE. Senza, il giorno che
     // il token Gmail scade non c'è modo di ricollegarlo dall'app e l'invito si rompe SENZA RIMEDIO.
@@ -15628,7 +15628,7 @@ Grazie.`
       // più per email. Il cron `pmo-assessment-followup-dispatcher-prod` era già spento da tempo:
       // restava aperta SOLO la via manuale dalla UI dello staff, ed è quella che si chiude qui.
       // Punto unico: tutti gli 11 chiamanti del canale email passano da questa funzione.
-      // ⚠️ NON tocca l'amministrazione utenti staff. `staff_invite` e `staff_delete_full` vivono
+      // ⚠️ NON tocca la gestione degli utenti staff. `staff_invite` e `staff_delete_full` vivono
       // nella STESSA edge `assessment-email-send` ma hanno una loro fetch e non passano di qui.
       // `staff_invite` usa ancora Gmail: per questo i secret Gmail NON vanno rimossi e la edge
       // NON va cancellata — si porterebbero via l'invito e l'eliminazione di un utente staff.
@@ -16853,7 +16853,7 @@ Grazie.`
       const cardMemberIdValue = cleanCell(g.memberId || '');
       const cardInMatchpoint = !!cardMemberIdValue && !/^PMO-/i.test(cardMemberIdValue);
       const cardMatchpointBadge = cardInMatchpoint ? '' : '<span class="badge badge-warning">Non in Matchpoint</span>';
-      // Visibilità per-staff delle sotto-sezioni della scheda (Amministrazione → Sezioni visibili →
+      // Visibilità per-staff delle sotto-sezioni della scheda (Impostazioni → Sezioni visibili →
       // Anagrafica soci). owner/admin e profili senza config = vedono tutto (fail-open).
       const _canMemberSec = (k) => (typeof pmoSubsectionVisibleFor === 'function') ? pmoSubsectionVisibleFor(k, 'members') : true;
       const showSecAnagrafica = _canMemberSec('view_members_anagrafica');
@@ -28747,7 +28747,7 @@ Per confermare scrivi ELIMINA.`);
 	      if (!accessToken) throw new Error(`Accedi con email personale Supabase per ${actionLabel}.`);
 	      let profile = pmoIsStaffProfileActive(pmoStaffProfile) ? pmoStaffProfile : null;
 	      if (!profile) profile = await pmoLoadMyStaffProfile();
-	      if (!pmoIsStaffProfileActive(profile)) throw new Error('Profilo staff non attivo. Crea l’accesso personale o abilita l’email in Amministrazione.');
+	      if (!pmoIsStaffProfileActive(profile)) throw new Error('Profilo staff non attivo. Crea l’accesso personale o abilita l’email in Impostazioni.');
 	      if (!pmoProfileHasPermission(profile, permission)) throw new Error(`Il tuo profilo non ha il permesso per ${actionLabel}.`);
 	      return { accessToken, profile };
 	    }
@@ -29822,7 +29822,7 @@ Per confermare scrivi ELIMINA.`);
 	      if (key.includes('session')) return 'users';
 	      // 🚨 «supabase» NON e' piu' una sezione, ma puo' essere ancora l'ultima sezione
 	      // aperta salvata nel browser di chi ci lavorava: senza questa riga si aprirebbe
-	      // un'Amministrazione vuota, perche' nessun pannello risponde a quel nome.
+	      // una sezione Impostazioni vuota, perche' nessun pannello risponde a quel nome.
 	      if (key.includes('supabase') || key.includes('controll')) return 'users';
 	      if (key.includes('calendario')) return 'calendario-staff';
 	      return 'users';
@@ -30776,8 +30776,8 @@ Per confermare scrivi ELIMINA.`);
 	      //   • cloud_sync   → se è visibile ALMENO una sezione (cancello verso il cloud:
 	      //                    serve a leggere/scrivere qualsiasi dato, incl. le prenotazioni
 	      //                    del calendario). Senza, il calendario resta vuoto.
-	      //   • manage_users → se è visibile "Utenti Staff" (sotto Amministrazione).
-	      //   • routines     → se è visibile "Dati Matchpoint" (sotto Amministrazione).
+	      //   • manage_users → se è visibile "Utenti Staff" (sotto Impostazioni).
+	      //   • routines     → se è visibile "Dati Matchpoint" (sotto Impostazioni).
 	      // I sotto-permessi contano solo se anche il loro gruppo padre è spuntato.
 	      const role = document.getElementById('pmoStaffUserRole')?.value || 'staff';
 	      const ownerLike = role === 'owner' || role === 'admin';
@@ -31025,7 +31025,7 @@ Per confermare scrivi ELIMINA.`);
 	        const raw = String(err?.message || err || '');
 	        const isGmail = /GMAIL_TOKEN|GMAIL_SECRETS|GMAIL_SEND|invalid_grant|expired|revoked/i.test(raw);
 	        const friendly = isGmail
-	          ? 'Gmail del progetto non collegato o token scaduto. Vai in Amministrazione → Utenti → "Verifica Gmail" e ricollega l\'account mittente, poi riprova.'
+	          ? 'Gmail del progetto non collegato o token scaduto. Vai in Impostazioni → Utenti → "Verifica Gmail" e ricollega l\'account mittente, poi riprova.'
 	          : raw;
 	        pmoSetAdminStatus('❌ Invito non inviato: ' + friendly, 'danger');
 	      }
@@ -55316,7 +55316,7 @@ Per confermare scrivi ELIMINA.`);
       });
     }
 
-    // Segnala il caso del banco di prova → pmo_parser_errors (rivedibile in Amministrazione → Parser Config).
+    // Segnala il caso del banco di prova → pmo_parser_errors (rivedibile in Impostazioni → Parser Config).
     async function reportSandbox() {
       const inp = document.getElementById('aiSandboxInput');
       const noteEl = document.getElementById('aiSandboxNote');
