@@ -3018,7 +3018,7 @@
     .svc-edit-field { font-size:.82rem; padding:4px 8px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface2); color:var(--text); }
     .svc-edit-field:disabled { opacity:.5; cursor:not-allowed; }
     /* Campo Note scheda modifica: testo ben leggibile, area chiara e ampia (era troppo piccolo/sbiadito) */
-    .svc-note-edit { width:100%; box-sizing:border-box; resize:vertical; font-family:inherit; font-size:14px; line-height:1.5; padding:10px 12px; min-height:64px; border:1.5px solid #cbd5e1; border-radius:8px; background:#fff; color:#111827; transition:border-color .12s, box-shadow .12s; }
+    .svc-note-edit { width:100%; box-sizing:border-box; resize:vertical; font-family:inherit; font-size:14px; line-height:1.5; padding:10px 12px; min-height:48px; border:1.5px solid #cbd5e1; border-radius:8px; background:#fff; color:#111827; transition:border-color .12s, box-shadow .12s; }
     .svc-note-edit::placeholder { color:#94a3b8; font-style:italic; }
     .svc-note-edit:focus { outline:none; border-color:var(--primary,#2563eb); box-shadow:0 0 0 3px rgba(37,99,235,.14); }
     .svc-note-edit:disabled { opacity:.55; cursor:not-allowed; background:#f1f5f9; }
@@ -3076,6 +3076,54 @@
       .svc-edit-box > [data-feature="players-payments"] { grid-column:2; grid-row:2 / span 10; }
       /* Le sezioni non hanno più bisogno del margine sotto: a separarle ci pensa la griglia. */
       .svc-edit-box > .svc-edit-section { margin-bottom:10px; }
+
+      /* 🔼⭐⭐ VOCE 157 ② — IL TITOLO SALE NELLA TESTATA, e le colonne partono in cima
+       *    (04/09/2026 — variante **A** del mockup `scheda-nota-e-titolo-mockup.html`,
+       *    scelta da lui: «fai la A»).
+       *
+       * 🗣️ Sua richiesta: «la parte sinistra la puoi alzare all'altezza del titolo della scheda».
+       *
+       * 📏 IL FATTO CHE HA DECISO IL MECCANISMO, misurato sulla pagina viva di PROD 6.346 —
+       *    non dedotto dal foglio di stile:
+       *    · sopra il box ci sono **44 px** di banda, di cui **39** sono la testata: e la
+       *      testata contiene **solo la ✕**. Spazio già pagato, e vuoto;
+       *    · il titolo costa **41 px + 10 di margine** e sta su una riga della griglia a
+       *      TUTTA LARGHEZZA — 765 px per scriverne 330;
+       *    · 🚨 e nella catena fra il box e il pannello **nessuno è `position:relative`**
+       *      (`svc-edit-box`, `.svc-msg`, `#svcChatMessages`: tutti `static`), mentre
+       *      `#svcChatPanel` è `fixed`. ⇒ Un figlio in `position:absolute` risolve contro il
+       *      PANNELLO, e **non viene ritagliato** da `#svcChatMessages` benché quello sia
+       *      `overflow:auto` — il ritaglio vale solo per i discendenti il cui blocco
+       *      contenitore sta dentro chi ritaglia.
+       *
+       * ⭐ È quella misura a rendere questa cura **SOLO CSS**. La strada ovvia era spostare il
+       *    nodo del titolo dentro la testata: avrebbe funzionato, ma il titolo sarebbe
+       *    sopravvissuto al box che l'ha creato — una scheda chiusa e una testata che continua
+       *    a dire «Campo 3 · 14:00». Da `position:absolute` il titolo **vive e muore col box**,
+       *    perché ci resta dentro.
+       * 📌 *Prima di spostare un nodo per ottenere una posizione, si guarda se la posizione si
+       *    può chiedere. Un nodo spostato porta con sé un ciclo di vita da sorvegliare.*
+       *
+       * ⚖️ Uscendo dal flusso, la riga che il titolo occupava **non esiste più**: la prima riga
+       *    della griglia diventa Slot | Giocatori, e tutte e due le colonne partono in cima.
+       * 🩹 Il titolo si stringe su UNA riga (nome e coordinate accanto, non sotto) perché la
+       *    banda è alta 39 px e su due righe ne vorrebbe 41: non ci sta, e sconfinerebbe sui
+       *    messaggi.
+       * 🚨 `pointer-events:none` NON è un vezzo: la ✕ sta in quella stessa banda, e un titolo
+       *    che si prende i click sarebbe la voce 146 daccapo — due bersagli a pochi pixel e la
+       *    mira che trova quello sbagliato. Qui il titolo non è un bersaglio: è una scritta.
+       * 📱 Tutto dentro i 900 px: sotto, la scheda è un foglio dal basso, la testata in modo
+       *    scheda è `display:none` e il titolo deve restare dov'è. */
+      .svc-edit-box > .svc-edit-title {
+        position:absolute; top:11px; left:18px; right:58px;
+        margin:0; align-items:baseline; gap:7px; pointer-events:none;
+      }
+      .svc-edit-box > .svc-edit-title > div { display:flex; align-items:baseline; gap:8px; min-width:0; }
+      .svc-edit-box > .svc-edit-title i { font-size:17px; }
+      .svc-edit-box > .svc-edit-title .svc-edit-title-main { font-size:14px; white-space:nowrap; }
+      .svc-edit-box > .svc-edit-title .svc-edit-title-sub {
+        margin-top:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      }
     }
     /* 💰 Il conto della partita (voce 152). Volutamente SENZA cornice di sezione: non è una
        sezione in cui si opera, è la somma di quello che c'è sopra. */
@@ -8440,7 +8488,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.347';
+    const APP_VERSION = '6.348';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -44496,7 +44544,10 @@ Per confermare scrivi ELIMINA.`);
     // Campo Note/Osservazioni — scheda modifica (Tappa 36)
     const noteSec = mkSection('ti-note', st.isManut ? 'Osservazioni' : 'Note');
     const editNoteTA = document.createElement('textarea');
-    editNoteTA.rows = 3; editNoteTA.maxLength = 300;
+    // 🔽 VOCE 157 ① — due righe, non tre. Sua misura, non mia: «di solito una nota che si
+    //    mette non è mai più di 2 righe». Resta TRASCINABILE (`resize:vertical`), quindi chi
+    //    ha da scrivere di più se la allarga e non perde niente.
+    editNoteTA.rows = 2; editNoteTA.maxLength = 300;
     editNoteTA.placeholder = st.isManut ? 'Osservazioni aggiuntive (campo separato dalla descrizione)…' : 'Scrivi qui le osservazioni… (verranno salvate su Matchpoint)';
     editNoteTA.className = 'svc-note-edit';
     editNoteTA.value = st.note || '';
