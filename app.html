@@ -8347,7 +8347,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.318';
+    const APP_VERSION = '6.319';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -48524,10 +48524,16 @@ Per confermare scrivi ELIMINA.`);
       soggetto: descrizione.soggetto,
       participio: descrizione.participio,
       motivo: '',
-      // ⛔ «da te» e non il nome dell'operatore: questa riga sta sotto gli occhi di chiunque
-      //    passi davanti allo schermo della segreteria, e chi la legge è già quello che l'ha
-      //    fatta. È la stessa scelta di `chiSpiegato` nella edge, dal lato di qua.
-      chi: 'da te',
+      // 🔄 04/09/2026, sua richiesta dopo averlo letto sul telefono: *«sulla barra c'è scritto
+      //    "da te"? io lo leverei»*. ⇒ Vuoto, e la riga non si disegna affatto.
+      // ⚖️ Non toglie NIENTE, ed è per questo che si può fare: questa è l'azione LOCALE, cioè
+      //    partita da questo browser. Chi la legge l'ha appena fatta lui — «da te» gli diceva una
+      //    cosa che sapeva già, occupando la coda della riga, che sul telefono è lo spazio che si
+      //    taglia per primo.
+      // ⛔ Resta invece il «chi» che arriva dalla CODA (`sem.chi`, es. «richiesta da un socio»):
+      //    quello non è ridondante, è l'unica cosa che dice a chi fa segreteria *se è stata lei o
+      //    no*, ed è la metà per cui la riga 1 si disegna in due pezzi separati.
+      chi: '',
       dove: descrizione.dove || null,
       stato: 'corso',
       ts: Date.now(),
@@ -48619,6 +48625,30 @@ Per confermare scrivi ELIMINA.`);
    *  perché una misura presa da un elemento alto quanto il calendario finiva sotto il bordo. Qui
    *  il valore calcolato è un suggerimento, il taglio è la regola. */
   function svcPosizionaPastiglia(el) {
+    /* 🚨⭐⭐ SUL TELEFONO LA PASTIGLIA STA IN BASSO, e questa riga nasce da una sua segnalazione
+       dopo aver fatto una serie di modifiche vere dal cellulare (04/09/2026):
+       *«quando mi deve dire che l'operazione ha dato buon fine si sposta con un messaggio in
+       alto al telefono, anziché essere sempre tutto in basso»*.
+       ⚖️ Non era un caso: è una CONSEGUENZA di due cose giuste messe insieme. Su telefono, alla
+       conferma di Matchpoint il foglio si chiude da sé (`svcAutoCloseIfMobile`, 700ms) — ed è la
+       cosa giusta, il gesto è finito. Ma chiudendo il foglio la striscia cambia casa e diventa
+       pastiglia, e la pastiglia era ancorata al bordo ALTO della colonna. ⇒ Il «✅ fatto»
+       schizzava in cima allo schermo, cioè dove non stava guardando nessuno: il pollice era in
+       fondo, sul foglio che si era appena chiuso.
+       📌 *Due comportamenti giusti presi da soli ne fanno uno sbagliato quando si incontrano, e a
+          farli incontrare è l'unica cosa che nessuno dei due conosce: l'ordine.*
+       ⇒ Su telefono la pastiglia resta dov'era il foglio — in basso, larga quanto lo schermo meno
+         i margini. Su computer resta in alto a destra del calendario, la disposizione che lui ha
+         scelto guardando il mockup. */
+    const telefono = window.innerWidth < 900;
+    if (telefono) {
+      el.style.top = 'auto';
+      el.style.bottom = '12px';
+      el.style.left = '12px';
+      el.style.right = '12px';
+      el.style.width = 'auto';
+      return;
+    }
     let destra = 22, alto = 84;
     try {
       const col = document.querySelector('.svc-grid-col');
