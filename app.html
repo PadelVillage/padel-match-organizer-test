@@ -8327,7 +8327,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.335';
+    const APP_VERSION = '6.336';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -41624,7 +41624,20 @@ Per confermare scrivi ELIMINA.`);
       //    barra li racconta davvero. Non si toglie l'unico posto in cui la cosa è scritta.
       // ⛔ Si toglie anche la riga VECCHIA: un esito di prima lasciato lì accanto a un gesto in
       //    corso è peggio del doppione — è un doppione che dice un'altra cosa.
-      if (_t === 'wait') { try { if (riga) riga.remove(); } catch (e) {} return null; }
+      // 🩹 VOCE 150 — RIDISEGNARE LA STRISCIA È PARTE DEL GESTO, non un contorno, e l'ordine è
+      //    il motivo: la barra arriva a «finita» PRIMA che questa riga esista, perché la accende
+      //    e la spegne il gancio su `window.fetch`, che si chiude sulla risposta mentre chi ha
+      //    chiamato sta ancora aspettando il suo `await`. ⇒ Senza questa chiamata la guardia
+      //    `svcBarraDoppiaDellaRiga` guarderebbe sempre un istante troppo presto, non troverebbe
+      //    nessuna riga, e il doppione resterebbe identico a prima.
+      //    ⚖️ Vale nei DUE versi: quando la riga se ne va (wait) la barra deve tornare a parlare,
+      //    o l'avanzamento resterebbe muto.
+      // ⛔ `try` perché questa funzione gira anche nel banco, dove `svcRidisegnaSemaforo` non
+      //    esiste: una riga di contorno non deve poter far fallire la scrittura di un esito.
+      const _ridisegna = function () {
+        try { if (typeof svcRidisegnaSemaforo === 'function') svcRidisegnaSemaforo(); } catch (e) {}
+      };
+      if (_t === 'wait') { try { if (riga) riga.remove(); } catch (e) {} _ridisegna(); return null; }
       if (!riga) {
         riga = document.createElement('div');
         const barra = box.querySelector(':scope > .svc-edit-actions-bar');
@@ -41632,6 +41645,7 @@ Per confermare scrivi ELIMINA.`);
       }
       riga.className = 'svc-edit-esito' + (_t ? ' ' + _t : '');
       riga.innerHTML = html;
+      _ridisegna();
       return riga;
     } catch (e) { return null; }
   }
@@ -47205,6 +47219,59 @@ Per confermare scrivi ELIMINA.`);
     return /^\s*(↻|⏳|🔄|🧪)/.test(t) && /\(non chiudere\)/i.test(t);
   }
 
+  /** 🩹⭐⭐ VOCE 150 (04/09/2026) — L'ESITO DETTO DUE VOLTE DENTRO LA SCHEDA: **quarto** giro.
+   *
+   * 🗣️ Sue parole, dopo un Salva su PROD 6.334: *«Continuano ad esserci due messaggi uno dopo
+   *    l'altro in basso alla scheda, che ora si chiude dopo che ho salvato.»*
+   *
+   * 📏 MISURATO sulla pagina viva di TEST, a larghezza telefono (390×844), non dedotto: nello
+   *    stesso istante la riga `.svc-edit-esito` occupava 573→650 e la striscia `#svcQueueStatus`
+   *    771→844, **tutte e due dentro `#svcChatPanel`** (`svc-semaforo-in-scheda`). Due riquadri,
+   *    uno sotto l'altro, in fondo alla scheda — esattamente la sua schermata.
+   *
+   * 🚨⭐⭐ PERCHÉ LE TRE CURE PRIMA NON L'HANNO PRESO: **governavano tutte l'AVANZAMENTO.**
+   *    La 145 toglie la riga quando il gesto è in volo, la 147 spegne la pastiglia mentre il
+   *    gesto è in volo. ⇒ Durante l'attesa parla una voce sola, ed è la barra: giusto.
+   *    Ma **all'ESITO** la riga torna (ed è voluto, voce 134) e la barra passa a `fatto`/
+   *    `rifiutato` senza che nessuno le dica che quel fatto è già scritto dieci pixel più su.
+   *    📌 *Tre cure che chiudono lo stesso difetto in tre istanti diversi non lo chiudono: lo
+   *       spostano nell'istante che nessuna delle tre guardava.*
+   *
+   * ⚖️ LA REGOLA, che è quella della 136 applicata all'oggetto che le mancava: **dentro la
+   *    scheda la riga VINCE**, perché sta accanto al gesto. La barra resta la casa
+   *    dell'avanzamento (137 ⑤) e torna a parlare appena la scheda si chiude — `svcCloseChat`
+   *    ridisegna, quindi il «✅ fatto» non si perde: cambia solo casa, come già faceva.
+   *
+   * ⛔ I TRE FRENI, e nessuno è decorativo:
+   *    · **solo il gesto LOCALE**. La striscia racconta anche le azioni di un ALTRO operatore
+   *      (`_svcUltimoSemaforo`): quella non è mai il doppione del mio esito, e zittirla vorrebbe
+   *      dire nascondere ciò che sta facendo qualcun altro sugli stessi campi;
+   *    · **solo a gesto FINITO**. In corso la riga non c'è (145) ⇒ la barra è l'unica voce;
+   *    · **solo se la riga SI VEDE davvero**. 🚨 Qui c'è la trappola che la 147 ha pagato — *una
+   *      protezione che poggia sull'esistenza di un altro pezzo muore in silenzio quando quel
+   *      pezzo viene tolto*. Sta in piedi lo stesso, perché il verso in cui cade è quello
+   *      sicuro: niente riga ⇒ la barra **torna**, e si vede un avviso invece di zero.
+   *
+   * PURA, così il banco la esegue invece di ricopiarla (lezione della 149). */
+  function svcBarraDoppiaDellaRiga(o) {
+    o = o || {};
+    if (!o.dentroLaScheda) return false;   // fuori dalla scheda la riga non esiste: la barra è l'unica voce
+    if (!o.locale) return false;           // il gesto di un altro non è il doppione del mio esito
+    if (!o.finita) return false;           // in corso: la riga non c'è (145), la barra racconta da sola
+    return !!o.rigaEsitoVisibile;          // riga invisibile ⇒ barra accesa: meglio due avvisi che nessuno
+  }
+
+  /** La riga dell'esito è lì E si vede? (`getBoundingClientRect` e non `offsetParent`: la riga
+   *  vive dentro un pannello che scorre, e «fuori dallo scorrimento» resta pur sempre disegnato.) */
+  function _svcRigaEsitoSiVede() {
+    try {
+      const riga = document.querySelector('.svc-edit-box > .svc-edit-esito');
+      if (!riga) return false;
+      const rc = riga.getBoundingClientRect();
+      return rc.width > 0 && rc.height > 0;
+    } catch (e) { return false; }
+  }
+
   function _svcAggiornaPastiglia(cont) {
     if (!cont) return;
     const st = _svcUltimoMsgVisibile(cont);
@@ -48869,6 +48936,22 @@ Per confermare scrivi ELIMINA.`);
       return;
     }
     const finita = !!(loc && loc.stato !== 'corso');
+    // 🩹 VOCE 150 — l'esito è GIÀ scritto dentro la scheda, dieci pixel più su: la striscia
+    //    sarebbe il secondo dei «due messaggi uno dopo l'altro» che lui vede in fondo al foglio.
+    //    ⛔ Si esce PRIMA di disegnare, non si nasconde dopo: un elemento riempito e poi
+    //    nascosto resta letto dai lettori di schermo, che di `hidden` si fidano ma di un
+    //    `aria-live` già annunciato no.
+    if (svcBarraDoppiaDellaRiga({
+      dentroLaScheda: svcSchedaAperta(),
+      locale: !!loc,
+      finita: finita,
+      rigaEsitoVisibile: _svcRigaEsitoSiVede(),
+    })) {
+      el.hidden = true;
+      el.textContent = '';
+      svcAccendiCella(null);
+      return;
+    }
     // RIGA 1 — cosa sta succedendo, o com'è finita. La forma cambia col momento, ed è la
     // richiesta sua: «il tipo di azione che si sta effettuando / è stato effettuato».
     const riga1 = loc
