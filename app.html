@@ -8551,7 +8551,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.359';
+    const APP_VERSION = '6.360';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -49023,10 +49023,28 @@ Per confermare scrivi ELIMINA.`);
   // Accende la cella del calendario che corrisponde alle coordinate, se è in vista.
   // ⛔ Se le coordinate non ci sono, o sono di un ALTRO giorno, non si accende niente e parla la
   //    barra: è per questo che la disposizione D ha due metà.
+  /** Il contenitore del calendario CHE SI STA GUARDANDO.
+   *  🚨⭐⭐ E sono DUE, non uno: `renderStaffCalendar` disegna la stessa cosa in
+   *  `#staffCalGridTable` sul computer e in `#staffCalAgendaBody` sul telefono — con la stessa
+   *  funzione, quindi da oggi con le stesse coordinate. Cercare solo nel primo vuol dire che sul
+   *  telefono la cella non si accende mai: le coordinate ci sono, e nessuno le guarda.
+   *  ⚖️ Si sceglie per VISIBILITÀ e non per larghezza della finestra: la soglia dei 900px sta già
+   *  in `renderStaffCalendar`, e ripeterla qui creerebbe due verità che un giorno divergono. */
+  function svcContenitoreDelCalendario() {
+    const g = document.getElementById('staffCalGridTable');
+    if (g && g.getBoundingClientRect().height > 0) return g;
+    const a = document.getElementById('staffCalAgendaBody');
+    if (a && a.getBoundingClientRect().height > 0) return a;
+    return g || a || null;
+  }
+
   function svcAccendiCella(dove) {
-    const griglia = document.getElementById('staffCalGridTable');
+    const griglia = svcContenitoreDelCalendario();
     if (!griglia) return;
-    const gia = griglia.querySelectorAll('.svc-cella-attiva');
+    // ⚠️ Si spegne OVUNQUE, non solo nel contenitore scelto: girando il telefono si passa da una
+    //    vista all'altra, e una cella accesa lasciata in quella nascosta si ripresenterebbe accesa
+    //    su un gesto che nel frattempo è finito.
+    const gia = document.querySelectorAll('.svc-cella-attiva');
     for (let i = 0; i < gia.length; i++) gia[i].classList.remove('svc-cella-attiva');
     if (!dove || !dove.campo || !dove.ora) return;
     // Il giorno mostrato: un gesto su domani non deve accendere la cella di oggi.
@@ -49467,7 +49485,7 @@ Per confermare scrivi ELIMINA.`);
     try {
       const loc = _svcAzioneLocale;
       const dove = (loc && loc.dove) || (_svcUltimoSemaforo && _svcUltimoSemaforo.dove) || null;
-      const griglia = document.getElementById('staffCalGridTable');
+      const griglia = svcContenitoreDelCalendario();
       const inp = document.getElementById('staffCalDate');
       const giorno = (inp && inp.value) ? String(inp.value).trim() : '';
       if (dove && dove.campo && dove.ora && griglia && (!dove.data || !giorno || dove.data === giorno)) {
