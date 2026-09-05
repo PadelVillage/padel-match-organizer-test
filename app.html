@@ -8551,7 +8551,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.361';
+    const APP_VERSION = '6.362';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -43036,7 +43036,24 @@ Per confermare scrivi ELIMINA.`);
     body.innerHTML = '';
 
     const rectTop = body.getBoundingClientRect().top;
-    const avail = window.innerHeight - rectTop - (isDesktop ? 24 : 74);
+    let avail = window.innerHeight - rectTop - (isDesktop ? 24 : 74);
+    /* 🚨📏 VOCE 158 — LE CORSIE SI MISURANO SUL CONTENITORE, NON SULLA FINESTRA (05/09/2026).
+       Sua parola: «non si vede il campo 4», su PROD e su TEST. Misurato con la console remota a
+       1440×900, identico nei due ambienti: la colonna del calendario (`.svc-grid-col`) è alta
+       507px dalla 153/C (100vh − 393), ma la riga qui sopra dimensionava le corsie fino al fondo
+       della FINESTRA — 4 × 165 + 24 = 687px — e C4 stava tutta sotto il bordo (top 710, bordo 697),
+       con C3 tagliata a metà e 140px di vuoto sotto. Prima della 153/C il contenitore era 80vh
+       (720px) e le stesse corsie ci stavano per caso: la 153/C ha stretto la scatola senza dirlo a
+       chi la riempie, e i due numeri hanno smesso di combaciare la sera stessa.
+       ⇒ Sul computer l'altezza disponibile è quella della colonna che SCORRE, letta dal vivo (così
+       segue anche il pavimento dei 360px e ogni cornice futura), meno i 2px di bordo della cornice.
+       Il telefono non cambia: là il contenitore è la pagina intera (`#staffCalV36` fisso) e la
+       formula sulla finestra è ancora quella giusta. */
+    if (isDesktop) {
+      const _col = body.closest('.svc-grid-col');
+      const _colBottom = _col ? _col.getBoundingClientRect().bottom : 0;
+      if (_colBottom > rectTop) avail = _colBottom - rectTop - 2;
+    }
     const laneH = Math.max(isDesktop ? 96 : 120, Math.floor((avail - HEADERH) / 4));
 
     /* 🆕🔭 VOCE 114 — questo giorno il gestionale l'ha guardato, o è oltre ciò che sa?
