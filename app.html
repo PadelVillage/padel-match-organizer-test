@@ -8558,7 +8558,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.364';
+    const APP_VERSION = '6.365';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -43324,10 +43324,30 @@ Per confermare scrivi ELIMINA.`);
       //    cose che Matchpoint tiene distinte.
       const idInterno = String((p && p.idCliente) || '').trim();
       if (!/^\d{1,12}$/.test(idInterno)) return null;
-      return giocatori.find(function (g) {
+      // ⛔🎭 L'«OSPITE» NON È UNA PERSONA — DUE SERRATURE, e la prima non bastava.
+      // 📏 MISURATO su PROD il 05/09/2026, con la console remota, sulla partita del 07/09 alle
+      //    19:30 in Campo 2: il nome «Ospite» era CLICCABILE, `role="link"`, col tratteggio e il
+      //    tooltip «Apri la scheda di Ospite» — mentre la scheda della voce 138 dichiarava che
+      //    gli Ospite restano MUTI, e il banco lo dava per provato.
+      // 🔎 IL PERCHÉ, e nessuno l'aveva guardato: l'Ospite un id interno CE L'HA, ed è `1`. In
+      //    anagrafica esistono DUE record «Ospite» vivi (`guestJolly: true`, codice cliente
+      //    000001, id interno 1), quindi il confronto per id trovava eccome qualcuno — e il nome
+      //    prometteva una scheda che è il jolly del circolo, non una persona.
+      // 🩹 Il banco provava `{nome:'Ospite', idCliente:''}`, cioè un Ospite SENZA id: il caso che
+      //    nella vita vera non capita. Una prova verde su un caso che non esiste non difende
+      //    niente. 📌 *Un caso di prova si copia dai dati, non dall'idea che se ne ha.*
+      // ⚖️ Perché DUE serrature e non una: la prima guarda la riga del ROSTER (l'id 1, o il flag
+      //    che `_normRoster` mette quando il worker manda l'Ospite senza nome), la seconda guarda
+      //    il socio TROVATO (`guestJolly`, o il nome jolly) — e difendono da due guasti diversi:
+      //    un Ospite con un id inatteso, e un id 1 che un domani non fosse più il jolly.
+      if (p.ospite === true) return null;
+      if (idInterno.replace(/^0+/, '') === '1') return null;
+      const trovato = giocatori.find(function (g) {
         const suo = _staffCalPlayerCode(g);
         return suo && suo === idInterno;
       }) || null;
+      if (trovato && typeof isGuestJollyMember === 'function' && isGuestJollyMember(trovato)) return null;
+      return trovato;
     } catch (e) { return null; }
   }
 
