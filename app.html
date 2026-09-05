@@ -2924,7 +2924,10 @@
     /* La CELLA accesa — la seconda metà della D: dice DOVE, quando lo slot è in vista.
        ⚠️ `outline` e non `border`: un bordo cambierebbe la scatola e sposterebbe di un pixel
        tutto quello che sta intorno, che su una griglia si vede. */
-    #staffCalV36 .cell.svc-cella-attiva {
+    /* 🩹 VOCE 137 ⑤ — NON più `.cell.svc-cella-attiva`: quella classe la mette solo
+       `_staffCalBuildGrid`, che nessuno chiama. Una regola che nomina una classe che non esiste
+       è spenta esattamente come la riga che la accendeva. */
+    #staffCalV36 .svc-cella-attiva {
       outline:2px solid #0284c7; outline-offset:-2px;
       background:rgba(2,132,199,.10);
       animation:svcSemaforoBattito 1.1s ease-in-out infinite;
@@ -8548,7 +8551,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.358';
+    const APP_VERSION = '6.359';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -42543,6 +42546,13 @@ Per confermare scrivi ELIMINA.`);
     return String(Math.floor(tot / 60)).padStart(2, '0') + ':' + String(tot % 60).padStart(2, '00');
   }
 
+  /* ⛔⛔ FUNZIONE MORTA — NESSUNO LA CHIAMA, e leggerla come se disegnasse il calendario è
+     costato la voce 137 ⑤ per intero. `renderStaffCalendar` manda su `_staffCalBuildHorizontal`
+     in TUTTI E DUE i rami (computer e telefono): questa griglia verticale non arriva mai a
+     schermo. ⇒ Le classi e gli attributi che nascono qui — `.cell`, `data-ora` — **non esistono
+     nella pagina viva**, e qualunque selettore che li nomini è spento senza dirlo.
+     🚨 Se un domani serve una coordinata, o un colore, o un aggancio: si mette in
+     `_staffCalBuildHorizontal`. Toccare questa non cambia niente di ciò che si vede. */
   function _staffCalBuildGrid(isoDate) {
     const grid = document.getElementById('staffCalGridTable');
     if (!grid) return;
@@ -42993,6 +43003,25 @@ Per confermare scrivi ELIMINA.`);
     const m2h = function(m){ return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
     const h2m = function(s){ const p = String(s).split(':'); return (parseInt(p[0],10)||0) * 60 + (parseInt(p[1],10)||0); };
 
+    /* 🚦 VOCE 137 ⑤ — OGNI PEZZO DELLA CORSIA DICE DOVE SI TROVA, così il semaforo può accenderlo.
+       🩹 E questa riga cura un difetto che è stato invisibile per due giorni: le coordinate della
+          voce 137 ④ erano state messe in `_staffCalBuildGrid`, che è una funzione **mai
+          chiamata** — `renderStaffCalendar` manda su `_staffCalBuildHorizontal` in tutti e due i
+          rami, computer e telefono. ⇒ `svcAccendiCella` cercava `.cell[data-campo]` in una
+          griglia che non ne ha nemmeno una, e la cella non poteva accendersi in nessun caso.
+       📌 *Un pezzo di codice che nessuno chiama non è «da provare»: è già rotto, e la prova che
+          manca è l'unica cosa che lo direbbe.*
+       ⚖️ Si scrive un INTERVALLO e non una sola ora: la corsia è fatta di segmenti larghi quanto
+          durano (un libero di tre ore, una partita di novanta minuti), quindi un gesto sulle 09:30
+          deve accendere il pezzo che le CONTIENE — non uno che comincia lì. Le coordinate sono in
+          minuti perché è l'unica forma che si confronta senza rileggere un orario. */
+    const _coord = function (el, campo, minDa, minA) {
+      el.dataset.campo = String(campo);
+      el.dataset.minDa = String(minDa);
+      el.dataset.minA = String(minA);
+      return el;
+    };
+
     const body = document.getElementById(isDesktop ? 'staffCalGridTable' : 'staffCalAgendaBody');
     if (!body) return;
     const tabs = document.getElementById('staffCalAgendaTabs');
@@ -43067,7 +43096,7 @@ Per confermare scrivi ELIMINA.`);
         if (ge - gs < 10) return;
         const left = ((gs - START) / 30) * COLW;
         const w = ((ge - gs) / 30) * COLW - 3;
-        const seg = document.createElement('div');
+        const seg = _coord(document.createElement('div'), c, gs, ge);
         seg.style.cssText = 'position:absolute;top:4px;bottom:4px;left:' + left + 'px;width:' + w + 'px;border-radius:6px;background:' + (_oltre114 ? '#f1f5f9;color:#64748b' : '#dcfce7;color:#166534') + ';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;cursor:pointer;';
         if (w >= 44) seg.textContent = _oltre114 ? 'non lo so' : 'Libero';
         (function (iso, cc, gStart, gEnd) {
@@ -43102,7 +43131,7 @@ Per confermare scrivi ELIMINA.`);
         const _lblBase = _staffCalTipoLabel(b.tipoReale || b.tipo);
         const _open = _lblBase === 'Partita' ? staffCalOpenMatchInfo(isoDate, c, b.ora, b.durata) : null;
         const lbl = _open ? 'Partita aperta' : _lblBase;
-        const blk = document.createElement('div');
+        const blk = _coord(document.createElement('div'), c, s, e);
         blk.style.cssText = 'position:absolute;top:4px;bottom:4px;left:' + left + 'px;width:' + w + 'px;border-radius:6px;border:' + (_open ? '2px dashed ' : '1px solid ') + sty.bd + ';background:' + sty.bg + ';color:' + sty.tx + ';cursor:pointer;overflow:hidden;padding:4px 6px;display:flex;flex-direction:column;gap:2px;line-height:1.15;';
         if (_open) blk.title = 'Partita aperta · ' + _open.confirmed + '/4 confermati' + (_open.missing ? ' · mancano ' + _open.missing : '');
         const t1 = document.createElement('div'); t1.style.cssText = 'font-size:' + (isDesktop ? '13.5px' : '17px') + ';font-weight:700;'; t1.textContent = lbl; blk.appendChild(t1);
@@ -49004,10 +49033,27 @@ Per confermare scrivi ELIMINA.`);
     const inp = document.getElementById('staffCalDate');
     const giornoMostrato = (inp && inp.value) ? String(inp.value).trim() : '';
     if (dove.data && giornoMostrato && dove.data !== giornoMostrato) return;
-    const celle = griglia.querySelectorAll('.cell[data-campo="' + String(dove.campo) + '"]');
-    for (let i = 0; i < celle.length; i++) {
-      if (celle[i].dataset.ora === String(dove.ora)) { celle[i].classList.add('svc-cella-attiva'); return; }
+    const cella = svcCellaDelleCoordinate(griglia, dove);
+    if (cella) cella.classList.add('svc-cella-attiva');
+  }
+
+  /** Il pezzo di corsia che CONTIENE quelle coordinate, o `null`.
+   *  ⚖️ Una sola funzione perché i due che la usano — accendere la cella e aprire la scheda dalla
+   *  pastiglia — devono trovare lo STESSO pezzo: due ricerche scritte due volte divergono, e il
+   *  giorno in cui divergono la pastiglia apre una scheda diversa da quella che sta lampeggiando.
+   *  🚨 Fallisce CHIUSA: coordinate incomplete o orario illeggibile tornano `null`, e non si
+   *  accende niente. Accendere il pezzo sbagliato è peggio che non accenderne nessuno. */
+  function svcCellaDelleCoordinate(griglia, dove) {
+    if (!griglia || !dove || !dove.campo || !dove.ora) return null;
+    if (!/^\d{1,2}:\d{2}$/.test(String(dove.ora))) return null;
+    const p = String(dove.ora).split(':');
+    const min = (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
+    const pezzi = griglia.querySelectorAll('[data-campo="' + String(dove.campo) + '"][data-min-da]');
+    for (let i = 0; i < pezzi.length; i++) {
+      const da = Number(pezzi[i].dataset.minDa), a = Number(pezzi[i].dataset.minA);
+      if (Number.isFinite(da) && Number.isFinite(a) && min >= da && min < a) return pezzi[i];
     }
+    return null;
   }
 
   // Ridisegna il semaforo. `snap` è la risposta della edge: si legge `snap.semaforo`, MAI lo
@@ -49425,10 +49471,8 @@ Per confermare scrivi ELIMINA.`);
       const inp = document.getElementById('staffCalDate');
       const giorno = (inp && inp.value) ? String(inp.value).trim() : '';
       if (dove && dove.campo && dove.ora && griglia && (!dove.data || !giorno || dove.data === giorno)) {
-        const celle = griglia.querySelectorAll('.cell[data-campo="' + String(dove.campo) + '"]');
-        for (let i = 0; i < celle.length; i++) {
-          if (celle[i].dataset.ora === String(dove.ora)) { celle[i].click(); return; }
-        }
+        const cella = svcCellaDelleCoordinate(griglia, dove);
+        if (cella) { cella.click(); return; }
       }
     } catch (_e) {}
     try { svcOpenChat(); } catch (_e) {}
