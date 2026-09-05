@@ -3324,10 +3324,17 @@
             cornice cambia (una fascia in più sopra, un blocco tolto sotto) si rimisura quella e
             basta. Un numero che descrive i propri vicini va tenuto dove si vede che li descrive —
             è la lezione della 157 (`grid-row:2`) applicata prima di ripagarla.
-         ⛔ Il pavimento di 360px non è ornamentale: sotto, la griglia diventa illeggibile, e da lì
-            in giù è giusto che a scorrere torni la pagina invece di schiacciare le righe. */
-      #staffCalV36 { --pmo-cal-cornice: 393px; }
-      #staffCalV36 > .svc-layout { height: max(360px, calc(100vh - var(--pmo-cal-cornice))); }
+         ⛔ Il pavimento non è ornamentale: sotto, la griglia diventa illeggibile, e da lì in giù è
+            giusto che a scorrere torni la pagina invece di schiacciare le righe.
+         🩹📏 VOCE 159 (05/09/2026) — IL PAVIMENTO ERA 360px, ED ERA IL NUMERO SBAGLIATO: le corsie
+            hanno un minimo loro, 96px l'una in `_staffCalBuildHorizontal`, quindi la cornice non
+            scende mai sotto 4 × 96 + 25 di testata + 2 di bordo = **411px**. Con 360 qui e 411 là,
+            sotto i 800px di finestra a scorrere non era la pagina ma la COLONNA (misurato su TEST
+            6.362: 1280×800 → 4px, 1024×640 → 51px), cioè C4 tagliata di nuovo — la stessa forma
+            del difetto della 159, un piano più in basso. I due minimi devono dire lo stesso numero,
+            e il banco `test/le-corsie-del-calendario-stanno-nella-scatola.test.mjs` li confronta. */
+      #staffCalV36 { --pmo-cal-cornice: 393px; --pmo-cal-pavimento: 411px; }
+      #staffCalV36 > .svc-layout { height: max(var(--pmo-cal-pavimento), calc(100vh - var(--pmo-cal-cornice))); }
       .svc-grid-col { overflow:auto; }
       /* 🪟 La scheda è una FINESTRA sopra il calendario (restyling del 04/09/2026): non è più
          una colonna a destra né il pannello della sidebar. Misure prese dalla scheda socio
@@ -8551,7 +8558,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.362';
+    const APP_VERSION = '6.363';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
