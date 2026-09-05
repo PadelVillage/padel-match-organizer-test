@@ -8558,7 +8558,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.363';
+    const APP_VERSION = '6.364';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -43053,7 +43053,7 @@ Per confermare scrivi ELIMINA.`);
        (720px) e le stesse corsie ci stavano per caso: la 153/C ha stretto la scatola senza dirlo a
        chi la riempie, e i due numeri hanno smesso di combaciare la sera stessa.
        ⇒ Sul computer l'altezza disponibile è quella della colonna che SCORRE, letta dal vivo (così
-       segue anche il pavimento dei 360px e ogni cornice futura), meno i 2px di bordo della cornice.
+       segue anche il pavimento della cornice, `--pmo-cal-pavimento`, e ogni cornice futura), meno i 2px di bordo.
        Il telefono non cambia: là il contenitore è la pagina intera (`#staffCalV36` fisso) e la
        formula sulla finestra è ancora quella giusta. */
     if (isDesktop) {
