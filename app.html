@@ -8558,7 +8558,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.368';
+    const APP_VERSION = '6.369';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -49847,11 +49847,45 @@ Per confermare scrivi ELIMINA.`);
     } catch (_e) { /* silenzioso: rete/config/sessione assenti → niente banner */ }
   }
 
+  /* 🚦⭐ VOCE 162 (05/09/2026) — IL POLLING CHIEDE IN PROPORZIONE A QUANTO IL GESTIONALE
+     RIESCE A RISPONDERE, e prima chiedeva ogni 4 secondi comunque.
+     📏 Misurato alle 06:30 del 05/09, con PROD in ginocchio (voce 160): `setInterval` a passo
+     fisso non aspetta la risposta precedente ⇒ 129 chiamate in 10 minuti dalle sole pagine
+     della console remota, risposte da 100 s, 23 chiamate SOVRAPPOSTE in volo sullo stesso
+     database che stava già morendo. È la forma peggiore di carico: cresce proprio quando il
+     sistema rallenta. La stessa forma sul bot è la voce 164 (`unoAllaVolta`).
+     🔨 Tre regole, e la terza c'era già:
+       ① il giro successivo parte DOPO che il precedente ha risposto (mai in parallelo con lui);
+       ② se la risposta ha impiegato più del passo, il passo raddoppia (4 → 8 → 16 → 32 s) e
+          torna a 4 appena le risposte tornano veloci — parte dalla LENTEZZA MISURATA, non da
+          una soglia decisa a tavolino;
+       ③ una scheda nascosta non chiede (`document.hidden`, già dentro `svcPollQueueStatus`).
+     ⚖️ Cosa NON cambia: quando il gestionale sta bene la cella si accende entro i 4 s di oggi,
+     perché con risposte sotto il passo il passo resta quello. */
+  const SVC_POLL_PASSO_MS = 4000;
+  const SVC_POLL_PASSO_MAX_MS = 32000;
+  let _svcPollPassoMs = SVC_POLL_PASSO_MS;
+  /** Il passo del PROSSIMO giro, dato quanto ha impiegato questo e il passo attuale (pura).
+   *  Più lenta del passo ⇒ raddoppia fino al tetto; veloce ⇒ torna subito al passo base. */
+  function svcProssimoPasso(durataMs, passoMs) {
+    const passo = (passoMs > 0) ? passoMs : SVC_POLL_PASSO_MS;
+    if (durataMs > passo) return Math.min(passo * 2, SVC_POLL_PASSO_MAX_MS);
+    return SVC_POLL_PASSO_MS;
+  }
+  async function svcGiroDiPolling() {
+    const t0 = Date.now();
+    try { await svcPollQueueStatus(); } catch (_e) { /* già silenzioso dentro */ }
+    finally {
+      _svcPollPassoMs = svcProssimoPasso(Date.now() - t0, _svcPollPassoMs);
+      setTimeout(svcGiroDiPolling, _svcPollPassoMs);
+    }
+  }
+
   function svcStartQueuePolling() {
     if (_svcQueuePollStarted) return;
     _svcQueuePollStarted = true;
-    svcPollQueueStatus();
-    setInterval(svcPollQueueStatus, 4000);
+    // ⛔ Niente `setInterval`: un timer a passo fisso è un moltiplicatore del guasto (voce 162).
+    svcGiroDiPolling();
   }
   /* 🚦 VOCE 137 (03/09/2026) — IL POLLING SI RIACCENDE, e la riga qui sotto era commentata dal
      3 giugno 2026 (commit `58fee80`, v5.627).
