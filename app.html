@@ -8558,7 +8558,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.366';
+    const APP_VERSION = '6.367';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -43312,6 +43312,45 @@ Per confermare scrivi ELIMINA.`);
   // ⛔ NESSUN RIPIEGO SUL NOME, di proposito: davanti a un id che non aggancia, la risposta è
   // nome muto. Cercare «per nome che somiglia» rimetterebbe in piedi esattamente la classe di
   // difetto appena tolta — indovinare la persona.
+  // 🆕💶⭐⭐ VOCE 163 — LE DUE REGOLE CHE DECIDONO SE UN IMPORTO DIGITATO SI RIMETTE.
+  // Stanno qui, fuori dal ridisegno, per una ragione sola: il ridisegno non si può eseguire
+  // in un banco (vuole un DOM), e una regola che nessuno può eseguire è una regola che nessuno
+  // prova. 📌 *Se la parte che decide sta dentro la parte che disegna, si prova il disegno.*
+
+  /** La chiave di una riga dei soldi: id interno, POSIZIONE e nome, tutti e tre.
+   *  🚨 Nessuno dei tre basta da solo, ed è misurato:
+   *  · l'ID no — gli «Ospite» hanno TUTTI l'id interno `1` (misurato sulla 138), quindi due
+   *    ospiti nella stessa partita sarebbero la stessa chiave, e i soldi di uno finirebbero
+   *    sull'altro;
+   *  · la POSIZIONE no — scivola appena qualcuno esce dalla lista, e allora la chiave punta a
+   *    una persona diversa;
+   *  · il NOME no — gli omonimi esistono, su PROD sono 12 gruppi (misurato il 2/08). */
+  function _pmoChiaveRigaImporto(r) {
+    return [
+      String((r && r.idCliente) == null ? '' : r.idCliente),
+      String((r && r.idx) == null ? '' : r.idx),
+      String((r && r.nome) == null ? '' : r.nome),
+    ].join('|');
+  }
+
+  /** Cosa si rimette nelle caselle dopo un ridisegno, e cosa si dichiara perso.
+   *  ⛔ FALLISCE CHIUSA: si rimette solo se la lista è ESATTAMENTE quella di prima, riga per
+   *  riga. Se è cambiata non si rimette niente e si dichiara la perdita — perché rimettere dei
+   *  soldi sulla riga sbagliata è la voce 138 un piano più in basso, e là si apriva una scheda,
+   *  qui si incasserebbe da un'altra persona.
+   *  📌 *Un numero perso è un fastidio; un numero rimesso sulla persona sbagliata è un danno.* */
+  function _pmoImportiDaRimettere(memoria, chiavi) {
+    const mem = (memoria && typeof memoria === 'object') ? memoria : null;
+    const valori = (mem && mem.valori && typeof mem.valori === 'object') ? mem.valori : {};
+    const elenco = Array.isArray(chiavi) ? chiavi.map(String) : [];
+    const firma = elenco.join('\u00a7');
+    if (!Object.keys(valori).length) return { firma: firma, valori: {}, rimetti: {}, persi: false };
+    if (String(mem && mem.firma) !== firma) return { firma: firma, valori: {}, rimetti: {}, persi: true };
+    const rimetti = {};
+    elenco.forEach(function (k) { if (valori[k] != null) rimetti[k] = valori[k]; });
+    return { firma: firma, valori: valori, rimetti: rimetti, persi: false };
+  }
+
   function _staffCalSocioDelGiocatore(p) {
     try {
       if (!p) return null;
@@ -44789,8 +44828,71 @@ Per confermare scrivi ELIMINA.`);
                               : ' importi non ancora letti da Matchpoint. I numeri qui sopra sono un minimo, non il totale.');
         }
       };
+      /* 🆕💶⭐⭐ VOCE 163 — QUELLO CHE L'OPERATORE HA DIGITATO SOPRAVVIVE AL RIDISEGNO.
+       *
+       * 📏 MISURATO su PROD 6.365 il 05/09/2026, con la console remota: digitato `37,50` nel
+       *    campo importo, dopo **3 secondi** era tornato `0,00` — e **senza cliccare niente**.
+       *    A cancellarlo non è il click sul nome (quello la 138 l'ha provato): è il ridisegno
+       *    della scheda dopo la rilettura del roster, che `box.innerHTML = ''` e rifà i campi
+       *    dallo stato. Il numero digitato viveva **solo nel DOM**, e il DOM lo si butta.
+       * 🚨 Misurato anche il ramo che la console non poteva esercitare per via della rete:
+       *    eseguendo `staffCalRenderPlayersEditor()` **nudo** il valore sparisce lo stesso, e
+       *    con un roster nuovo dal worker torna il numero di Matchpoint (13,00 al posto di
+       *    41,00). ⇒ Non è il caso del worker che fallisce: **tutti** i rami della rilettura
+       *    chiamano quella stessa funzione, quindi succede sempre.
+       * ⚖️ In cassa vuol dire questo: la segreteria apre la scheda e comincia a scrivere mentre
+       *    la rilettura è in volo; quando atterra, il numero sparisce **senza dirlo**. È il
+       *    rovescio del guadagno della 142 — da quando la scheda si apre subito coi nomi
+       *    locali, quella finestra è la normalità e non più l'eccezione.
+       * 📌 *Aprire prima una scheda che si ridisegna dopo non è gratis: sposta il ridisegno
+       *    dentro il tempo in cui qualcuno la sta usando.*
+       *
+       * 🔨 LA CURA È QUELLA CHE L'APP USA GIÀ PER LA NOTA: il valore digitato smette di vivere
+       *    solo nel DOM e passa nello STATO (`st.note` / `st.origNote` fa esattamente questo).
+       *    Qui lo stato è `st.importiDigitati`, che nasce e muore con l'apertura della scheda.
+       *
+       * 🚨⭐⭐ E LA PARTE CHE DECIDE SE LA CURA È SICURA: SU QUALE RIGA SI RIMETTE IL NUMERO.
+       *    Rimettere dei soldi sulla riga sbagliata è la voce 138 un piano più in basso — con
+       *    la differenza che là si apriva una scheda, qui si incassa da un'altra persona. Non
+       *    si indovina: si rimette **solo se la lista è ancora la stessa**, confrontata riga per
+       *    riga (id interno, posizione e nome). Se è cambiata i numeri **non si rimettono**, e
+       *    lo si **dice**: sparire in silenzio è il difetto, non la perdita in sé.
+       * ⛔ Perché non basta l'id: gli «Ospite» hanno **tutti** l'id interno `1` (misurato sulla
+       *    138), quindi due ospiti nella stessa partita sono indistinguibili per id — e la
+       *    posizione da sola scivola appena qualcuno esce dalla lista. La firma dell'intera
+       *    lista è l'unica chiave che non può agganciare la persona sbagliata: o combacia
+       *    tutta, o non si rimette niente. *Fallisce chiusa.* */
+      /* 🚨 LA FIRMA SI PRENDE DAL ROSTER, NON DALLE RIGHE DEI SOLDI, e la differenza si vede
+       *    solo pensando a un gesto vero: chi è segnato per la RIMOZIONE la riga dei soldi non
+       *    ce l'ha (giustamente). Firmando le righe dei soldi, mettere una ✕ su un giocatore
+       *    sarebbe «la lista è cambiata» e butterebbe gli importi già scritti sugli ALTRI —
+       *    una perdita causata da noi, in un gesto che con i soldi non c'entra.
+       * ⚖️ Il roster invece cambia solo quando cambia la lista davvero (la rilettura da
+       *    Matchpoint), che è esattamente il caso in cui non si deve indovinare. */
+      const _chiaviOra = function () { return (st.roster || []).map(_pmoChiaveRigaImporto); };
+      const _esito = _pmoImportiDaRimettere(st.importiDigitati, _chiaviOra());
+      if (_esito.persi) st.importiPersi = true;
+      st.importiDigitati = { firma: _esito.firma, valori: _esito.valori };
+      const _mem = st.importiDigitati;
       (st.payRows || []).forEach(function (r) {
-        if (r && r.input) r.input.addEventListener('input', _disegnaConto);
+        if (!r || !r.input || r.input.disabled) return;
+        const v = _esito.rimetti[_pmoChiaveRigaImporto(r)];
+        if (v != null) r.input.value = v;
+      });
+      const persi = document.createElement('div');
+      persi.className = 'svc-edit-conto-parziale';
+      persi.hidden = !st.importiPersi;
+      persi.textContent = '\u26a0\ufe0f La lista dei giocatori \u00e8 cambiata mentre scrivevi: gli importi che avevi digitato non sono stati rimessi, perch\u00e9 non si indovina su chi. Ricontrollali.';
+      conto.appendChild(persi);
+      (st.payRows || []).forEach(function (r) {
+        if (!r || !r.input) return;
+        r.input.addEventListener('input', _disegnaConto);
+        r.input.addEventListener('input', function () {
+          _mem.firma = _chiaviOra().join('\u00a7');
+          _mem.valori[_pmoChiaveRigaImporto(r)] = r.input.value;
+          // Se stava lì l'avviso della perdita, chi riscrive l'ha già letto.
+          if (st.importiPersi) { st.importiPersi = false; persi.hidden = true; }
+        });
       });
       _disegnaConto();
       box.appendChild(conto);
