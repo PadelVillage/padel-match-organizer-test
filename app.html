@@ -8667,7 +8667,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.389';
+    const APP_VERSION = '6.390';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -25701,7 +25701,12 @@ Grazie!`
              stessa che si stava già facendo.
              ⚖️ È lo stesso principio del pagamento col borsellino, applicato al gesto che la
              segreteria fa più spesso: *quello che si legge, si registra*. */
-          body: JSON.stringify({ idInterno, memberLocalId: String(g.id || ''), playerName: (typeof playerFullName === 'function' ? playerFullName(g) : (g.name || '')) }),
+          /* 🚨 `codiceCliente` è `memberId`, NON l'id interno: nella fotografia il campo
+             `id_cliente` è quello che scrive il sync, cioè il CODICE cliente. Sono due
+             numerazioni diverse (misurato: 191 = Luciano Pase per codice, Valeria Moschet per
+             id interno) e mescolarle è la voce 138 daccapo. È lo stesso campo che passa la
+             ricarica (`_pmoVoidWallet`/`_pmoRechargeWallet`), e va tenuto uguale. */
+          body: JSON.stringify({ idInterno, memberLocalId: String(g.id || ''), codiceCliente: String(g.memberId || ''), playerName: (typeof playerFullName === 'function' ? playerFullName(g) : (g.name || '')) }),
         });
         const data = await resp.json().catch(() => null);
         if (!resp.ok || !data || data.ok === false || typeof data.balanceCents !== 'number') {
@@ -42071,6 +42076,12 @@ Per confermare scrivi ELIMINA.`);
     if (!/^\d{1,8}$/.test(idInterno) || idInterno.replace(/^0+/, '') === '1') return;
     const socio = (p && typeof _staffCalSocioDelGiocatore === 'function') ? _staffCalSocioDelGiocatore(p) : null;
     const memberLocalId = socio ? String(socio.id || '') : '';
+    /* 🚨 Il CODICE cliente, non l'id interno che ho in mano dal roster: il campo `id_cliente`
+       della fotografia è quello che scrive il sync, e sono due numerazioni diverse. Senza socio
+       agganciato resta vuoto — e l'edge scriverà `null`, che il sync riempirà al giro dopo.
+       ⛔ Mai ripiegare qui su `idInterno`: sembrerebbe funzionare (per i soci con id basso i due
+       numeri coincidono) e sbaglierebbe in silenzio su tutti gli altri. */
+    const codiceCliente = socio ? String(socio.memberId || '') : '';
     (async function () {
       try {
         const cfg = await loadAssessmentSupabaseConfig();
@@ -42078,7 +42089,7 @@ Per confermare scrivi ELIMINA.`);
         const resp = await fetch(cfg.supabaseUrl + '/functions/v1/matchpoint-wallet-read', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': cfg.supabaseKey, 'Authorization': 'Bearer ' + staff.accessToken },
-          body: JSON.stringify({ idInterno: idInterno, memberLocalId: memberLocalId, playerName: playerName }),
+          body: JSON.stringify({ idInterno: idInterno, memberLocalId: memberLocalId, codiceCliente: codiceCliente, playerName: playerName }),
         });
         const data = await resp.json().catch(function () { return null; });
         if (!resp.ok || !data || data.ok === false || typeof data.balanceCents !== 'number') {
