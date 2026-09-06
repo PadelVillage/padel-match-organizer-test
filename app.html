@@ -8667,7 +8667,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.387';
+    const APP_VERSION = '6.388';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -25693,13 +25693,26 @@ Grazie!`
         const resp = await fetch(`${supabaseUrl}/functions/v1/matchpoint-wallet-read`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': supabaseKey, 'Authorization': `Bearer ${staff.accessToken}` },
-          body: JSON.stringify({ idInterno }),
+          /* 👛 VOCE 143 — anche il ↻ ARCHIVIA, da stanotte. Prima il numero che tornava di qui
+             finiva solo in `window.__pmoWalletCache`: lo vedeva **chi aveva premuto**, si
+             perdeva al reload, e la postazione accanto continuava a mostrare quello di dieci
+             minuti fa. ⇒ Qui il socio è noto con certezza (siamo nella SUA scheda, `g.id` è la
+             chiave del gestionale) e passarlo non costa niente: nessuna lettura in più, la
+             stessa che si stava già facendo.
+             ⚖️ È lo stesso principio del pagamento col borsellino, applicato al gesto che la
+             segreteria fa più spesso: *quello che si legge, si registra*. */
+          body: JSON.stringify({ idInterno, memberLocalId: String(g.id || ''), playerName: (typeof playerFullName === 'function' ? playerFullName(g) : (g.name || '')) }),
         });
         const data = await resp.json().catch(() => null);
         if (!resp.ok || !data || data.ok === false || typeof data.balanceCents !== 'number') {
           throw new Error((data && (data.message || data.error)) || `HTTP ${resp.status}`);
         }
-        window.__pmoWalletCache.set(idInterno, { balance_cents: data.balanceCents, synced_at: new Date().toISOString() });
+        const _nowIso = new Date().toISOString();
+        window.__pmoWalletCache.set(idInterno, { balance_cents: data.balanceCents, synced_at: _nowIso });
+        // 👛 VOCE 143 — e la mappa dei saldi «dal cloud» si allinea nello stesso istante: l'edge
+        // ha appena scritto quella riga, e lasciarla indietro qui farebbe convivere due numeri
+        // per lo stesso socio nella stessa pagina.
+        try { if (window.__pmoWalletCloud) window.__pmoWalletCloud.set(String(g.id), { balance_cents: data.balanceCents, synced_at: _nowIso }); } catch (e) {}
         // Ridisegna la lista soci (colonna Borsellino) se presente — copre anche il caso del
         // bottone ↻ in riga; displayMembers ridisegna anche la scheda aperta (renderOpenMemberCard
         // in coda). Fuori dalla lista (es. solo scheda) ricade su renderOpenMemberCard.
