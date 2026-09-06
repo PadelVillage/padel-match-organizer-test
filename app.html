@@ -8667,7 +8667,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.380';
+    const APP_VERSION = '6.381';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -43446,7 +43446,22 @@ Per confermare scrivi ELIMINA.`);
       const _cs = getComputedStyle(blk);
       const _rb = blk.getBoundingClientRect();
       const tetto = _rb.bottom - (parseFloat(_cs.borderBottomWidth) || 0) - (parseFloat(_cs.paddingBottom) || 0);
-      const fondi = info.righe.map(function (r) { return r.getBoundingClientRect().bottom; });
+      /* 🚨⭐⭐ SI MISURA IL FONDO DELLE LETTERE, NON DELLA RIGA — e la differenza è un nome.
+         📏 Misurato su TEST 6.380: sul riquadro delle 18:00 di C2 il terzo nome finiva a 84,5
+            con un tetto a 83,5 ⇒ sforava di **1,5 px** su una riga alta 15,6, e per quel pixel e
+            mezzo veniva nascosto un nome che si legge perfettamente. Restavano **16 px di spazio
+            vuoto** sotto: una riga intera buttata.
+         ⚖️ Una riga di testo è alta più delle sue lettere: l'eccesso è l'INTERLINEA, e tagliarla
+            non nasconde niente. Il difetto che questa voce cura sono le **lettere** tagliate a
+            metà — misurate da 11 a 17 px su righe da 16, cioè dal 70% al 106% della riga. Fra
+            1,5 px e 11 px non serve una soglia inventata: basta smettere di contare lo spazio
+            bianco.
+         📌 *La soglia giusta non è un numero scelto: è il bordo dell'oggetto di cui si parla.* */
+      const fondi = info.righe.map(function (r) {
+        const rr = r.getBoundingClientRect();
+        const fs = parseFloat(getComputedStyle(r).fontSize) || 0;
+        return rr.bottom - Math.max(0, (rr.height - fs) / 2);
+      });
       const ciStanno = pmoRigheIntereCheCiStanno(fondi, tetto);
       const piano = pmoPianoRighe(info.righe.length, ciStanno);
       if (piano.nascoste > 0) _piani.push({ info: info, piano: piano });
