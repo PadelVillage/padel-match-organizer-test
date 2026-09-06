@@ -8667,7 +8667,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.385';
+    const APP_VERSION = '6.386';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -42000,6 +42000,101 @@ Per confermare scrivi ELIMINA.`);
       try { msg.appendChild(btns); } catch (e) {}
     });
   }
+  /* 👛⭐⭐ VOCE 143, SECONDA METÀ (06/09/2026) — DOPO UN GESTO CHE MUOVE IL BORSELLINO, IL SALDO
+   *  SI RILEGGE. In sottofondo, senza far aspettare la cassa.
+   *
+   * 🗣️ Sua, dal 04/09: *«quando facciamo le operazioni di cassa che c'è tanta gente, se non si
+   *    aggiorna velocemente poi qualcuno della segreteria può protestare»*.
+   *
+   * 📏 IL BUCO CHE RESTAVA, misurato il 06/09: la prima metà cura la RICARICA, dove il saldo dopo
+   *    è già in mano. Il PAGAMENTO COL BORSELLINO no — `/collect-payment` torna `statoPost` e
+   *    `pendentePostCents`, il saldo del borsellino **no**, perché il cobro si fa nella schermata
+   *    della prenotazione e non in quella del borsellino. ⇒ Il numero restava vecchio fino al giro
+   *    dei 10 minuti: esattamente il caso che protesta.
+   *
+   * 🚨⭐⭐ E DOVE STA L'OCCHIO NON È DOVE STAVA LA CURA. Nella scheda della partita il chip 👛 NON
+   *    legge la fotografia del gestionale: legge `p.saldoCents`, che il worker ha portato
+   *    all'APERTURA della scheda insieme ai giocatori. Curare solo l'archivio avrebbe lasciato il
+   *    cassiere a guardare il numero di prima nella riga dove ha appena premuto.
+   *    ⇒ Si aggiornano tutti e due, e col MEDESIMO numero: quello riletto dal circolo.
+   *    📌 *La stessa lezione della 134: il posto giusto per una risposta è accanto alla domanda.*
+   *
+   * ⛔ IL SALDO NUOVO NON SI CALCOLA, si CHIEDE — e non è pignoleria. Sottrarre l'importo pagato
+   *    da quello che avevamo sarebbe fabbricare una verità nostra: basta un altro incasso fatto
+   *    dalla postazione accanto, o una ricarica di due minuti fa, e il numero «giusto» è falso e
+   *    nessuno lo sa. È *il gestionale SA, l'app DICE* applicato ai soldi.
+   *
+   * ⏳ IN SOTTOFONDO, di proposito: la lettura al worker costa ~10 s (misurato il 06/09: 10,6 s).
+   *    Dieci secondi davanti alla fila sarebbero un peggioramento, non una cura — e il numero
+   *    serve DOPO l'incasso, non per farlo. ⇒ Nessun `await` sul percorso del cassiere, nessun
+   *    alert se fallisce: il gesto è già riuscito, e un errore su un rinfresco non si racconta
+   *    come se fosse andato storto l'incasso. Al massimo il saldo resta quello di prima, cioè
+   *    esattamente com'era prima di questa voce.
+   *
+   * ⚠️ SENZA IL SOCIO non si archivia (ma si legge lo stesso, per il chip): la chiave della
+   *    fotografia è `member_local_id`, e ricavarla dall'id del roster «a occhio» è il difetto
+   *    silenzioso della 138 — dove il codice cliente di Laura Aprea (000140 → "140") era identico
+   *    all'ID INTERNO di Marco Aprea (140). Qui si usa `_staffCalSocioDelGiocatore`, che confronta
+   *    id interno con id interno e davanti a un id che non aggancia NON indovina. */
+  function _pmoWalletRileggiDopoGesto(opts) {
+    opts = opts || {};
+    const idReserva = String(opts.idReserva == null ? '' : opts.idReserva).trim();
+    const playerName = String(opts.playerName || '');
+    // La riga del roster: serve per l'id interno, per il socio e per il chip da aggiornare.
+    let p = null;
+    try {
+      const st = staffCalPlayersState;
+      if (st && String(st.idReserva || '') === idReserva && Array.isArray(st.roster)) {
+        p = st.roster.find(function (x) {
+          return String(x.idx) === String(opts.idx)
+            || (x.idCliente && opts.idCliente && String(x.idCliente) === String(opts.idCliente))
+            || x.nome === playerName;
+        }) || null;
+      }
+    } catch (e) {}
+    const idInterno = String((p && p.idCliente) || opts.idCliente || '').trim();
+    // 🚨 L'Ospite ha id interno `1` ed è il jolly del circolo, non una persona: nessun borsellino
+    //    da rileggere, e chiederlo vorrebbe dire leggere il saldo di un record condiviso.
+    if (!/^\d{1,8}$/.test(idInterno) || idInterno.replace(/^0+/, '') === '1') return;
+    const socio = (p && typeof _staffCalSocioDelGiocatore === 'function') ? _staffCalSocioDelGiocatore(p) : null;
+    const memberLocalId = socio ? String(socio.id || '') : '';
+    (async function () {
+      try {
+        const cfg = await loadAssessmentSupabaseConfig();
+        const staff = await pmoRequireStaffPermission('cloud_sync', 'rileggere il saldo del wallet');
+        const resp = await fetch(cfg.supabaseUrl + '/functions/v1/matchpoint-wallet-read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': cfg.supabaseKey, 'Authorization': 'Bearer ' + staff.accessToken },
+          body: JSON.stringify({ idInterno: idInterno, memberLocalId: memberLocalId, playerName: playerName }),
+        });
+        const data = await resp.json().catch(function () { return null; });
+        if (!resp.ok || !data || data.ok === false || typeof data.balanceCents !== 'number') {
+          throw new Error((data && (data.message || data.error)) || ('HTTP ' + resp.status));
+        }
+        const cents = data.balanceCents;
+        const nowIso = new Date().toISOString();
+        // ① il chip 👛 della scheda partita, che è dove il cassiere sta guardando adesso.
+        try {
+          if (p) p.saldoCents = cents;
+          if (typeof staffCalRenderPlayersEditor === 'function' && staffCalPlayersState) staffCalRenderPlayersEditor();
+        } catch (e) {}
+        // ② le due mappe della scheda socio, così il numero è lo stesso da qualunque parte lo si
+        //    guardi. La fotografia in archivio l'ha già scritta l'edge: qui si allinea la copia
+        //    che questa pagina ha in mano, non se ne fabbrica una seconda.
+        try {
+          if (window.__pmoWalletCache) window.__pmoWalletCache.set(idInterno, { balance_cents: cents, synced_at: nowIso });
+          if (memberLocalId && window.__pmoWalletCloud) window.__pmoWalletCloud.set(memberLocalId, { balance_cents: cents, synced_at: nowIso });
+        } catch (e) {}
+        try { if (typeof displayMembers === 'function' && document.getElementById('memberTableBody')) displayMembers(); } catch (e) {}
+      } catch (e) {
+        // ⛔ Silenzioso VERSO L'OPERATORE, non verso chi diagnostica: l'incasso è riuscito, e un
+        //    avviso qui direbbe il falso su di lui. Nel registro invece resta, o un rinfresco che
+        //    non parte più non lo scoprirebbe nessuno.
+        console.warn('_pmoWalletRileggiDopoGesto (' + (opts.motivo || '?') + '):', e);
+      }
+    })();
+  }
+
   async function _pmoCollectPayment(opts) {
     opts = opts || {};
     const _harness = PMO_IS_TEST_ENV && typeof window !== 'undefined' && window.__pmoPayHarness === true;
@@ -42097,6 +42192,13 @@ Per confermare scrivi ELIMINA.`);
           }
         } catch (e) {}
         try { _staffCalPaidIndexAdd(_payNatKey(opts.data, opts.campo, opts.ora), playerName, method, amountCents); } catch (e) {}
+        /* 👛 VOCE 143 — col BORSELLINO il denaro è uscito da lì, quindi il saldo va riletto: in
+           sottofondo, senza far aspettare il cassiere. ⛔ Cash e card NON toccano il borsellino e
+           qui non chiedono niente al worker: un browser solo, condiviso col sync, non si occupa
+           per un numero che non è cambiato. */
+        if (method === 'wallet') {
+          _pmoWalletRileggiDopoGesto({ idReserva: idReserva, idCliente: idCliente, idx: opts.idx, playerName: playerName, motivo: 'incasso-wallet' });
+        }
         _setMsg(note, '✅ Incassato ' + esc(methodLabel) + ' ' + _incassiEuro(amountCents) + ' — ' + esc(playerName));
         try { if (typeof staffCalRenderPlayersEditor === 'function' && staffCalPlayersState) staffCalRenderPlayersEditor(); } catch (e) {}
         try { renderStaffCalendar(); } catch (e) {}
@@ -42409,6 +42511,29 @@ Per confermare scrivi ELIMINA.`);
             if (tgt) { tgt.stato = 'in_sospeso'; tgt.pendenteCents = (tgt.importoCents != null ? tgt.importoCents : importoCents); }
           }
         } catch (e) {}
+        /* 👛 VOCE 143 — LO STORNO RIMETTE I SOLDI DA DOVE ERANO USCITI: se il pagamento era col
+           borsellino, il saldo risale, e va riletto come dopo l'incasso.
+           ⚖️ QUI IL METODO NON LO DECIDIAMO NOI — l'incasso lo sceglie il cassiere, lo storno no —
+           e le tre risposte possibili si trattano diversamente:
+           · so che era BORSELLINO → si rilegge;
+           · so che era cash/card → non si rilegge: il borsellino non si è mosso;
+           · NON lo so (il metodo arriva dalla sync incassi, ~5 min, e per un pagamento vecchio può
+             non esserci ancora) → si rilegge lo stesso. ⇒ Uno storno è un gesto raro, e una
+             lettura ogni tanto inutile costa dieci secondi al worker; un saldo sbagliato in cassa
+             costa una protesta. 📌 *Nel dubbio si paga il costo che si sa misurare.*
+           ⛔ E il metodo NON si indovina dal nome né dall'importo: si legge dall'indice, o si
+           dichiara ignoto.
+           🚨 STA PRIMA DI `_staffCalPaidIndexRemove`, E NON È CASUALE: quella riga toglie proprio
+           la voce da cui il metodo si legge. Spostandola sopra, il metodo risulterebbe SEMPRE
+           ignoto e ogni storno — cash e card compresi — occuperebbe il worker per niente. */
+        try {
+          const _info = (typeof _staffCalPaidInfo === 'function') ? _staffCalPaidInfo(opts.data, opts.campo, opts.ora, playerName) : null;
+          const _metodi = (_info && Array.isArray(_info.methods)) ? _info.methods : [];
+          const _toccaWallet = (_metodi.length === 0) || _metodi.indexOf('borsellino') >= 0;
+          if (_toccaWallet) {
+            _pmoWalletRileggiDopoGesto({ idReserva: idReserva, idCliente: idCliente, idx: opts.idx, playerName: playerName, motivo: _metodi.length ? 'storno-wallet' : 'storno-metodo-ignoto' });
+          }
+        } catch (e) { console.warn('voce 143 · rilettura saldo dopo storno:', e); }
         try { _staffCalPaidIndexRemove(_payNatKey(opts.data, opts.campo, opts.ora), playerName); } catch (e) {}
         _setMsg(note, '✅ Pagamento stornato — ' + esc(playerName));
         try { if (typeof staffCalRenderPlayersEditor === 'function' && staffCalPlayersState) staffCalRenderPlayersEditor(); } catch (e) {}
