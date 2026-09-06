@@ -8667,7 +8667,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.383';
+    const APP_VERSION = '6.384';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -8978,6 +8978,32 @@ body.assessment-public-mode .assessment-public-only-card {
     const PMO_COMPACT_BOOKING_STORAGE_KEYS = new Set(['prenotazioni', 'prenotazioniOccupazione', 'storicoPrenotazioni']);
     const PMO_COMPACT_BOOKING_STORAGE_MARKER = 'pmo-bookings-v1';
     const PMO_COMPACT_BOOKING_FIELDS = ['numero', 'giocatore', 'data', 'ora', 'durata', 'campo', 'tipo', 'descrizione'];
+    /* 🪟 VOCE 142 — LE DUE FUNZIONI CHE DEVONO DARE LO STESSO RISULTATO DELL'EDGE.
+       Sono i gemelli in JS di `chiaveNome` e `improntaRoster` di
+       `supabase/functions/matchpoint-bookings-sync/arricchimento-scheda.ts`, e servono a
+       riconoscere se l'arricchimento salvato dal sync vale ancora per i nomi che la scheda sta
+       mostrando.
+       🚨 SONO UNA TERZA COPIA, e questo file le terze copie le vieta — quindi si dichiara perché
+       qui non si poteva evitare: l'edge gira in Deno sul server, questa pagina gira nel browser
+       del socio, e nessuna delle due può chiamare l'altra per confrontare due stringhe.
+       ⛔ Il freno che sostituisce l'unicità è una PROVA: `test/impronta-roster.test.mjs` esegue
+       QUESTE righe e quelle dell'edge sugli stessi casi e pretende lo stesso risultato. Se una
+       delle due cambia, il banco cade.
+       ⚖️ E se un domani divergessero lo stesso, si sbaglia dal lato sicuro: un'impronta che non
+       combacia fa **rinunciare** all'arricchimento (la scheda torna a com'era ieri), non
+       mostrare un dato sbagliato. */
+    function pmoChiaveNome(s) {
+      return String(s == null ? '' : s).toLowerCase().normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+    }
+    function pmoImprontaRoster(giocatori) {
+      const nomi = Array.isArray(giocatori) ? giocatori : [];
+      return nomi
+        .map(function (g) { return pmoChiaveNome(typeof g === 'string' ? g : (g && g.nome)); })
+        .filter(Boolean)
+        .sort()
+        .join('|');
+    }
     document.body.classList.toggle('pmo-env-test', PMO_IS_TEST_ENV);
     document.title = `Padel Match Organizer v${APP_VERSION}${PMO_IS_TEST_ENV ? ' TEST' : ''}`;
     document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = `v${APP_VERSION}`; });
@@ -44237,11 +44263,62 @@ Per confermare scrivi ELIMINA.`);
       });
       if (_b && Array.isArray(_b.giocatori)) _localRoster = _normRoster(_b.giocatori);
     } catch (e) {}
-    // Partita/lezione: la nota (Osservazioni) è autorevole dal worker e il dato locale può contenere
-    // l'artefatto-descrizione (= nome giocatore, es. "-Gianluca Spinazzè."). NON pre-popoliamo il
-    // campo Note dal locale: parte vuoto e lo riempie la lettura worker. Il salvataggio scrive la
-    // nota solo se l'utente la cambia (noteChanged), quindi nessuna Osservazione viene persa.
-    buildState(_localRoster, '');
+    /* 🪟⭐⭐ VOCE 142, SECONDA METÀ — LA SCHEDA LEGGE DAL GESTIONALE QUELLO CHE PRIMA ASPETTAVA
+       DAL WORKER: le Osservazioni e gli id interni.
+
+       🔄 QUI C'ERA SCRITTO IL CONTRARIO, ed era giusto finché il gestionale non aveva il dato:
+       «la nota è autorevole dal worker e il dato locale può contenere l'artefatto-descrizione
+       (= nome giocatore, es. "-Gianluca Spinazzè.") ⇒ NON pre-popoliamo il campo Note dal locale».
+       ⚖️ Quella riga non parlava della NOTA: parlava di `staff_booking.note`, che è un campo
+       sporco. Dal 06/09 il sync porta una nota **letta dalla scheda di Matchpoint** (voce 142) —
+       la stessa che leggerebbe il worker — e la marca con l'impronta dei nomi per cui vale.
+       ⇒ Non è più «il locale è inaffidabile»: è «il locale ha due campi, e uno dei due è
+       autorevole». Si legge quello, e solo quando l'impronta dice che vale ancora.
+
+       ⛔ E NON TOGLIE LA RILETTURA DAL WORKER, di proposito: il worker resta il tramite verso
+       Matchpoint e la sua risposta resta autorevole — arriva dopo e sovrascrive, come oggi.
+       Quello che cambia è **l'attesa**, non la fonte. 📌 *Il gestionale risponde subito, il
+       circolo conferma dopo: nessuno dei due perde il proprio mestiere.*
+
+       ⚠️ Il dato può essere vecchio fino a ~2′ (la cadenza del sync) ⇒ va bene per MOSTRARE, e
+       infatti la conferma dal vivo continua ad arrivare. Prima di un gesto DISTRUTTIVO la
+       rimozione manda comunque il **nome** al worker, mai la posizione: un elenco stantio non
+       sposta la mira. */
+    let _gestNote = '';
+    let _gestIdClienti = null;
+    try {
+      const _nomiOra = _localRoster.map(function (p) { return p && p.nome; });
+      const _impronta = pmoImprontaRoster(_nomiOra);
+      if (_impronta) {
+        const _cerca = function (arr) {
+          return (Array.isArray(arr) ? arr : []).find(function (x) {
+            if (!x || !x.idClienti || typeof x.idClienti !== 'object') return false;
+            if (String(x.data).trim() !== String(isoDate).trim()) return false;
+            if (Number(String(x.campo).replace(/\D/g, '')) !== campoNum) return false;
+            if (String(x.ora).trim() !== String(ora).trim()) return false;
+            // ⛔ L'impronta è il permesso: se i nomi sono cambiati da quando fu letta, quegli id
+            //    e quella nota parlano di un'altra formazione. Meglio il velo di un dato sbagliato.
+            return String(x.arricchitoPer || '') === _impronta;
+          });
+        };
+        const _rec = _cerca(typeof prenotazioni !== 'undefined' ? prenotazioni : [])
+          || _cerca(typeof prenotazioniOccupazione !== 'undefined' ? prenotazioniOccupazione : []);
+        if (_rec) {
+          if (typeof _rec.note === 'string') _gestNote = _rec.note;
+          _gestIdClienti = _rec.idClienti;
+        }
+      }
+    } catch (e) {}
+    // Gli id accanto ai nomi, per chi li vuole (voce 138: aprire la scheda del socio GIUSTO, e
+    // voce 143: rinfrescare il borsellino dei ≤4 di questa partita). ⛔ Non si tocca la forma di
+    // `giocatori`: si aggiunge un campo, non se ne cambia nessuno.
+    if (_gestIdClienti) {
+      _localRoster = _localRoster.map(function (p) {
+        const _id = _gestIdClienti[pmoChiaveNome(p && p.nome)];
+        return _id ? Object.assign({}, p, { idCliente: (p && p.idCliente != null) ? p.idCliente : _id }) : p;
+      });
+    }
+    buildState(_localRoster, _gestNote);
 
     // Lettura autorevole dei giocatori dal worker, in SOTTOFONDO (non blocca la scheda).
     (function () {
