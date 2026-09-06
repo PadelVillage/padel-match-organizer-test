@@ -3098,6 +3098,23 @@
       /* Le sezioni non hanno più bisogno del margine sotto: a separarle ci pensa la griglia. */
       .svc-edit-box > .svc-edit-section { margin-bottom:10px; }
 
+      /* 🔘⭐⭐ VOCE 167 — IL PIÈ E L'ESITO ATTRAVERSANO LE DUE COLONNE, e nient'altro cambia.
+       * ⚖️ È la riga che fa il lavoro: la barra resta figlia diretta del box (la guardia della
+       *    150 e `_svcSchedaEsito` la cercano lì), e a metterla in fondo a tutta larghezza è la
+       *    GRIGLIA. Nessun involucro nuovo — è la lezione della 152.
+       * 📍 L'esito sta SOPRA il piè perché `_svcSchedaEsito` lo infila prima della barra: è la
+       *    risposta al gesto, e va letta accanto al bottone che l'ha chiesto.
+       * 🚨 `nowrap` di proposito: se un domani i bottoni non ci stessero, si stringono — andare
+       *    a capo qui rifarebbe la fila verticale che questa voce toglie. */
+      .svc-edit-box > .svc-edit-actions-bar { grid-column:1 / -1; flex-wrap:nowrap; }
+      .svc-edit-box > .svc-edit-esito { grid-column:1 / -1; }
+      .svc-edit-actions-bar > .svc-edit-save,
+      .svc-edit-actions-bar > .svc-edit-close,
+      .svc-edit-actions-bar > .svc-edit-add { flex:0 1 auto; }
+      /* 🚨 La DISTANZA è la protezione: `margin-left:auto` spinge l'unico gesto distruttivo
+         della scheda all'estremo opposto di Salva. */
+      .svc-edit-actions-bar > .svc-edit-del { flex:0 1 auto; margin-left:auto; }
+
       /* 🔼⭐⭐ VOCE 157 ② — IL TITOLO SALE NELLA TESTATA, e le colonne partono in cima
        *    (04/09/2026 — variante **A** del mockup `scheda-nota-e-titolo-mockup.html`,
        *    scelta da lui: «fai la A»).
@@ -3297,7 +3314,25 @@
     .svc-pl-method:hover:not(:disabled) { background:var(--accent-light); }
     .svc-pl-method:disabled { opacity:.4; cursor:not-allowed; border-color:var(--border); color:var(--text-muted); background:var(--surface2); }
     .svc-pl-method i { font-size:14px; flex:0 0 auto; }
-    .svc-edit-actions-bar { border-top:1px solid #e6e8ee; padding-top:10px; margin-top:4px; }
+    .svc-edit-actions-bar { border-top:1px solid #e6e8ee; padding-top:10px; margin-top:4px; align-items:center; }
+    /* 🔘 VOCE 167 — le larghezze del piè stanno QUI e non più in `style.flex` a mano: sono
+       due disposizioni diverse sopra e sotto i 900 px, e un valore scritto sull'elemento non
+       saprebbe quale delle due sta servendo. Sotto i 900 è la disposizione di prima, riga per
+       riga: Salva e Chiudi insieme, poi Aggiungi, poi Annulla, ciascuno a tutta larghezza. */
+    /* 🚨⭐⭐ CHIUSE IN UNA @media DISGIUNTA, e non e' pignoleria: le regole del piE8 per
+       DESKTOP stanno ~200 righe PIU' SU (dentro la @media dei 900), hanno la STESSA specificita'
+       di queste, e in CSS a parita' di specificita' vince l'ULTIMA scritta. ⇒ Lasciate nude,
+       queste avrebbero scavalcato quelle anche su uno schermo grande, e il piE8 sarebbe rimasto
+       in colonna: un difetto che nessun banco sul sorgente puo' vedere, perche' tutte e due le
+       regole ci sono e sono scritte bene.
+       ⚠️ Due @media che non si toccano (899 / 900) non dipendono piu' dall'ordine: e' la
+       protezione, e va tenuta anche se un domani i due blocchi si avvicinassero. */
+    @media (max-width:899px) {
+      .svc-edit-actions-bar > .svc-edit-save  { flex:2 1 auto; }
+      .svc-edit-actions-bar > .svc-edit-close { flex:1 1 auto; }
+      .svc-edit-actions-bar > .svc-edit-add   { flex:1 0 100%; justify-content:center; box-sizing:border-box; }
+      .svc-edit-actions-bar > .svc-edit-del   { flex:1 0 100%; }
+    }
     @media (min-width:900px) {
       .svc-layout { flex-direction:row; height:min(80vh, 860px); }
       /* 🖥️⭐⭐ VOCE 153/C — IL CALENDARIO PRENDE QUELLO CHE RESTA, non una frazione del tutto.
@@ -8583,7 +8618,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.372';
+    const APP_VERSION = '6.373';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -44677,15 +44712,10 @@ Per confermare scrivi ELIMINA.`);
         });
         playersSec.appendChild(addChips);
       }
-      // "+ Aggiungi giocatore" a tutta larghezza, in fondo alla sezione.
-      const addBtn = document.createElement('button');
-      addBtn.type = 'button';
-      addBtn.className = 'svc-btn-add';
-      addBtn.style.cssText = 'display:flex;width:100%;justify-content:center;margin-top:12px;box-sizing:border-box;';
-      addBtn.innerHTML = '<i class="ti ti-plus" style="font-size:13px;vertical-align:-1px;margin-right:3px;" aria-hidden="true"></i>Aggiungi giocatore';
-      addBtn.disabled = st.busy;
-      addBtn.addEventListener('click', function () { if (!st.busy) staffCalPlayersAdd(); });
-      playersSec.appendChild(addBtn);
+      /* 🔘 VOCE 167 — QUI C'ERA «+ Aggiungi giocatore», ed è SPOSTATO nel piè della scheda,
+       *    con gli altri tre. Resta l'unica avvertenza del parere: quel bottone agisce
+       *    sull'elenco QUI a destra, quindi il nome scelto deve farsi vedere lo stesso — e lo
+       *    fa, con le pastiglie «Da aggiungere:» che stanno appena sopra. */
       /* 🩹💰⭐⭐ VOCE 152 — QUI C'ERA «Totale da incassare», ed è stato SPOSTATO, non aggiunto.
        *
        * ⚖️ La riga vecchia rispondeva a **una** domanda: *quanto resta da prendere*. Il conto
@@ -44755,41 +44785,6 @@ Per confermare scrivi ELIMINA.`);
     noteSec.appendChild(editNoteTA);
     noteSec.appendChild(noteHint);
     box.appendChild(noteSec);
-
-    const actions = document.createElement('div');
-    actions.className = 'svc-step-buttons svc-edit-actions-bar';
-    const saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.innerHTML = '<i class="ti ti-check" style="font-size:14px;vertical-align:-2px;margin-right:3px;" aria-hidden="true"></i>Salva';
-    saveBtn.className = 'svc-btn-confirm svc-btn-yes';
-    saveBtn.style.flex = '2';
-    saveBtn.disabled = st.busy;
-    saveBtn.addEventListener('click', function () { if (!st.busy) staffCalPlayersSave(); });
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.innerHTML = '<i class="ti ti-x" style="font-size:14px;vertical-align:-2px;margin-right:3px;" aria-hidden="true"></i>Chiudi';
-    closeBtn.className = 'svc-btn-step-cancel';
-    closeBtn.style.flex = '1';
-    closeBtn.disabled = st.busy;
-    closeBtn.addEventListener('click', function () {
-      if (st.busy) return;
-      // Azzerare lo stato blocca i ridisegni FUTURI ma non smonta la scheda già disegnata: serve
-      // svcResetToNeutral() (la stessa del Salva) che rimuove il .svc-edit-box dal DOM e rimette
-      // l'input in modalità normale. Senza, la scheda resta aperta a schermo. v6.093
-      svcResetToNeutral();
-      svcAddMessage('system', '📝 Modifica chiusa.');
-    });
-    actions.appendChild(saveBtn);
-    actions.appendChild(closeBtn);
-    const delBtn = document.createElement('button');
-    delBtn.type = 'button';
-    delBtn.innerHTML = '<i class="ti ti-trash" style="font-size:14px;vertical-align:-2px;margin-right:3px;" aria-hidden="true"></i>Annulla prenotazione';
-    delBtn.className = 'svc-btn-confirm svc-btn-no';
-    delBtn.style.width = '100%';
-    delBtn.disabled = st.busy;
-    delBtn.addEventListener('click', function() { if (st.busy) return; staffCalAskCancel(st.origIso, st.origCampo, st.origOra, st.nome || ''); });
-    actions.appendChild(delBtn);
-    box.appendChild(actions);
 
     /* 🆕💰⭐⭐ VOCE 152 — IL CONTO DELLA PARTITA. Variante A del mockup, scelta da lui.
      *
@@ -44922,6 +44917,79 @@ Per confermare scrivi ELIMINA.`);
       _disegnaConto();
       box.appendChild(conto);
     }
+
+    /* 🔘⭐⭐ VOCE 167 — IL PIÈ DELLA SCHEDA: i bottoni della scheda tutti in basso, su una riga.
+     *
+     * 🗣️ Sua richiesta del 06/09/2026: «vorrei che tutti i bottoni siano in basso, cioè salva,
+     *    chiudi, annulla e aggiungi. Immettere tutti in orizzontale in basso alla scheda».
+     *
+     * 📏 Fatto sull'INVENTARIO della scheda aperta con la console remota, non sullo screenshot
+     *    — è la sua correzione della stessa mattina. I bottoni della scheda sono **quattro**;
+     *    quelli per GIOCATORE (✕, Cash/Card/Wallet) restano con il giocatore, perché dicono
+     *    di lui e non della prenotazione.
+     *
+     * 🚨 **Annulla prenotazione sta all'estremo opposto**, spinto in fondo da `margin-left:auto`:
+     *    è l'unico gesto distruttivo della scheda, e in una riga con Salva un pollice che cerca
+     *    Salva cancellerebbe la partita. La distanza è la protezione — non il colore, che si
+     *    guarda dopo aver premuto.
+     *
+     * 📍 Il CONTO sale SOPRA il piè (prima stava sotto la barra, che era in mezzo alla colonna
+     *    sinistra): con la barra a tutta larghezza in fondo, lasciarcelo sotto lo avrebbe spinto
+     *    fuori dalla scheda. È lo spostamento di UNA riga, dichiarato perché la posizione del
+     *    conto lui l'aveva approvata guardandola (voce 152).
+     *
+     * 🚨⭐ **NON si incarta niente**: la barra resta FIGLIA DIRETTA del box. `_svcSchedaEsito`
+     *    infila la riga dell'esito con `:scope > .svc-edit-actions-bar` e la guardia della 150 la
+     *    cerca con `.svc-edit-box > .svc-edit-esito`: un involucro in mezzo le farebbe fallire
+     *    **tutte e due in silenzio**. È la stessa regola della 152 — *una disposizione si cambia
+     *    con la disposizione*, e qui vuol dire una riga di `grid-column`, non un `<div>` nuovo.
+     *
+     * 📱 Sotto i 900 px i quattro in fila non ci stanno: la barra va a capo (`flex-wrap`), con
+     *    Salva e Chiudi sulla prima riga e Aggiungi e Annulla a tutta larghezza sotto — cioè
+     *    esattamente com'erano prima sul telefono. */
+    const actions = document.createElement('div');
+    actions.className = 'svc-step-buttons svc-edit-actions-bar';
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.innerHTML = '<i class="ti ti-check" style="font-size:14px;vertical-align:-2px;margin-right:3px;" aria-hidden="true"></i>Salva';
+    saveBtn.className = 'svc-btn-confirm svc-btn-yes svc-edit-save';
+    saveBtn.disabled = st.busy;
+    saveBtn.addEventListener('click', function () { if (!st.busy) staffCalPlayersSave(); });
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.innerHTML = '<i class="ti ti-x" style="font-size:14px;vertical-align:-2px;margin-right:3px;" aria-hidden="true"></i>Chiudi';
+    closeBtn.className = 'svc-btn-step-cancel svc-edit-close';
+    closeBtn.disabled = st.busy;
+    closeBtn.addEventListener('click', function () {
+      if (st.busy) return;
+      // Azzerare lo stato blocca i ridisegni FUTURI ma non smonta la scheda già disegnata: serve
+      // svcResetToNeutral() (la stessa del Salva) che rimuove il .svc-edit-box dal DOM e rimette
+      // l'input in modalità normale. Senza, la scheda resta aperta a schermo. v6.093
+      svcResetToNeutral();
+      svcAddMessage('system', '📝 Modifica chiusa.');
+    });
+    actions.appendChild(saveBtn);
+    actions.appendChild(closeBtn);
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.innerHTML = '<i class="ti ti-trash" style="font-size:14px;vertical-align:-2px;margin-right:3px;" aria-hidden="true"></i>Annulla prenotazione';
+    delBtn.className = 'svc-btn-confirm svc-btn-no svc-edit-del';
+    delBtn.disabled = st.busy;
+    delBtn.addEventListener('click', function() { if (st.busy) return; staffCalAskCancel(st.origIso, st.origCampo, st.origOra, st.nome || ''); });
+    /* ➕ L'AGGIUNGI entra qui, e solo quando i giocatori ci sono davvero: mentre il roster
+     *    si sta ancora leggendo la scheda non sa su cosa aggiungere, ed è la stessa
+     *    condizione che governava il bottone quando stava nella colonna dei giocatori. */
+    if (st.hasPlayers && !_loadingRoster) {
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'svc-btn-add svc-edit-add';
+      addBtn.innerHTML = '<i class="ti ti-plus" style="font-size:13px;vertical-align:-1px;margin-right:3px;" aria-hidden="true"></i>Aggiungi giocatore';
+      addBtn.disabled = st.busy;
+      addBtn.addEventListener('click', function () { if (!st.busy) staffCalPlayersAdd(); });
+      actions.appendChild(addBtn);
+    }
+    actions.appendChild(delBtn);
+    box.appendChild(actions);
   }
 
   // Traduce l'errore GREZZO del worker in un messaggio CHIARO per l'operatore: niente codici interni
