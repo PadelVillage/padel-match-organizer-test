@@ -8667,7 +8667,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.379';
+    const APP_VERSION = '6.380';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -43173,15 +43173,21 @@ Per confermare scrivi ELIMINA.`);
     return n;
   }
 
+  /** 🚨⭐⭐ E QUI LA PRIMA CURA ERA PEGGIO DEL DIFETTO — corretta dopo averla MISURATA su TEST
+   *  6.379, non dopo averla riletta.
+   *  📏 Il fatto: sul riquadro delle 18:00 di C2 comparivano **un nome e «+3»**, mentre prima
+   *     della cura di nomi interi se ne leggevano **tre** (più il quarto tagliato). ⇒ Per
+   *     togliere mezzo nome ne avevo tolti due interi.
+   *  ⚖️ La colpa era del disegno, non del conto: mettere il «+N» su una **riga sua** gli fa
+   *     mangiare l'ultima riga buona. ⇒ Il contatore va dove **una riga c'è già**, accanto
+   *     all'orario, e allora tutte le righe che ci stanno si possono tenere.
+   *  📌 *Una cura che paga il difetto con più informazione di quanta ne toglieva non è una cura:
+   *     è lo stesso danno, fatto apposta.* PURA. */
   function pmoPianoRighe(nRighe, nCiStanno) {
     const tot = Math.max(0, Number(nRighe) || 0);
     const cap = Math.max(0, Number(nCiStanno) || 0);
-    if (cap >= tot) return { mostra: tot, nascoste: 0, conContatore: false };
-    // 🚨 Non ci sta nemmeno una riga intera: il «+N» prenderebbe lui il posto tagliato, cioè lo
-    //    stesso difetto con un'altra faccia. Si mostra il titolo e basta, e i nomi restano nel
-    //    `title` — meglio niente di un mezzo niente.
-    if (cap <= 0) return { mostra: 0, nascoste: tot, conContatore: false };
-    return { mostra: cap - 1, nascoste: tot - (cap - 1), conContatore: true };
+    const mostra = Math.min(tot, cap);
+    return { mostra: mostra, nascoste: tot - mostra, conContatore: tot - mostra > 0 };
   }
 
   // ── Calendario ORIZZONTALE (campi = corsie, tempo = asse X) — desktop + mobile ──
@@ -43403,7 +43409,7 @@ Per confermare scrivi ELIMINA.`);
           // 🩹 VOCE 169 ② — si misura DOPO che la cornice è nel documento (in fondo alla
           //    funzione): qui il riquadro non ha ancora un'altezza, e chiedergliela adesso
           //    darebbe zero a tutti. Si prende nota e si passa oltre.
-          _daNonTagliare.push({ blk: blk, righe: _righeGiocatori, nomi: _gList.map(function (g) { return g.nome; }) });
+          _daNonTagliare.push({ blk: blk, righe: _righeGiocatori, rigaOrario: t2, nomi: _gList.map(function (g) { return g.nome; }) });
         }
         (function (iso, cc, oo, nm, du, tp, mp) {
           blk.addEventListener('click', function () {
@@ -43431,8 +43437,16 @@ Per confermare scrivi ELIMINA.`);
     for (const info of _daNonTagliare) {
       const blk = info.blk;
       if (!info.righe.length) continue;
-      const tetto = blk.clientHeight - 4;                 // 4 = padding-bottom del riquadro
-      const fondi = info.righe.map(function (r) { return r.offsetTop + r.offsetHeight; });
+      /* 🩹 Il limite si chiede allo STILE CALCOLATO e si confronta in coordinate di schermo, in
+         un sistema solo. La prima versione mescolava `offsetTop` (che parte dal bordo) con
+         `clientHeight` (che il bordo non lo conta) e sbagliava di una riga intera: 📏 su TEST
+         6.379 diceva «ce ne stanno 2» dove ce ne stavano 3. E il bordo qui non è nemmeno sempre
+         lo stesso — una **partita aperta** lo ha di 2px tratteggiati invece che di 1 pieno.
+         📌 *Due misure giuste prese da due origini diverse fanno una differenza sbagliata.* */
+      const _cs = getComputedStyle(blk);
+      const _rb = blk.getBoundingClientRect();
+      const tetto = _rb.bottom - (parseFloat(_cs.borderBottomWidth) || 0) - (parseFloat(_cs.paddingBottom) || 0);
+      const fondi = info.righe.map(function (r) { return r.getBoundingClientRect().bottom; });
       const ciStanno = pmoRigheIntereCheCiStanno(fondi, tetto);
       const piano = pmoPianoRighe(info.righe.length, ciStanno);
       if (piano.nascoste > 0) _piani.push({ info: info, piano: piano });
@@ -43444,11 +43458,14 @@ Per confermare scrivi ELIMINA.`);
       //    diritto di nasconderne un pezzo.
       const _gia = info.blk.title ? String(info.blk.title) : '';
       info.blk.title = (_gia ? _gia + '\n' : '') + info.nomi.join('\n');
-      if (piano.conContatore) {
-        const piu = document.createElement('div');
-        piu.style.cssText = 'font-size:' + (isDesktop ? 12 : 13) + 'px;opacity:.75;font-weight:700;white-space:nowrap;line-height:1.3;';
-        piu.textContent = '+' + piano.nascoste;
-        info.blk.appendChild(piu);
+      // ⭐ Il contatore va nella riga dell'ORARIO, che c'è già: su una riga sua si mangerebbe
+      //    l'ultima riga buona, ed è il difetto che questa cura è nata per togliere.
+      if (piano.conContatore && info.rigaOrario) {
+        const piu = document.createElement('span');
+        piu.style.cssText = 'font-weight:800;';
+        piu.textContent = ' · +' + piano.nascoste;
+        piu.title = info.nomi.join('\n');
+        info.rigaOrario.appendChild(piu);
       }
     }
 
