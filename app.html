@@ -48372,7 +48372,13 @@ Per confermare scrivi ELIMINA.`);
     // valore che finisce in `svcFlowState.tipoLabel`, cioè quello che il riepilogo scrive al
     // posto di «🎾 Partita». È la stessa distinzione della voce 128: l'etichetta si
     // accorcia, la chiave no.
-    const _tipoTesto=function(k){ return (k==='Manutenzione' && _t<0.5) ? 'Manut.' : k; };
+    // 📐 VOCE 166: il taglio si decide sulla LARGHEZZA che la riga dei tipi ha davvero, non su `_t`
+    // (che su desktop è sempre 0 e avrebbe accorciato «Manutenzione» anche in una colonna da
+    // 480px — visto nello screenshot della console remota, TEST 6.371). Su desktop la riga sta
+    // nella colonna sinistra della griglia (~42% della scheda); la soglia dei 440px è la stessa
+    // che valeva prima per la riga intera (`_t<0.5` ⇔ contenitore sotto i 440).
+    const _wTipo=_desktop ? _cw*0.42 : _cw;
+    const _tipoTesto=function(k){ return (k==='Manutenzione' && _wTipo>0 && _wTipo<440) ? 'Manut.' : k; };
     const tipoRow=document.createElement('div'); tipoRow.style.cssText='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;'; const tipoBtns=[];
     TIPI.forEach(function(tp){
       const b=document.createElement('button'); b.type='button'; b.textContent=_tipoTesto(tp.key); b.title=tp.key;
