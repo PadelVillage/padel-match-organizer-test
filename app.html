@@ -8667,7 +8667,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.381';
+    const APP_VERSION = '6.382';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -43433,48 +43433,87 @@ Per confermare scrivi ELIMINA.`);
           misura e una modifica su ogni riquadro obbliga il browser a rifare il calcolo della
           pagina a ogni giro (una quarantina di riquadri in una giornata piena), e il calendario
           si ridisegna a ogni sync. Due passi separati lo fanno ricalcolare **una volta**. */
-    const _piani = [];
-    for (const info of _daNonTagliare) {
-      const blk = info.blk;
-      if (!info.righe.length) continue;
-      /* 🩹 Il limite si chiede allo STILE CALCOLATO e si confronta in coordinate di schermo, in
-         un sistema solo. La prima versione mescolava `offsetTop` (che parte dal bordo) con
-         `clientHeight` (che il bordo non lo conta) e sbagliava di una riga intera: 📏 su TEST
-         6.379 diceva «ce ne stanno 2» dove ce ne stavano 3. E il bordo qui non è nemmeno sempre
-         lo stesso — una **partita aperta** lo ha di 2px tratteggiati invece che di 1 pieno.
-         📌 *Due misure giuste prese da due origini diverse fanno una differenza sbagliata.* */
-      const _cs = getComputedStyle(blk);
-      const _rb = blk.getBoundingClientRect();
-      const tetto = _rb.bottom - (parseFloat(_cs.borderBottomWidth) || 0) - (parseFloat(_cs.paddingBottom) || 0);
-      /* 🚨⭐⭐ SI MISURA IL FONDO DELLE LETTERE, NON DELLA RIGA — e la differenza è un nome.
-         📏 Misurato su TEST 6.380: sul riquadro delle 18:00 di C2 il terzo nome finiva a 84,5
-            con un tetto a 83,5 ⇒ sforava di **1,5 px** su una riga alta 15,6, e per quel pixel e
-            mezzo veniva nascosto un nome che si legge perfettamente. Restavano **16 px di spazio
-            vuoto** sotto: una riga intera buttata.
-         ⚖️ Una riga di testo è alta più delle sue lettere: l'eccesso è l'INTERLINEA, e tagliarla
-            non nasconde niente. Il difetto che questa voce cura sono le **lettere** tagliate a
-            metà — misurate da 11 a 17 px su righe da 16, cioè dal 70% al 106% della riga. Fra
-            1,5 px e 11 px non serve una soglia inventata: basta smettere di contare lo spazio
-            bianco.
-         📌 *La soglia giusta non è un numero scelto: è il bordo dell'oggetto di cui si parla.* */
+    /* 🩹⭐⭐ VOCE 169 ② — «SEMPRE TRE GIOCATORI SU QUATTRO»: si RIMPICCIOLISCE, non si nasconde.
+       🗣️ Sue parole guardando PROD 6.381, cioè la cura precedente in servizio: *«Nel calendario
+          di prod continuano a vedersi sempre tre giocatori su quattro.»*
+       ⚖️ Aveva ragione, e il difetto era nel DISEGNO della cura: il «+1» **dichiara** il nome che
+          manca, ma lui il nome lo vuole **leggere**. Dichiarare un'assenza non è la stessa cosa
+          che toglierla, e io avevo curato il sintomo sbagliato — il nome tagliato a metà — invece
+          della cosa che gli serve: **vedere chi gioca**.
+       🔨 Allora prima si prova a farceli STARE: le righe dei giocatori si stringono per gradi
+          (font e interlinea), e ci si ferma **al primo grado in cui ci stanno tutti**. Il taglio
+          con «+N» resta, ma come **ultima spiaggia** — quando neanche il grado più stretto basta.
+       🚨 I gradi si applicano a TUTTI i riquadri ancora larghi insieme, e poi si misura **una
+          volta sola**: un giro per grado (al massimo tre), non un giro per riquadro. Alternare
+          misura e modifica su ogni riquadro farebbe ricalcolare la pagina una quarantina di
+          volte, e il calendario si ridisegna a ogni sync.
+       📌 *Prima di nascondere qualcosa conviene chiedersi se non ci sta perché è troppo, o solo
+          perché è scritto troppo grande.* */
+    const _GRADI = [
+      { fs: null, lh: null },   // com'è: font pieno, interlinea 1.3
+      { fs: 11, lh: 1.15 },
+      { fs: 10, lh: 1.1 },
+      { fs: 9,  lh: 1.05 },
+    ];
+
+    /* Il limite si chiede allo STILE CALCOLATO e si confronta in coordinate di schermo, in un
+       sistema solo. Una versione precedente mescolava `offsetTop` (che parte dal bordo) con
+       `clientHeight` (che il bordo non lo conta) e sbagliava di una riga intera: 📏 su TEST 6.379
+       diceva «ce ne stanno 2» dove ce ne stavano 3. E il bordo non è nemmeno sempre lo stesso —
+       una **partita aperta** lo ha di 2px tratteggiati invece che di 1 pieno.
+       📌 *Due misure giuste prese da due origini diverse fanno una differenza sbagliata.*
+
+       🚨 E si misura il fondo delle LETTERE, non della riga. 📏 Su TEST 6.380 il terzo nome del
+       riquadro delle 18:00 di C2 finiva a 84,5 con un tetto a 83,5: sforava di **1,5 px** su una
+       riga alta 15,6, e per quel pixel e mezzo veniva nascosto un nome che si legge
+       perfettamente, lasciando 16 px di vuoto sotto. L'eccesso di una riga sulle sue lettere è
+       l'INTERLINEA, e tagliarla non nasconde niente: i tagli veri misuravano da 11 a 17 px su
+       righe da 16. 📌 *La soglia giusta non è un numero scelto: è il bordo dell'oggetto di cui si
+       parla.* */
+    const _quantiCiStanno = function (info) {
+      const cs = getComputedStyle(info.blk);
+      const rb = info.blk.getBoundingClientRect();
+      const tetto = rb.bottom - (parseFloat(cs.borderBottomWidth) || 0) - (parseFloat(cs.paddingBottom) || 0);
       const fondi = info.righe.map(function (r) {
         const rr = r.getBoundingClientRect();
         const fs = parseFloat(getComputedStyle(r).fontSize) || 0;
         return rr.bottom - Math.max(0, (rr.height - fs) / 2);
       });
-      const ciStanno = pmoRigheIntereCheCiStanno(fondi, tetto);
-      const piano = pmoPianoRighe(info.righe.length, ciStanno);
-      if (piano.nascoste > 0) _piani.push({ info: info, piano: piano });
+      return pmoRigheIntereCheCiStanno(fondi, tetto);
+    };
+
+    let _larghi = _daNonTagliare.filter(function (i) { return i.righe.length; });
+    for (let g = 0; g < _GRADI.length && _larghi.length; g++) {
+      if (g > 0) {
+        // scritture del grado: tutte insieme, prima di rimisurare
+        for (const info of _larghi) {
+          for (const r of info.righe) {
+            r.style.fontSize = _GRADI[g].fs + 'px';
+            r.style.lineHeight = String(_GRADI[g].lh);
+          }
+        }
+      }
+      // letture: tutte insieme, dopo le scritture
+      const _restano = [];
+      for (const info of _larghi) {
+        info.ciStanno = _quantiCiStanno(info);
+        if (info.ciStanno < info.righe.length) _restano.push(info);
+      }
+      _larghi = _restano;
     }
-    for (const p of _piani) {
-      const info = p.info, piano = p.piano;
+
+    /* ⛔ ULTIMA SPIAGGIA: nemmeno al grado più stretto ci stanno. Adesso — e solo adesso — si
+       nasconde, per righe INTERE, e si DICHIARA quante ne mancano.
+       ⭐ Il contatore va nella riga dell'ORARIO, che c'è già: su una riga sua si mangerebbe
+          l'ultima riga buona, ed è il difetto che questa cura è nata per togliere. */
+    for (const info of _larghi) {
+      const piano = pmoPianoRighe(info.righe.length, info.ciStanno);
+      if (!piano.nascoste) continue;
       for (let i = piano.mostra; i < info.righe.length; i++) info.righe[i].remove();
       // ⚖️ L'elenco INTERO resta raggiungibile senza aprire niente: è il prezzo per avere il
       //    diritto di nasconderne un pezzo.
       const _gia = info.blk.title ? String(info.blk.title) : '';
       info.blk.title = (_gia ? _gia + '\n' : '') + info.nomi.join('\n');
-      // ⭐ Il contatore va nella riga dell'ORARIO, che c'è già: su una riga sua si mangerebbe
-      //    l'ultima riga buona, ed è il difetto che questa cura è nata per togliere.
       if (piano.conContatore && info.rigaOrario) {
         const piu = document.createElement('span');
         piu.style.cssText = 'font-weight:800;';
