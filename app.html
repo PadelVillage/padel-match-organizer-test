@@ -3376,6 +3376,31 @@
          separazione — 50px di bianco sopra un titolo sono una testata che non dice niente. */
       .svc-chat-header { display:flex; padding:6px 8px 0; border-bottom:none; }
       .svc-chat-panel .svc-chat-messages { padding-top:4px; }
+      /* 📐⭐ VOCE 166 (06/09/2026) — LA SCHEDA «NUOVA PRENOTAZIONE» COME LA SCHEDA PARTITA.
+       * 🗣️ Sua segnalazione, con lo screenshot di PROD 6.367: «è troppo grande e non si vedono
+       *    tutti gli elementi quando la apri» · «fai come hai fatto quando apro una scheda di una
+       *    partita già completa di dati».
+       * 📏 Nello screenshot (finestra ~1850×1130) la scheda arrivava al fondo e i bottoni di
+       *    conferma stavano sotto il bordo, con DUE ✕ (testata del pannello + testata della
+       *    scheda). Due cause, tutte e due nel codice e non nei dati:
+       *    ① `svcOpenBookingCard` scala i corpi sulla LARGHEZZA del contenitore, da «compatto»
+       *       a 320px a «comodo» a 560px — misure nate per la sidebar e per il foglio del
+       *       telefono. Dal 04/09 su desktop il pannello è una finestra da 620-1180px: a quella
+       *       larghezza usciva sempre la taglia da telefono (titolo 29px, controlli 24px).
+       *       ⇒ Sopra i 900px il corpo è quello compatto, come la scheda partita (14px).
+       *    ② una colonna sola: sette blocchi uno sotto l'altro. Qui, come per la 152, da 900px in
+       *       su la scheda va su DUE colonne — a sinistra campo, ora, durata, tipo, maestro; a
+       *       destra giocatori e note — e il piè con i bottoni a tutta larghezza.
+       * ⚖️ La soglia è la stessa dei 900px di tutto il resto: una sola domanda, una sola soglia.
+       * 🚨 La ✕ della testata del pannello sparisce SOLO in modalità scheda (`svc-card-mode`): la
+       *    scheda ha già la sua, che chiude tutto (`xBtn` → `svcCloseChat`). Fuori da quella
+       *    modalità la testata resta, ed è quella che la 146 protegge sul telefono. */
+      .svc-chat-panel.svc-card-mode .svc-chat-header { display:none; }
+      .svc-chat-panel.svc-card-mode .svc-chat-messages { padding-top:0; }
+      .svc-flow-card { display:grid; grid-template-columns:minmax(280px, 0.85fr) minmax(0, 1.15fr); column-gap:18px; align-items:start; }
+      .svc-flow-card > * { grid-column:1; min-width:0; }
+      .svc-flow-card > .svc-flow-head, .svc-flow-card > .svc-flow-foot { grid-column:1 / -1; }
+      .svc-flow-card > .svc-flow-dx { grid-column:2; grid-row:2 / span 10; }
       .svc-chat-overlay { display:block; position:fixed; inset:0; background:rgba(0,0,0,0); z-index:2550; pointer-events:none; transition:background .25s; }
       .svc-chat-overlay.active { background:rgba(16,32,60,.36); pointer-events:auto; }
       .svc-chat-fab { display:none !important; }
@@ -8558,7 +8583,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.370';
+    const APP_VERSION = '6.371';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -48258,9 +48283,15 @@ Per confermare scrivi ELIMINA.`);
     const _cw = (cont.clientWidth || 0);
     // Se il contenitore è misurabile interpola sulla sua larghezza; altrimenti (raro: pannello non
     // ancora layout-ato) si ripiega sull'euristica device originale (≥900px desktop → compatto).
-    const _t  = _cw > 0
+    // 📐 VOCE 166 (06/09): su DESKTOP (≥900px, la soglia di tutta l'app) la taglia è quella
+    // compatta e basta — la scheda partita è a 14px, e questa deve starle accanto. La scala sulla
+    // larghezza resta per il telefono, dove il foglio va da 320 a 560px e la misura ha senso.
+    // 🚨 Prima si interpolava anche su desktop: il pannello da 620-1180px (dal 04/09) cadeva
+    // sempre oltre i 560 ⇒ usciva la taglia da telefono su uno schermo da 27 pollici.
+    const _desktop = (window.innerWidth || 0) >= 900;
+    const _t  = _desktop ? 0 : (_cw > 0
       ? Math.max(0, Math.min(1, (_cw - 320) / (560 - 320)))
-      : ((window.innerWidth || 999) < 900 ? 1 : 0);
+      : 1);
     const _l  = function(a,b){ return Math.round(a + (b - a) * _t); };
     const _lp = function(a,b){ return _l(a,b) + 'px'; };
     const FS  = { title:_l(15,29), label:_l(12,22), ctrl:_l(14,24), btn:_l(13,23), date:_l(13,22), fine:_l(12,22), chip:_l(13,22), sugg:_l(13,22), foot:_l(14,24), x:_l(16,30), plus:_l(16,30), tipo:_l(12,21) };
@@ -48279,6 +48310,7 @@ Per confermare scrivi ELIMINA.`);
     const dot = document.createElement('span'); dot.style.cssText='width:11px;height:11px;border-radius:50%;flex-shrink:0;';
     const ttl = document.createElement('span'); ttl.style.cssText='font-size:'+FS.title+'px;font-weight:700;color:var(--text);'; ttl.textContent='Nuova prenotazione';
     const xBtn = document.createElement('button'); xBtn.type='button'; xBtn.textContent='✕'; xBtn.style.cssText='margin-left:auto;border:none;background:none;color:var(--text-muted);font-size:'+FS.x+'px;cursor:pointer;padding:2px 6px;';
+    head.classList.add('svc-flow-head');   // VOCE 166: a tutta larghezza sulla griglia desktop
     head.appendChild(dot); head.appendChild(ttl); head.appendChild(xBtn); card.appendChild(head);
 
     function lbl(t){ const l=document.createElement('div'); l.textContent=t; l.style.cssText='font-size:'+FS.label+'px;color:var(--text-muted);margin-bottom:5px;'; return l; }
@@ -48369,7 +48401,13 @@ Per confermare scrivi ELIMINA.`);
     const giocAdd=document.createElement('button'); giocAdd.type='button'; giocAdd.textContent='+'; giocAdd.style.cssText='border:1px solid var(--accent);background:var(--surface);color:var(--accent);border-radius:var(--radius-sm);padding:0 12px;font-size:'+FS.plus+'px;cursor:pointer;';
     giocRow.appendChild(giocInput); giocRow.appendChild(giocAdd); fGioc.appendChild(giocRow);
     const sugg=document.createElement('div'); sugg.style.cssText='display:none;flex-direction:column;margin-top:6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);max-height:180px;overflow-y:auto;'; fGioc.appendChild(sugg);
-    const chips=document.createElement('div'); chips.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;'; fGioc.appendChild(chips); card.appendChild(fGioc);
+    const chips=document.createElement('div'); chips.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;'; fGioc.appendChild(chips);
+    // 📐 VOCE 166: giocatori e note stanno in un involucro loro, che su desktop è la colonna di
+    // DESTRA (`.svc-flow-dx`, come `[data-feature="players-payments"]` nella scheda partita) e sul
+    // telefono è un blocco qualunque, nello stesso ordine di prima. Nessuna guardia cerca questi
+    // due come figli diretti della scheda (controllato: `.svc-flow-card` si cerca solo come card).
+    const colDx=document.createElement('div'); colDx.classList.add('svc-flow-dx');
+    colDx.appendChild(fGioc); card.appendChild(colDx);
 
     // Campo Note — Tappa 36
     const fNote=document.createElement('div');
@@ -48390,9 +48428,9 @@ Per confermare scrivi ELIMINA.`);
     noteTA.style.cssText='width:100%;box-sizing:border-box;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;font-size:'+FS.ctrl+'px;font-family:inherit;resize:none;background:var(--surface);color:var(--text);';
     noteTA.addEventListener('input', function(){ if(svcFlowState) svcFlowState.note = noteTA.value.trim(); });
     fNote.appendChild(noteTA);
-    card.appendChild(fNote);
+    colDx.appendChild(fNote);
 
-    const foot=document.createElement('div'); foot.style.cssText='display:flex;gap:8px;padding-top:12px;border-top:1px solid var(--border);';
+    const foot=document.createElement('div'); foot.classList.add('svc-flow-foot'); foot.style.cssText='display:flex;gap:8px;padding-top:12px;border-top:1px solid var(--border);';
     const annBtn=document.createElement('button'); annBtn.type='button'; annBtn.textContent='Annulla'; annBtn.style.cssText='border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:var(--radius-sm);padding:'+PAD.foot+';cursor:pointer;font-size:'+FS.foot+'px;';
     const confBtn=document.createElement('button'); confBtn.type='button'; confBtn.textContent='✓ Conferma prenotazione'; confBtn.style.cssText='flex:1;border-radius:var(--radius-sm);padding:'+PAD.foot+';cursor:pointer;font-size:'+FS.foot+'px;font-weight:700;';
     foot.appendChild(annBtn); foot.appendChild(confBtn); card.appendChild(foot);
