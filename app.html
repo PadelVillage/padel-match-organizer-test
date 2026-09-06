@@ -8667,7 +8667,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.378';
+    const APP_VERSION = '6.379';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -43102,6 +43102,88 @@ Per confermare scrivi ELIMINA.`);
     body.appendChild(grid);
   }
 
+  /** 🩹⭐⭐ VOCE 169 ① — IL MAESTRO NON È ANCHE UN GIOCATORE DI SÉ STESSO (06/09/2026).
+   *
+   * 🗣️ Sua segnalazione con lo screenshot di PROD 6.377: nella lezione delle 18:00 sul Campo 1
+   *    compariva «👨‍🏫 Lucas Vidal» e poi, in fondo allo stesso riquadro, «lucas vidal» come se
+   *    fosse un allievo.
+   *
+   * 📏 MISURATO sul dato vero di PROD, non dedotto dal disegno — è il dato a essere fatto così:
+   *      istruttore: "Lucas Vidal"
+   *      giocatori : [ {nome:"Andrea Bigaran", idCliente:"17"}, {nome:"lucas vidal", idCliente:"1123"} ]
+   *    ⇒ Matchpoint mette il maestro **anche** nel roster, e con un'altra scrittura del nome.
+   *
+   * 🚨 UNA GUARDIA C'ERA GIÀ E NON POTEVA SCATTARE, per due ragioni insieme: guardava `b.nome`
+   *    (il ripiego usato **solo quando l'elenco è vuoto**, e qui non lo era) e confrontava con
+   *    `!==`, cioè **lettera per lettera** — «lucas vidal» e «Lucas Vidal» sono diversi per `!==`
+   *    e sono la stessa persona per chiunque legga.
+   *    📌 *Una guardia sul ramo che non si percorre, con un confronto che la differenza vera non
+   *       la vede: due modi di non esserci, nello stesso `if`.*
+   *
+   * ⚖️ Si toglie dai GIOCATORI, non dal maestro: la riga col 👨‍🏫 dice un ruolo, la riga nuda
+   *    dice «allievo» — è quella a essere falsa. E togliendola si libera una riga, che è
+   *    esattamente ciò che serve al ② qui sotto.
+   * ⛔ Vale **solo per le lezioni**: in una partita non c'è nessun maestro da confondere.
+   *
+   * PURE, così il banco le esegue invece di rileggerle (lezione della 149). */
+  function pmoChiaveNome(s) {
+    return String(s == null ? '' : s).toLowerCase().normalize('NFD')
+      .replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  function pmoRosterSenzaIlMaestro(giocatori, istruttore) {
+    const lista = Array.isArray(giocatori) ? giocatori : [];
+    const chiave = pmoChiaveNome(istruttore);
+    if (!chiave) return lista;
+    return lista.filter(function (g) { return pmoChiaveNome(g && g.nome) !== chiave; });
+  }
+
+  /** 🩹⭐⭐ VOCE 169 ② — NESSUN NOME TAGLIATO A METÀ RIGA (06/09/2026).
+   *
+   * 🗣️ Sua segnalazione, stessa schermata: *«i nomi tagliati a metà riga»* — l'ultimo giocatore
+   *    del riquadro mostrato per metà altezza, mezze lettere, illeggibile.
+   *
+   * 📏 MISURATO su PROD 6.377, e **solo alla misura in cui il difetto esiste**: a 1490×880 non
+   *    sborda niente (`scrollHeight` sotto l'altezza visibile in tutti e 14 i riquadri) e una
+   *    prova lì avrebbe detto «funziona». A **1490×810** — la finestra sua — le corsie scendono a
+   *    `laneH 97` e **5 riquadri su 14** tagliano un nome in mezzo: «lucas vidal», «Carlo
+   *    Ceriali», «Ospite», «Ospite», «Fabiola Limuti», da 11 a 17 px oltre il bordo.
+   *    📌 *La stessa pagina, due altezze di finestra, due verità: senza la seconda misura la
+   *       cura non sarebbe mai nata.*
+   *
+   * ⛔ NON si alza `laneH`: il suo pavimento (96) esiste perché con la finestra bassa le quattro
+   *    corsie devono starci tutte — alzarlo rimetterebbe C4 sotto il bordo, che è precisamente il
+   *    guasto che la 153/C ha chiuso. Si sceglie **cosa** mostrare, non **quanto** spazio prendere.
+   *
+   * 🔨 La regola: si mostrano **solo righe intere**, e ciò che non ci sta **si dichiara** con un
+   *    «+N» al posto dell'ultima riga leggibile. ⚖️ Nascondere un nome è una perdita, e non si
+   *    fa di nascosto: il riquadro porta l'elenco **completo** nel suo `title`, e la scheda lo ha
+   *    tutto al click.
+   *    📌 *Un nome tagliato a metà non è «meno informazione»: è informazione che sembra esserci.
+   *       Un «+1» dice quanto manca, e mentre il mezzo nome no.*
+   *
+   * PURE tutte e due, e separate dal DOM apposta: la prima decide **quante righe ci stanno**, la
+   * seconda **cosa farne**. Il banco le esegue senza un browser. */
+  function pmoRigheIntereCheCiStanno(fondiRighe, tetto) {
+    const f = Array.isArray(fondiRighe) ? fondiRighe : [];
+    let n = 0;
+    for (let i = 0; i < f.length; i++) {
+      if (f[i] <= tetto + 0.5) n = i + 1; else break;
+    }
+    return n;
+  }
+
+  function pmoPianoRighe(nRighe, nCiStanno) {
+    const tot = Math.max(0, Number(nRighe) || 0);
+    const cap = Math.max(0, Number(nCiStanno) || 0);
+    if (cap >= tot) return { mostra: tot, nascoste: 0, conContatore: false };
+    // 🚨 Non ci sta nemmeno una riga intera: il «+N» prenderebbe lui il posto tagliato, cioè lo
+    //    stesso difetto con un'altra faccia. Si mostra il titolo e basta, e i nomi restano nel
+    //    `title` — meglio niente di un mezzo niente.
+    if (cap <= 0) return { mostra: 0, nascoste: tot, conContatore: false };
+    return { mostra: cap - 1, nascoste: tot - (cap - 1), conContatore: true };
+  }
+
   // ── Calendario ORIZZONTALE (campi = corsie, tempo = asse X) — desktop + mobile ──
   function _staffCalBuildHorizontal(isoDate, isDesktop) {
     const FIELD_COLORS = ['#f87171', '#fbbf24', '#34d399', '#818cf8'];
@@ -43220,6 +43302,9 @@ Per confermare scrivi ELIMINA.`);
     }
     content.appendChild(hdr);
 
+    // 🩹 VOCE 169 ② — i riquadri con dei giocatori dentro, da rimisurare quando la cornice sarà
+    //    nel documento: prima di allora non hanno altezza, e una misura lì direbbe zero per tutti.
+    const _daNonTagliare = [];
     for (let c = 1; c <= 4; c++) {
       const lane = document.createElement('div');
       lane.style.cssText = 'height:' + laneH + 'px;position:relative;border-bottom:' + (c < 4 ? '1px solid #eef1f4' : 'none') + ';background:repeating-linear-gradient(90deg,#fff,#fff ' + (COLW * 2 - 1) + 'px,#eef1f4 ' + (COLW * 2 - 1) + 'px,#eef1f4 ' + (COLW * 2) + 'px);';
@@ -43285,9 +43370,13 @@ Per confermare scrivi ELIMINA.`);
           if (g && g.nome) return { nome: String(g.nome).trim(), idCliente: (g.idCliente != null ? String(g.idCliente) : (g.codice != null ? String(g.codice) : '')) };
           return null;
         }).filter(function (x) { return x && x.nome; }) : [];
-        if (!_gList.length && b.nome && b.nome !== b.istruttore) {
+        if (!_gList.length && b.nome && pmoChiaveNome(b.nome) !== pmoChiaveNome(b.istruttore)) {
           _gList = String(b.nome).split('\n').map(function (s) { return s.trim(); }).filter(Boolean).map(function (n) { return { nome: n, idCliente: '' }; });
         }
+        // 🩹 VOCE 169 ① — il maestro sta ANCHE nel roster che manda Matchpoint, e con un'altra
+        //    scrittura del nome: qui smette di comparire una seconda volta come se fosse un allievo.
+        if (_isLez && b.istruttore) _gList = pmoRosterSenzaIlMaestro(_gList, b.istruttore);
+        const _righeGiocatori = [];
         if (_gList.length) {
           const fontPx = isDesktop ? 12 : 13;
           _gList.forEach(function (g) {
@@ -43309,7 +43398,12 @@ Per confermare scrivi ELIMINA.`);
               t3.textContent = g.nome;
             }
             blk.appendChild(t3);
+            _righeGiocatori.push(t3);
           });
+          // 🩹 VOCE 169 ② — si misura DOPO che la cornice è nel documento (in fondo alla
+          //    funzione): qui il riquadro non ha ancora un'altezza, e chiedergliela adesso
+          //    darebbe zero a tutti. Si prende nota e si passa oltre.
+          _daNonTagliare.push({ blk: blk, righe: _righeGiocatori, nomi: _gList.map(function (g) { return g.nome; }) });
         }
         (function (iso, cc, oo, nm, du, tp, mp) {
           blk.addEventListener('click', function () {
@@ -43327,6 +43421,36 @@ Per confermare scrivi ELIMINA.`);
     sc.appendChild(content);
     frame.appendChild(sc);
     body.appendChild(frame);
+
+    /* 🩹 VOCE 169 ② — adesso i riquadri hanno un'altezza vera, e si può chiedergliela.
+       🚨 PRIMA TUTTE LE LETTURE, POI TUTTE LE SCRITTURE, e non è pignoleria: alternare una
+          misura e una modifica su ogni riquadro obbliga il browser a rifare il calcolo della
+          pagina a ogni giro (una quarantina di riquadri in una giornata piena), e il calendario
+          si ridisegna a ogni sync. Due passi separati lo fanno ricalcolare **una volta**. */
+    const _piani = [];
+    for (const info of _daNonTagliare) {
+      const blk = info.blk;
+      if (!info.righe.length) continue;
+      const tetto = blk.clientHeight - 4;                 // 4 = padding-bottom del riquadro
+      const fondi = info.righe.map(function (r) { return r.offsetTop + r.offsetHeight; });
+      const ciStanno = pmoRigheIntereCheCiStanno(fondi, tetto);
+      const piano = pmoPianoRighe(info.righe.length, ciStanno);
+      if (piano.nascoste > 0) _piani.push({ info: info, piano: piano });
+    }
+    for (const p of _piani) {
+      const info = p.info, piano = p.piano;
+      for (let i = piano.mostra; i < info.righe.length; i++) info.righe[i].remove();
+      // ⚖️ L'elenco INTERO resta raggiungibile senza aprire niente: è il prezzo per avere il
+      //    diritto di nasconderne un pezzo.
+      const _gia = info.blk.title ? String(info.blk.title) : '';
+      info.blk.title = (_gia ? _gia + '\n' : '') + info.nomi.join('\n');
+      if (piano.conContatore) {
+        const piu = document.createElement('div');
+        piu.style.cssText = 'font-size:' + (isDesktop ? 12 : 13) + 'px;opacity:.75;font-weight:700;white-space:nowrap;line-height:1.3;';
+        piu.textContent = '+' + piano.nascoste;
+        info.blk.appendChild(piu);
+      }
+    }
 
     // Auto-scroll orizzontale. Sui RE-render della stessa giornata (es. refresh di
     // background dal polling cloud) preserva la posizione scelta dall'utente; centra
@@ -48204,6 +48328,31 @@ Per confermare scrivi ELIMINA.`);
     if (/mp-sync-head/.test(t)) return true;
     if (/Aggiorno la lista giocatori/i.test(t)) return true;
     if (/Lista giocatori aggiornata da Matchpoint/i.test(t)) return true;
+    /* 🩹⭐⭐ VOCE 169 ③ — «RIPRENDO UNA VERIFICA»: **sesto** giro sullo stesso difetto (06/09/2026).
+     *
+     * 🗣️ Sua segnalazione con la schermata di PROD 6.377 dopo un Salva: *«troppi banner di
+     *    messaggi»* — e nella foto la stessa frase, «⌛ Riprendo una verifica rimasta in
+     *    sospeso: Campo 1 · 2026-09-15 · 09:00 (2° tentativo)…», scritta due volte.
+     *
+     * 📏 MISURATO sulla pagina viva di PROD, chiamando `pmoVerificheAvvisa` e contando le
+     *    superfici: la frase esce **in chat** *e* nella barra, perché quella funzione scrive
+     *    apposta su tutte e due. E scappa a **tutte e cinque** le guardie costruite prima:
+     *      `svcMessaggioVaSoloNellaBarra(testo)` → **false**  (misurato)
+     *      `svcEAvanzamentoInCorso(testo)`       → **false**  (misurato)
+     *    La seconda dice `false` per un motivo preciso: pretende il «(non chiudere)», e questa
+     *    frase non ce l'ha. ⇒ Anche la **pastiglia** può alzarsi sopra la stessa frase.
+     *
+     * ⚖️ È un AVANZAMENTO, non un esito: dice *«sto riprovando»*, e ne esce **uno per
+     *    tentativo**. La 137 ⑤ ha già deciso dove vivono gli avanzamenti — nella barra, in un
+     *    posto solo, senza far scorrere niente.
+     * ⛔ I DUE ESITI DELLA STESSA STRADA RESTANO IN CHAT, ed è la metà che conta: «Verifica
+     *    chiusa: **È stata creata**» e «**NON è stata creata**. Lo slot è libero: puoi rifarla»
+     *    servono anche cinque minuti dopo, a chi torna a chiedersi com'era finita. E resta in
+     *    chat anche «non riesco ancora a raggiungere Matchpoint»: comincia come un avanzamento
+     *    ma è un **esito**, ed è la trappola che `svcEAvanzamentoInCorso` si porta già scritta.
+     *    📌 *Togliere una frase che si ripete è pulizia; togliere l'unico posto in cui una cosa
+     *       è scritta è perdita — e mentre le fai si somigliano moltissimo.* */
+    if (/Riprendo una verifica rimasta in sospeso/i.test(t)) return true;
     // ② GLI ESITI di un gesto verso Matchpoint. Elencati per come COMINCIANO, che è l'unica
     //    parte che non cambia: la coda porta il motivo, il campo, l'ora.
     if (SVC_ESITI_NELLA_SCHEDA.some(function (r) { return r.test(t); })) return true;
