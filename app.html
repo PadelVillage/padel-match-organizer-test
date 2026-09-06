@@ -3106,7 +3106,37 @@
        *    risposta al gesto, e va letta accanto al bottone che l'ha chiesto.
        * 🚨 `nowrap` di proposito: se un domani i bottoni non ci stessero, si stringono — andare
        *    a capo qui rifarebbe la fila verticale che questa voce toglie. */
-      .svc-edit-box > .svc-edit-actions-bar { grid-column:1 / -1; flex-wrap:nowrap; }
+      /* 🔝⭐⭐ VOCE 168 — LA BARRA STA NELLA BANDA FERMA, come il TITOLO, e per la stessa ragione.
+       *
+       * 🗣️ Sua richiesta: «i bottoni… messi a seguire il titolo, perché quella barra rimane
+       *    sempre fissa anche quando scrolli».
+       *
+       * 🚨⭐⭐ E `position:sticky` NON FUNZIONA QUI — misurato sulla pagina viva di TEST 6.375
+       *    prima di scrivere questa riga, non dedotto: la barra si è mossa **esattamente** con
+       *    lo scroll (842 → 473 → 118 su 737 px di corsa). Il perché: per un elemento di
+       *    GRIGLIA il blocco contenitore dello sticky è la **sua cella**, e la cella è alta
+       *    quanto la barra ⇒ corsa disponibile **zero**. Lo sticky c'era, era scritto bene, e
+       *    non faceva niente. 📌 *Una proprietà che non ha spazio in cui lavorare è una riga
+       *    che sembra una cura.*
+       *
+       * ⭐ Il meccanismo che funziona è quello che il TITOLO usa già (voce 157), ed è misurato
+       *    lì: nella catena box → `.svc-msg` → `#svcChatMessages` nessuno è `position:relative`
+       *    e `#svcChatPanel` è `fixed` ⇒ un figlio `absolute` risolve contro il **pannello** e
+       *    **non viene ritagliato** da `#svcChatMessages`, benché quello sia `overflow:auto`.
+       *    ⇒ La barra resta ferma nella banda mentre la scheda le scorre sotto.
+       * ⚖️ E come per il titolo, il nodo **non si sposta**: resta figlio diretto del box, quindi
+       *    vive e muore con la scheda (una barra spostata nella testata sopravviverebbe alla
+       *    scheda chiusa) e le due ricerche della 150 continuano a trovarla.
+       * 🚨 `pointer-events` NON si tocca, all'opposto del titolo: quella è una scritta, questi
+       *    sono bersagli e devono prendersi i click. E stanno a `top:44px`, cioè SOTTO la ✕
+       *    della testata, o sarebbe la 146 daccapo (due bersagli vicini, la mira che sbaglia).
+       * 📐 Il `padding-top` del box paga lo spazio che la barra non occupa più nel flusso:
+       *    senza, la prima sezione partirebbe sotto la barra e resterebbe coperta. */
+      .svc-edit-box { padding-top:54px; }
+      .svc-edit-box > .svc-edit-actions-bar {
+        position:absolute; top:44px; left:18px; right:18px; z-index:4;
+        background:var(--surface,#fff); flex-wrap:nowrap;
+      }
       .svc-edit-box > .svc-edit-esito { grid-column:1 / -1; }
       .svc-edit-actions-bar > .svc-edit-save,
       .svc-edit-actions-bar > .svc-edit-close,
@@ -3320,6 +3350,10 @@
           scorrono le finiscono sopra.
        ⚖️ Il bordo passa da `top` a `bottom`: adesso separa la barra da cio' che le scorre
           sotto, non da cio' che aveva sopra. */
+    /* 🔝 VOCE 168 — sotto i 900 px la scheda NON e' una griglia, quindi qui lo `sticky`
+       ha la corsa che gli serve e lavora davvero: la barra si incolla in cima al foglio.
+       Sopra i 900 px la scheda e' una griglia e lo sticky non puo' viaggiare — li' subentra
+       la regola `absolute` nella @media dei 900, che e' quella del titolo. */
     .svc-edit-actions-bar { position:sticky; top:0; z-index:3; background:var(--surface,#fff);
       border-bottom:1px solid #e6e8ee; padding:8px 0 10px; margin:0 0 10px; align-items:center; }
     /* 🔘 VOCE 167 — le larghezze del piè stanno QUI e non più in `style.flex` a mano: sono
@@ -8625,7 +8659,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.375';
+    const APP_VERSION = '6.376';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
