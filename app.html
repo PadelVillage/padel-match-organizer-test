@@ -3132,9 +3132,17 @@
        *    della testata, o sarebbe la 146 daccapo (due bersagli vicini, la mira che sbaglia).
        * 📐 Il `padding-top` del box paga lo spazio che la barra non occupa più nel flusso:
        *    senza, la prima sezione partirebbe sotto la barra e resterebbe coperta. */
-      .svc-edit-box { padding-top:54px; }
+      /* 📏 `top:40px` e non 44, e il numero è MISURATO sulla pagina viva, non scelto: il
+         pannello comincia a 74 e `#svcChatMessages` a 114 ⇒ l'area che scorre parte 40 px
+         sotto il pannello. Con 44 restava una **striscia scoperta di 5 px** fra la cima
+         dello scroller e la barra, e lì dentro si vedevano passare gli importi dei giocatori
+         (misurato: `svc-pl-eur-input`, `svc-pl-wallet`… dentro quei 5 px).
+         🚨 È il genere di difetto che non si vede fermi: compare **solo scorrendo**, ed è per
+         questo che la prova è stata fatta col contenitore portato in fondo.
+         ⛔ Più su di 40 non si va: sopra c'è la banda con la ✕, e coprirla sarebbe la 146. */
+      .svc-edit-box { padding-top:60px; }
       .svc-edit-box > .svc-edit-actions-bar {
-        position:absolute; top:44px; left:18px; right:18px; z-index:4;
+        position:absolute; top:40px; left:18px; right:18px; z-index:4;
         background:var(--surface,#fff); flex-wrap:nowrap;
       }
       .svc-edit-box > .svc-edit-esito { grid-column:1 / -1; }
@@ -8659,7 +8667,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.376';
+    const APP_VERSION = '6.377';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
