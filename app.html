@@ -8667,7 +8667,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.396';
+    const APP_VERSION = '6.397';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -25550,9 +25550,22 @@ Grazie!`
             <td style="text-align:right;font-weight:800;">${_incassiEuro(d.totale)}</td></tr>`;
           /* In ordine di PARTITA (ora → campo), poi per nome: i movimenti della stessa partita
              restano vicini, e i due movimenti della stessa persona uno sotto l'altro. Senza ora
-             (record vecchi) in coda. */
+             (record vecchi) in coda.
+             🔄 07/09/2026 — L'ORA VA DAL PIÙ VICINO AL PIÙ LONTANO, cioè DECRESCENTE. Sua
+             richiesta guardando l'elenco: *«vorrei in alto l'orario più vicino, non quello più
+             lontano»* · *«il contrario di come è impostato adesso»*. Chi fa cassa la sera cerca
+             quello che ha appena incassato, e lo trovava in fondo dopo tutta la giornata.
+             ⭐ E toglie un'incoerenza che c'era già: i GIORNI erano ordinati dal più recente
+             (`keys.sort().reverse()`, riga sopra) e le ORE dentro il giorno dal più vecchio ⇒ la
+             stessa tabella andava in due versi a due livelli diversi. Adesso ne va uno solo.
+             🚨 Il segnaposto dei record SENZA ora cambia con l'ordine, ed è il punto in cui questa
+             modifica poteva fare danno in silenzio: `'99:99'` li teneva in coda **crescendo**, ma
+             decrescendo li avrebbe portati in TESTA — cioè i record più vecchi e monchi sopra
+             l'incasso appena fatto. Con `''` (che è minore di qualunque ora) restano in coda come
+             prima. 📌 *Un valore di riempimento è tarato sul verso dell'ordinamento: girando il
+             verso senza girare lui, la riga che stava per ultima diventa la prima.* */
           const movimenti = d.movimenti.slice().sort((a, b) =>
-            (a.ora || '99:99').localeCompare(b.ora || '99:99')
+            (b.ora || '').localeCompare(a.ora || '')
             || String(a.campo || '').localeCompare(String(b.campo || ''), undefined, { numeric: true })
             || String(a.name || '').localeCompare(String(b.name || ''))
             || b.cents - a.cents);
