@@ -8667,7 +8667,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.391';
+    const APP_VERSION = '6.392';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -11404,9 +11404,22 @@ Grazie.`
       if (!subKey) return pmoSectionVisibleFor('administration', profile); // calendario-staff ecc.
       return pmoSubsectionVisibleFor(subKey, 'administration', profile);
     }
+    // 🚨 VOCE 172 — il ripiego NON puo' essere una sezione VIETATA.
+    // 📏 Misurato il 07/09 su TEST 6.391 con un profilo `view_administration:true` e
+    // tutte e cinque le sottosezioni `false`: `pmoAdminSectionViewAllowed('users')`
+    // rispondeva **false**, e questa funzione tornava lo stesso **'users'** — perche'
+    // il `|| 'users'` finale vinceva sul permesso. ⇒ Chi aveva spuntato il solo
+    // capitolo «Impostazioni» si vedeva aprire proprio **Utenti Staff**, il pannello
+    // piu' potente del gestionale, con la sua casella spenta.
+    // ⚖️ Era il verso che la scheda della voce dichiarava NON MISURATO — «uno chiude e
+    // resta aperto» — e la misura dice che il difetto ci andava davvero.
+    // ⇒ Senza nessuna sezione permessa si torna `PMO_ADMIN_SECTION_NESSUNA`, che non
+    // corrisponde a nessun pannello: `pmoApplyAdminSectionVisibility` li nasconde tutti.
+    // 📌 Un ripiego che scavalca il permesso non e' un ripiego: e' una porta di servizio.
+    const PMO_ADMIN_SECTION_NESSUNA = 'nessuna';
     function pmoFirstAllowedAdminSection(profile) {
       const order = ['users', 'notifications', 'matchpoint-data', 'telegram', 'circoli'];
-      return order.find(section => pmoAdminSectionViewAllowed(section, profile)) || 'users';
+      return order.find(section => pmoAdminSectionViewAllowed(section, profile)) || PMO_ADMIN_SECTION_NESSUNA;
     }
     function pmoApplyTabVisibility() {
       try {
@@ -11441,7 +11454,7 @@ Grazie.`
         ).join('');
         return `<details class="pmo-sect-group">
           <summary class="pmo-sect-row pmo-sect-parent">
-            <input type="checkbox" data-admin-permission="${escapeHtml(node.key)}" data-group-key="${escapeHtml(node.key)}" ${checked(node.key) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="pmoUpdateSectionTree()" />
+            <input type="checkbox" data-admin-permission="${escapeHtml(node.key)}" data-group-key="${escapeHtml(node.key)}" ${checked(node.key) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="pmoToggleSectionGroup(this)" />
             <span class="pmo-sect-label">${escapeHtml(node.label)}</span>
             <span class="pmo-sect-count" data-count-for="${escapeHtml(node.key)}"></span>
           </summary>
@@ -11453,6 +11466,26 @@ Grazie.`
         ${rows}
       </div>`;
     }
+    // 🔐 VOCE 172 — il capitolo e' un INTERRUTTORE MAESTRO, non una serratura.
+    // 📏 Misurato il 07/09 sull'app viva (TEST 6.391), console remota: spuntando
+    // «Impostazioni» i cinque figli restavano `checked:false` e il contatore diceva
+    // «0 / 5» — il click NON propagava. Il salvataggio era invece onesto (raccoglieva
+    // esattamente cio' che le caselle mostravano) ⇒ il difetto stava tutto nel disegno,
+    // e lui ha dovuto mettere le sottosezioni una per una a mano.
+    // ⇒ Il padre governa i figli nei DUE versi, e il suo stato si DERIVA da loro:
+    // tutti spuntati = spuntato, nessuno = spento, alcuni = indeterminato. Cosi' il
+    // contatore non puo' piu' mentire, e non si salva piu' un figlio `true` sotto un
+    // padre `false` (che prima restava in archivio, inerte ma illeggibile).
+    // ⛔ I figli NON si disabilitano piu': col padre derivato dai figli, disabilitarli
+    // quando il padre e' spento chiuderebbe la porta a chiave dall'interno — nessuno
+    // potrebbe piu' riaccenderli.
+    function pmoToggleSectionGroup(parent) {
+      const tree = document.getElementById('pmoSectionTree');
+      if (!tree || !parent) return;
+      const groupKey = parent.dataset.groupKey;
+      tree.querySelectorAll(`input[data-parent-key="${groupKey}"]`).forEach(k => { k.checked = parent.checked; });
+      pmoUpdateSectionTree();
+    }
     function pmoUpdateSectionTree() {
       const tree = document.getElementById('pmoSectionTree');
       if (!tree) return;
@@ -11462,11 +11495,14 @@ Grazie.`
         const checkedKids = kids.filter(k => k.checked).length;
         const counter = tree.querySelector(`[data-count-for="${groupKey}"]`);
         if (counter) counter.textContent = `${checkedKids} / ${kids.length}`;
-        const off = !parent.checked;
+        if (kids.length) {
+          parent.checked = checkedKids === kids.length;
+          parent.indeterminate = checkedKids > 0 && checkedKids < kids.length;
+        }
         kids.forEach(k => {
-          k.disabled = off;
+          k.disabled = false;
           const row = k.closest('.pmo-sect-row');
-          if (row) row.classList.toggle('is-off', off);
+          if (row) row.classList.remove('is-off');
         });
       });
       // I permessi forti derivano dalle sezioni spuntate: aggiorna i chip di riepilogo
@@ -30083,7 +30119,9 @@ Per confermare scrivi ELIMINA.`);
 	    }
 	    function pmoAdminSectionKey(section='users') {
 	      const key = cleanCell(section || '').toLowerCase();
-	      if (['users', 'notifications', 'matchpoint-data', 'telegram', 'circoli', 'calendario-staff'].includes(key)) return key;
+	      // 🚨 VOCE 172: «nessuna» sta in questa lista o il `return 'users'` in fondo lo
+      // riporterebbe proprio sul pannello che il permesso vieta.
+      if (['users', 'notifications', 'matchpoint-data', 'telegram', 'circoli', 'calendario-staff', PMO_ADMIN_SECTION_NESSUNA].includes(key)) return key;
 	      if (key.includes('notific')) return 'notifications';
 	      // 🚨 «telegram» va PRIMA di «matchpoint/dati»: il nome della voce e' «Bot
 	      // Telegram», e senza questa riga nessuna parola la porterebbe qui.
