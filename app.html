@@ -8667,7 +8667,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.394';
+    const APP_VERSION = '6.395';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -25410,8 +25410,11 @@ Grazie!`
           if (r.record_type === 'payment') payments.push(r.payload);
           else if (r.record_type === 'matchpoint_data' && r.local_key === 'matchpoint_payments_sync_last') lastSync = r.payload;
         }
-        return { payments, lastSync };
-      } catch (e) { console.warn('incassi fetch:', e); return { payments: [], lastSync: null }; }
+        return { payments, lastSync, ok: true };
+      // 🚨 `ok` NON è un ornamento: senza, un fallimento e «non c'è nessun pagamento» tornano
+      // la STESSA cosa — un elenco vuoto — e chi legge non può distinguerli. È lo zero che non
+      // sa dire «rotto» da «non c'è niente», già pagato il 07/09 mattina sulla voce 165.
+      } catch (e) { console.warn('incassi fetch:', e); return { payments: [], lastSync: null, ok: false }; }
     }
     // Etichetta "ultima sincronizzazione": ora/data + quanto tempo fa.
     function _incassiSyncLabel() {
@@ -41886,8 +41889,24 @@ Per confermare scrivi ELIMINA.`);
   }
   async function _staffCalRefreshPaidIndex() {
     try {
-      if (typeof _incassiFetch !== 'function') return;
+      if (typeof _incassiFetch !== 'function') return false;
       const res = await _incassiFetch();
+      // 🚨⭐⭐ VOCE 142 — UN TENTATIVO FALLITO NON DEVE VALERE COME UN GIRO FATTO.
+      // 📏 Trovato con la PROVA FISICA su TEST 6.394, e il banco non poteva vederlo: la scheda
+      // mostrava «non lo so ancora» per due giocatori che l'archivio conosceva, e forzando il
+      // rinfresco comparivano tutti e due. ⇒ Non era la regola a sbagliare: l'indice era VUOTO.
+      // ⚖️ Il perché: il primo `renderStaffCalendar` gira PRIMA che la sessione staff sia pronta,
+      // la lettura fallisce («Accedi con email personale Supabase»), e `_incassiFetch` restituiva
+      // un elenco vuoto **indistinguibile** da «non c'è nessun pagamento» ⇒ si sostituiva
+      // l'indice con quello vuoto E si bruciava la finestra dei 2 minuti, perché il timbro viene
+      // messo PRIMA della chiamata. Risultato: per due minuti l'archivio non risponde a nessuno.
+      // 📌 Prima questo difetto era cosmetico — mancava l'etichetta del metodo su una riga già
+      // ✓ — e la cura dei soldi lo rende PORTANTE. *Una cura può trasformare un difetto
+      // innocuo in quello che la regge, e da quel momento va curato anche lui.*
+      if (!res || res.ok === false) {
+        _staffCalPaidIndexAt = 0;   // il prossimo disegno riprova, invece di aspettare due minuti
+        return false;
+      }
       const payments = (res && Array.isArray(res.payments)) ? res.payments : [];
       const m = new Map();
       for (const p of payments) {
@@ -41935,7 +41954,12 @@ Per confermare scrivi ELIMINA.`);
       }
       _staffCalPaidIndex = m;
       try { renderStaffCalendar(); } catch (e) {}
-    } catch (e) { console.warn('paid index refresh:', e); }
+      return true;
+    } catch (e) {
+      console.warn('paid index refresh:', e);
+      _staffCalPaidIndexAt = 0;     // come sopra: un guasto non vale come un giro riuscito
+      return false;
+    }
   }
   function _staffCalMaybeRefreshPaidIndex() {
     const now = Date.now();
