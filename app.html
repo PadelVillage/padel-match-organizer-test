@@ -8667,7 +8667,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.393';
+    const APP_VERSION = '6.394';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -25464,7 +25464,11 @@ Grazie!`
       const byDay = new Map();
       const sel = { contanti: 0, carta: 0, borsellino: 0, altro: 0, totale: 0, n: 0, omaggi: 0 };
       for (const p of st.rows) {
-        if (p.voided || p.status === 'void') continue;
+        // 💰 VOCE 142 — stessa regola dello storno usata dai Movimenti e dall'indice dei
+        // pagamenti: `voided_at`, oppure uno `status` diverso da `paid`. Prima erano tre
+        // punti dell'app a chiedersi «e' stornato?» e a rispondersi in due modi diversi.
+        // 📌 Due regole per la stessa domanda divergono il giorno in cui una sola viene corretta.
+        if (p.voided_at || (p.status && p.status !== 'paid')) continue;
         const data = p.data || (p.recorded_at ? String(p.recorded_at).slice(0, 10) : '');
         if (!data || data < st.from || data > st.to) continue;
         const isGiftRec = /gift|omagg|offert/i.test(String(p.method || '')) || p.source === 'pmo_gift';
@@ -41873,6 +41877,11 @@ Per confermare scrivi ELIMINA.`);
   function _payPaidBadge(stato, importoCents, methods) {
     if (stato === 'riscosso' && importoCents === 0) return { kind: 'gift' };
     const arr = Array.isArray(methods) ? methods : [];
+    // 🎁 VOCE 142 — quando lo stato NON viene dal worker l'importo e' ignoto, quindi
+    // l'omaggio non si puo' riconoscere da «0 €»: si riconosce dal METODO. Un elenco di
+    // soli `omaggio` e' una quota offerta, e mostrarla come un incasso direbbe che sono
+    // entrati dei soldi che non sono entrati.
+    if (stato == null && arr.length && arr.every(function (b) { return b === 'omaggio'; })) return { kind: 'gift' };
     return arr.length ? { kind: 'methods', methods: arr } : { kind: 'wait' };
   }
   async function _staffCalRefreshPaidIndex() {
@@ -41882,7 +41891,26 @@ Per confermare scrivi ELIMINA.`);
       const payments = (res && Array.isArray(res.payments)) ? res.payments : [];
       const m = new Map();
       for (const p of payments) {
-        if (!p || p.voided || p.status === 'void') continue;
+        // 💰 VOCE 142 — lo storno si riconosce con la STESSA regola dei Movimenti
+        // (`voided_at`, oppure uno `status` diverso da `paid`), e non piu' con
+        // `p.voided || p.status === 'void'`.
+        // 📏 Misurato su PROD il 07/09, ed e' il motivo per cui si cambia:
+        //   · il booleano `voided` non ce l'ha **NESSUNA** delle 3320 righe ⇒ quella
+        //     prima meta' della condizione era una difesa MORTA, che aveva l'aria di
+        //     difendere e non difendeva niente;
+        //   · lo stesso stato e' scritto in DUE modi: `voided` (20 righe, dal 03/06 al
+        //     26/08) e `void` (3 righe, nate il 06/09 alle 22:08). ⇒ `status === 'void'`
+        //     ne riconosce **tre su ventitre**.
+        //   · le 20 vecchie oggi non fanno danno perche' sono `deleted` e `_incassiFetch`
+        //     le scarta prima ⇒ a proteggerle era un meccanismo DIVERSO da quello che il
+        //     codice dichiarava. Il giorno che il sync scrivesse `voided` senza `deleted`
+        //     — e la parola e' gia' cambiata una volta, senza che nessuno se ne accorgesse —
+        //     un rimborso risulterebbe INCASSATO.
+        // ⚖️ Sicura anche nell'altro verso: delle 3297 righe `paid`, **zero** portano
+        //    `voided_at` e **zero** sono `deleted` ⇒ questa regola non nasconde un incasso vero.
+        // 📌 Una condizione che nomina un campo che non esiste non e' una difesa in piu':
+        //    e' una difesa in meno, travestita.
+        if (!p || p.voided_at || (p.status && p.status !== 'paid')) continue;
         // booking_data = Giorno della prenotazione (il sync porta anche `data` = giorno del
         // PAGAMENTO, che può essere diverso: qui serve il giorno della partita).
         const k = _payNatKey(p.booking_data || p.data, p.campo, p.ora);
@@ -44923,12 +44951,29 @@ Per confermare scrivi ELIMINA.`);
           const pendenteCents = (typeof p.pendenteCents === 'number') ? p.pendenteCents : null;
           const stato = p.stato; // 'riscosso' | 'in_sospeso' | null
           const payRow = _payShow && !marked;        // mostriamo i controlli di pagamento?
-          const isPaid = payRow && stato === 'riscosso';
           // MODALITÀ di pagamento (Contanti/Carta/Borsellino): NON è nella scheda Matchpoint
           // (la ficha espone solo importo/pendente/saldo, da cui si deduce riscosso/in sospeso).
           // Arriva dai record `payment` del report 11.13, agganciati per giorno|campo|ora + nome.
           let _payInfo = null;
-          if (isPaid) { try { _payInfo = _staffCalPaidInfo(st.isoDate, st.campo, st.ora, p.nome); } catch (e) { _payInfo = null; } }
+          if (payRow) { try { _payInfo = _staffCalPaidInfo(st.isoDate, st.campo, st.ora, p.nome); } catch (e) { _payInfo = null; } }
+          // 💰⭐ VOCE 142, LA METÀ DEI SOLDI — «ho tutti i dati immediatamente», che è la frase
+          // da cui la voce nasce. Finché il worker non risponde `stato` è `null` e la riga
+          // diceva «non lo so ancora» **anche per chi il gestionale SA che ha pagato**: il dato
+          // era già in mano (record `payment`, sync ogni 5′) e veniva consultato SOLO per
+          // decorare uno stato che il worker aveva già dato. ⇒ Ora il gestionale risponde
+          // subito, e la rilettura dal worker sovrascrive quando arriva — la stessa forma già
+          // approvata per nomi, id e Osservazioni: *il gestionale risponde subito, il circolo
+          // conferma dopo; nessuno dei due perde il proprio mestiere.*
+          // ⛔ E SOLO IN QUESTO VERSO: l'assenza dall'archivio NON diventa mai la ✗ rossa «da
+          // incassare». Un pagamento fatto due minuti fa non è ancora nella copia, e dire «deve
+          // pagare» a chi ha già pagato manderebbe la segreteria a chiedere soldi due volte.
+          // Chi l'archivio non conosce resta «non lo so ancora», che è la regola del terzo segno.
+          // ⚠️ Il rischio che resta, dichiarato: uno storno fatto da un'altra postazione negli
+          // ultimi minuti non è ancora nella copia ⇒ per la manciata di secondi che il worker
+          // impiega a rispondere quella riga mostra ✓. È la stessa finestra già accettata a
+          // occhi aperti per il roster, e si chiude da sé quando la rilettura atterra.
+          const _pagatoDalGestionale = payRow && stato == null && !!_payInfo;
+          const isPaid = payRow && (stato === 'riscosso' || _pagatoDalGestionale);
           const _payBadge = isPaid ? _payPaidBadge(stato, importoCents, _payInfo && _payInfo.methods) : null;
           // 🆕💰 VOCE 152 — quanto è già entrato per questa riga. Si usa `importoCents` (che
           //    viene da Matchpoint) e non `_payInfo.cents` (che viene dal report 11.13, e può
@@ -44953,7 +44998,9 @@ Per confermare scrivi ELIMINA.`);
             // andrebbe a chiedere soldi già pagati. ⇒ Il terzo segno è il cerchio tratteggiato
             // grigio, che dice «non lo so ancora» — la stessa scelta di `esito_ignoto`: fra un
             // sì e un no inventati, si risponde «non lo so».
-            const _statoIgnoto = (stato == null);
+            // 💰 VOCE 142 — «non lo so ancora» solo se non lo sa NESSUNO dei due: né il worker
+            // (che non ha ancora risposto) né il gestionale (che non ha il pagamento in archivio).
+            const _statoIgnoto = (stato == null) && !_pagatoDalGestionale;
             ic.className = 'ti ' + (isGift ? 'ti-gift svc-pl-ic-gift'
               : (isPaid ? 'ti-circle-check svc-pl-ic-paid'
                 : (_statoIgnoto ? 'ti-circle-dashed svc-pl-ic-unknown' : 'ti-circle-x svc-pl-ic-due')));
@@ -45072,7 +45119,16 @@ Per confermare scrivi ELIMINA.`);
               : ((importoCents != null && importoCents > 0) ? _incassiEuro(importoCents) : 'Pagato');
             money.appendChild(paid);
             // Offerta = nessun cobro registrato in MP → non c'è niente da stornare.
-            if (_payVoidActive && !isGift) {
+            // 🚨⭐ VOCE 142 — E NEMMENO SU UN «PAGATO» CHE VIENE DALL'ARCHIVIO: lo storno si
+            // offre solo quando il CIRCOLO ha confermato (`stato === 'riscosso'`), mai sulla
+            // risposta immediata del gestionale. ⚖️ È la stessa regola che questa scheda si è
+            // già data per la rimozione di un giocatore — *prima di un gesto distruttivo si
+            // rilegge comunque* — e la ragione è identica: la copia locale può essere indietro
+            // di minuti, e uno storno partito su un pagamento che non c'è più (o che non era
+            // quello) muove denaro vero sul sistema del circolo.
+            // 📌 Un dato basta per INFORMARE molto prima di bastare per AGIRE, e confondere le
+            // due soglie è il modo tipico in cui una comodità diventa un danno.
+            if (_payVoidActive && !isGift && stato === 'riscosso') {
               const sBtn = document.createElement('button');
               sBtn.type = 'button'; sBtn.className = 'svc-pl-iconbtn';
               sBtn.innerHTML = '<i class="ti ti-arrow-back-up" aria-hidden="true"></i>';
