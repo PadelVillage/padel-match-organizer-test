@@ -8699,7 +8699,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.407';
+    const APP_VERSION = '6.408';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -8794,6 +8794,35 @@ body.assessment-public-mode .assessment-public-only-card {
     const PMO_PUBLIC_BASE_URL = pmoDetectPublicBaseUrl();
     const PMO_PROD_SUPABASE_PROJECT_REF = 'qqbfphyslczzkxoncgex';
     const PMO_TEST_SUPABASE_PROJECT_REF = 'cudiqnrrlbyqryrtaprd';
+
+    /** 🆕⭐⭐ VOCE 180 — QUESTO GESTIONALE PARLA COL CIRCOLO?
+     *
+     *  🎯 È la GEMELLA IN PAGINA di `scritturaAlCircoloConsentita`
+     *  (`supabase/functions/**\/scrittura-al-circolo.ts`, cablata su `REF_PROD`): la stessa
+     *  domanda, posta allo stesso fatto. L'edge la usa per non SCRIVERE al circolo; qui serve per
+     *  non andarlo a LEGGERE.
+     *
+     *  🚨⭐⭐ **E SI GUARDA IL REF SUPABASE, NON L'HOSTNAME — questo è il punto della funzione.**
+     *  `PMO_IS_TEST_ENV` risponde *«sto su un indirizzo che comincia per test.»*, che è una domanda
+     *  diversa e che il **distacco farà scadere**: il giorno in cui il gestionale nuovo viene
+     *  servito da `app.padelvillage.club` quella risposta si ribalta, e ogni riga che ci si appoggia
+     *  ricomincia a chiamare un Matchpoint che non esiste più. Il **ref** invece dice a quale
+     *  database si è attaccati, che è il fatto vero, e non cambia con l'indirizzo.
+     *  📌 *Un ambiente si riconosce da CON CHI parla, non da come si chiama.*
+     *  ⇒ Questa riga è deliberatamente **fuori** dalla lista delle simulazioni legate a
+     *  `PMO_IS_TEST_ENV` da smontare prima del passaggio: non è una finzione da togliere, è la
+     *  barriera da tenere.
+     *
+     *  ⛔ FALLISCE CHIUSA: url mancante, storpiato o non riconosciuto ⇒ `false`, cioè «non lo
+     *  chiamo». Un dubbio sull'identità del database non è una buona ragione per andare a bussare
+     *  al sistema del circolo. PURA (l'url arriva da fuori). */
+    function pmoGestionaleCollegatoAlCircolo(supabaseUrl) {
+      try {
+        const host = new URL(String(supabaseUrl || '')).hostname || '';
+        const m = host.match(/^([a-z0-9-]+)\.supabase\.co$/i);
+        return !!m && m[1].toLowerCase() === PMO_PROD_SUPABASE_PROJECT_REF;
+      } catch (e) { return false; }
+    }
     function pmoDetectRuntimeEnv() {
       try {
         const params = new URLSearchParams(window.location.search || '');
@@ -44989,6 +45018,22 @@ Per confermare scrivi ELIMINA.`);
     const cur = _staffCalMpPlayers[key];
     if (cur && cur.loading) return;
     if (cur && Array.isArray(cur.names)) { delete _staffCalMpPlayers[key]; renderStaffCalendar(); return; }
+    // 🆕⭐ VOCE 180 — sul gestionale che non parla col circolo non c'è nessun Matchpoint a cui
+    //    chiedere: si mostra quello che sappiamo NOI, che è la stessa cosa che questa funzione già
+    //    fa quando la lettura fallisce (`_staffCalStoredRosterNames`), solo senza i 90 secondi di
+    //    attesa e senza uscire dal recinto.
+    // ⛔ E `{ error: true }` se non sappiamo nemmeno quello: un elenco vuoto sembrerebbe «non c'è
+    //    nessuno in campo», che è una risposta — e noi non ce l'abbiamo. È la 149 applicata ai
+    //    nomi invece che ai soldi.
+    const _cfgGate = await (async function () {
+      try { return await loadAssessmentSupabaseConfig(); } catch (e) { return null; }
+    })();
+    if (!_cfgGate || !pmoGestionaleCollegatoAlCircolo(_cfgGate.supabaseUrl)) {
+      const _nomi = _staffCalStoredRosterNames(iso, campo, ora);
+      _staffCalMpPlayers[key] = _nomi.length ? { names: _nomi } : { error: true };
+      renderStaffCalendar();
+      return;
+    }
     _staffCalMpPlayers[key] = { loading: true };
     renderStaffCalendar();
     try {
@@ -45213,8 +45258,15 @@ Per confermare scrivi ELIMINA.`);
       // osservazioni = note) in sottofondo. Allinea i baseline e pre-popola i campi non toccati,
       // così il salvataggio non sovrascrive valori non visti.
       if (String(tipoR).includes('manuten')) {
-        (function () {
+        (async function () {
           const _stOpen = staffCalPlayersState;
+          // 🆕 VOCE 180 — stessa barriera della lettura dei giocatori, e per la stessa ragione:
+          //    `read: true` salta il recinto. Qui i due campi (descrizione = TextBox2,
+          //    osservazioni = note) li ha già la copia locale, letti sopra (`_localNote`).
+          const _cfgGate = await (async function () {
+            try { return await loadAssessmentSupabaseConfig(); } catch (e) { return null; }
+          })();
+          if (!_cfgGate || !pmoGestionaleCollegatoAlCircolo(_cfgGate.supabaseUrl)) return;
           const _msg = svcAddMessage('system', '⏳ Leggo descrizione e note da Matchpoint… (puoi già scrivere)');
           const _setNote = function (html) {
             const last = _msg && _msg.querySelector(':scope > div:last-child');
@@ -45370,8 +45422,47 @@ Per confermare scrivi ELIMINA.`);
     buildState(_localRoster, _gestNote);
 
     // Lettura autorevole dei giocatori dal worker, in SOTTOFONDO (non blocca la scheda).
-    (function () {
+    (async function () {
       const _stOpen = staffCalPlayersState;
+
+      // 🆕⭐⭐ VOCE 180 — SE QUESTO GESTIONALE NON PARLA COL CIRCOLO, NON LO SI VA A LEGGERE.
+      //
+      // 🚨 Questa era **la strada fuori dal recinto**: `matchpoint-bookings-edit` con `read: true`
+      //    **salta** `scritturaAlCircoloConsentita` (`index.ts` — `if (!readOnly && …)`), quindi
+      //    dal gestionale nuovo partiva davvero una visita al Matchpoint del circolo. Non era un
+      //    dettaglio di prestazioni: era l'unico punto in cui il sistema che sta diventando quello
+      //    vero toccava ancora il sistema vecchio.
+      // ⇒ Adesso i soldi e i nomi li ha la **copia locale**: l'importo NASCE dal listino alla
+      //    creazione, il giocatore aggiunto lo prende, e le righe che non l'avevano si riempiono
+      //    all'apertura (qui sopra). Non c'è più niente da andare a chiedere.
+      //
+      // ⛔ E NIENTE RIPIEGO — «dal vivo quando l'importo non è nato qui» era l'altra strada, ed è
+      //    quella da non prendere: resterebbe esercitata in silenzio fino al distacco e
+      //    comincerebbe a fallire **il giorno in cui non c'è più nessuno a rispondere**, cioè si
+      //    romperebbe da sola nel momento peggiore, senza che nessuno l'avesse mai vista rompersi.
+      //    📌 *Una strada di riserva che non si percorre mai non è una riserva: è un pezzo di
+      //    codice che nessuno ha visto funzionare, messo lì per il giorno in cui servirà.*
+      //
+      // ⚖️ Su PROD non cambia NIENTE: là il ref è quello del circolo e la lettura parte come
+      //    sempre. La riga separa i due gestionali, non toglie una funzione.
+      const _cfgGate = await (async function () {
+        try { return await loadAssessmentSupabaseConfig(); } catch (e) { return null; }
+      })();
+      if (!_cfgGate || !pmoGestionaleCollegatoAlCircolo(_cfgGate.supabaseUrl)) {
+        // 🩹 Il VELO va tolto a mano: `rosterLoading` nasce `true` quando la copia locale non ha
+        //    giocatori, e fino a ieri lo spegneva la lettura viva. Senza questa riga la rotellina
+        //    girerebbe **per sempre** proprio sulle prenotazioni che non sappiamo raccontare.
+        //    📌 *Chi toglie l'unico che spegne una luce deve spegnerla lui.*
+        try {
+          const _st = staffCalPlayersState;
+          if (_st && _st === _stOpen && (_st.rosterLoading || _st.rosterRefreshing)) {
+            _st.rosterLoading = false; _st.rosterRefreshing = false;
+            staffCalRenderPlayersEditor();
+          }
+        } catch (e) {}
+        return;
+      }
+
       const _note = svcAddMessage('system', '⏳ Aggiorno la lista giocatori da Matchpoint… (puoi già modificare)');
       let _sec = 0;
       const _timer = setInterval(function () {
@@ -48052,6 +48143,28 @@ Per confermare scrivi ELIMINA.`);
     //    'no': non guardare non è la stessa cosa che guardare e non trovare. → 'boh'.
     if (!staff || !staff.accessToken || !supabaseUrl || !supabaseKey) {
       return { verdict: 'boh', why: 'non ho potuto guardare su Matchpoint (permesso o configurazione non disponibili)' };
+    }
+    // 🆕⭐⭐ VOCE 180 — IL QUARTO PUNTO, ED È DI UN GENERE DIVERSO DAGLI ALTRI TRE.
+    //
+    // Gli altri tre andavano a Matchpoint a prendere un DATO (soldi, nomi, note) che ormai ha il
+    // gestionale: là la cura è «leggi dalla copia». Questo invece va a fare una DOMANDA — *«la
+    // prenotazione che ho appena provato a scrivere esiste?»* — e quella domanda, dopo il
+    // distacco, **non ha più un destinatario**. Non si converte: si decide cosa farne, ed è un
+    // lavoro suo (la forma è quella della voce 53 — tornare a chiedere al GESTIONALE).
+    //
+    // ⛔ QUI SI FALLISCE CHIUSI, cioè `boh`, e non è un ripiego pigro: è l'unica risposta vera.
+    //    Un `no` inventato è il danno peggiore che questa funzione possa fare — chi lo legge
+    //    riprova, e la partita si prenota **due volte**. E la regola del progetto lo dice già:
+    //    *il «no» si dice solo con la freschezza certificata dal gestionale, altrimenti la
+    //    risposta onesta è «non lo so ancora»*.
+    // ⚖️ I chiamanti sanno già trattarlo: `si` e `no` chiudono, tutto il resto diventa «non ho la
+    //    conferma, controlla». Cambia il TEMPO, in meglio — prima si sarebbe arrivati allo stesso
+    //    `boh` dopo 90 secondi di attesa verso un worker che non risponde.
+    // 🚨 E su un gestionale non collegato al circolo questa strada è quasi irraggiungibile: le
+    //    scritture sono native, quindi un «esito ignoto» può nascere solo da una rete caduta verso
+    //    l'edge, non da un worker muto.
+    if (!pmoGestionaleCollegatoAlCircolo(supabaseUrl)) {
+      return { verdict: 'boh', why: 'questo gestionale non è collegato al circolo: non c\'è nessun Matchpoint a cui chiedere' };
     }
     try {
       const _ctrl = new AbortController();
