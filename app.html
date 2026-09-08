@@ -8430,20 +8430,48 @@ body.assessment-public-mode .assessment-public-only-card {
                 <div class="matchpoint-data-accordion-panel" id="matchpointSlotAccordionPanel">
                   <article class="matchpoint-data-box potential wide" id="anchor-matchpoint-slot-potenziali">
                     <p class="matchpoint-data-copy">
-                      Le fasce su cui i soci possono prenotare, e quanto paga <strong>ogni giocatore</strong>.
-                      Le decidi qui: una griglia sola, valida su tutti e quattro i campi — quale campo sia
-                      libero lo dice chi ha già prenotato, non questa tabella.
-                      <br><em>Il prezzo vuoto vuol dire «non ancora deciso», che è diverso da gratis.</em>
+                      Quando si gioca e quanto paga <strong>ogni giocatore</strong>, su tutti e quattro i campi.
+                      La <strong>griglia base</strong> vale sempre; un <strong>periodo</strong> (estate, inverno, le
+                      feste) la copre nelle sue date con i <em>suoi</em> orari e i <em>suoi</em> prezzi; le
+                      <strong>chiusure</strong> stanno sopra a tutto.
+                      <br><em>Prezzo vuoto = «non ancora deciso», che è diverso da gratis.</em>
                     </p>
+                    <div id="pmoListinoOggi" style="background:#f1f5f9;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:.95em">
+                      <span style="opacity:.6">Oggi: —</span>
+                    </div>
                     <div class="matchpoint-data-actions">
                       <button class="btn-secondary" onclick="setActionAnchor(this); pmoCaricaFasce(true)">Ricarica</button>
-                      <button class="btn-secondary" onclick="setActionAnchor(this); pmoAggiungiFascia()">+ Aggiungi fascia</button>
-                      <button id="pmoFasceSalvaBtn" class="btn-warning" onclick="setActionAnchor(this); pmoSalvaFasce()">Salva fasce</button>
-                      <div id="pmoFasceStato" class="matchpoint-action-state done">Non ancora caricate</div>
+                      <button id="pmoFasceSalvaBtn" class="btn-warning" onclick="setActionAnchor(this); pmoSalvaFasce()">Salva</button>
+                      <div id="pmoFasceStato" class="matchpoint-action-state done">Non ancora caricato</div>
                     </div>
+
+                    <div style="margin:14px 0 6px">
+                      <div style="font-weight:600;font-size:.9em;opacity:.7;margin-bottom:6px">① Quale griglia stai guardando</div>
+                      <div id="pmoListinoPeriodi"></div>
+                    </div>
+
+                    <div style="font-weight:600;font-size:.9em;opacity:.7;margin:14px 0 6px">② Orari e prezzi di questa griglia</div>
                     <div class="potential-slot-details">
                       <div id="pmoFasceTabella"></div>
                     </div>
+
+                    <div style="font-weight:600;font-size:.9em;opacity:.7;margin:18px 0 6px">③ Chiusure e festività</div>
+                    <p class="matchpoint-data-copy" style="margin-top:0">
+                      I giorni in cui il circolo è chiuso, qualunque griglia sia in vigore. Una festa fissa si
+                      segna <strong>«ogni anno»</strong> e non si ripassa più.
+                    </p>
+                    <div class="matchpoint-data-actions">
+                      <button class="btn-secondary" onclick="setActionAnchor(this); pmoAggiungiChiusura()">+ Aggiungi chiusura</button>
+                      <button class="btn-secondary" onclick="setActionAnchor(this); pmoAggiungiFesteItaliane()">+ Feste italiane</button>
+                    </div>
+                    <div id="pmoChiusureTabella"></div>
+
+                    <div style="font-weight:600;font-size:.9em;opacity:.7;margin:18px 0 6px">④ Calendario di controllo — un anno avanti</div>
+                    <p class="matchpoint-data-copy" style="margin-top:0">
+                      Un quadratino per giorno, col colore della griglia che vale davvero. Serve a <em>vedere</em>
+                      che non resti scoperto niente: un giorno aperto ma senza fasce è cerchiato in giallo.
+                    </p>
+                    <div id="pmoCalendarioControllo"></div>
                   </article>
                 </div>
               </div>
@@ -8661,7 +8689,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.401';
+    const APP_VERSION = '6.402';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -17898,7 +17926,7 @@ Grazie.`
       // adesso, e questo a chi apre il pannello dopo che uno dei due è andato storto.
       // ⚖️ Solo se non ci sono già: riaprire il pannello non deve buttare via le modifiche
       // non ancora salvate.
-      if (shouldOpen && id === 'matchpointSlotAccordion' && !Array.isArray(pmoFasce)) {
+      if (shouldOpen && id === 'matchpointSlotAccordion' && !pmoListino) {
         try { pmoCaricaFasce(false); } catch (err) { console.warn('pmoCaricaFasce accordion', err); }
       }
       return shouldOpen;
@@ -18590,19 +18618,55 @@ Grazie.`
     }
 
     // ══════════════════════════════════════════════════════════════════════════════
-    // VOCE 176 — LE FASCE PRENOTABILI SONO UNA TABELLA NOSTRA (`pmo_fasce_prenotabili`)
+    // VOCE 185 — IL LISTINO HA UN CALENDARIO: PERIODI, ORARI, PREZZI E CHIUSURE
     // ══════════════════════════════════════════════════════════════════════════════
-    // 🗣️ Richiesta del committente (08/09/2026): «dobbiamo rifarla per conto nostro» e «devi
-    // darmi la possibilità di definire io come voglio gli slot prenotabili».
-    // ⇒ La griglia non arriva più da Matchpoint: la scrive lui, qui dentro.
-    // 🔌 Il bottone «Sincronizza da Matchpoint» è stato tolto perché muore col distacco: la
-    // pagina «Sistema → Campi → Orari» si legge dal worker, e senza Matchpoint non c'è.
-    let pmoFasce = null;              // elenco vivo dal database. null = non ancora caricate.
-    let pmoFasceSporche = false;      // ci sono modifiche non salvate
-    let pmoFasceGrigliaCache = null;  // la stessa cosa nella forma che l'app già sa disegnare
+    // 🗣️ Richiesta del committente (08/09/2026 sera): «devo poter cambiare i prezzi relativamente
+    // a un periodo di tempo […] sia gli orari degli slot che i prezzi» · «devo poter inserire
+    // delle festività» · «non devo lasciare dei buchi di giorni» · «fai una cosa facile da usare
+    // e intuibile».
+    //
+    // 📍 COSA C'È SOTTO (migrazione `20260908220000_voce185_listino_per_periodi.sql`):
+    //   · una griglia **BASE** senza date, sempre valida — è il fondo, e per questo un giorno
+    //     scoperto non può esistere;
+    //   · **periodi** con data di inizio e fine, ciascuno con la SUA griglia (orari + prezzi);
+    //   · **chiusure** sopra a tutto: valgono qualunque griglia sia in vigore quel giorno.
+    // ⭐ Chi decide «che orari e che prezzi valgono il giorno X» è UNA funzione del gestionale,
+    // `pmo_calendario_effettivo` — la stessa che chiamano le edge del bot. Qui non si rifà il
+    // conto: si legge la risposta. 📌 *Due posti che calcolano la stessa cosa sono un guasto che
+    // aspetta il primo cambio.*
+    let pmoListino = null;             // { periodi: [...], chiusure: [...] } — null = non caricato
+    let pmoPeriodoScelto = 'base';     // quale periodo si sta guardando nel pannello
+    let pmoListinoSporchi = new Set(); // gli id dei periodi con modifiche non salvate
+    let pmoChiusureSporche = false;
+    let pmoCalendarioMappa = null;     // 'YYYY-MM-DD' → { chiuso, motivo, fasce[] } per l'APP
+    let pmoCalendarioControllo = null; // lo stesso, un anno avanti, per il calendario del pannello
+    let pmoFasceGrigliaCache = null;
     const PMO_GIORNI_NOMI = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    const PMO_GIORNI_INIZIALI = ['D', 'L', 'M', 'M', 'G', 'V', 'S'];
+    // I colori dei periodi nel calendario di controllo. La base non ha colore: è lo sfondo.
+    const PMO_COLORI_PERIODI = ['#7c3aed', '#0891b2', '#ea580c', '#16a34a', '#db2777', '#ca8a04'];
 
-    // Dalla tabella alla forma che i disegnatori già conoscono ({start,end,name}).
+    function pmoDataChiave(d) {
+      if (!(d instanceof Date)) return String(d || '');
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    /** Il periodo che si sta guardando nel pannello (o la base, che c'è sempre). */
+    function pmoPeriodoCorrente() {
+      if (!pmoListino || !Array.isArray(pmoListino.periodi)) return null;
+      return pmoListino.periodi.find((p) => p.id === pmoPeriodoScelto)
+          || pmoListino.periodi.find((p) => p.id === 'base')
+          || null;
+    }
+
+    /** Le fasce della BASE: è la griglia di ripiego quando non si conosce la data. */
+    function pmoFasceBase() {
+      const base = pmoListino && Array.isArray(pmoListino.periodi)
+        ? pmoListino.periodi.find((p) => p.id === 'base') : null;
+      return base && Array.isArray(base.fasce) ? base.fasce : null;
+    }
+
+    // Dalle righe alla forma che i disegnatori già conoscono ({start,end,name}).
     // ⚖️ Le fasce SPENTE non entrano: `attiva=false` vuol dire «esiste ma oggi non si prenota».
     function pmoFasceComeGriglia(fasce) {
       const griglia = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
@@ -18622,29 +18686,46 @@ Grazie.`
     }
 
     function pmoFasceGriglia() {
-      if (!pmoFasceGrigliaCache && Array.isArray(pmoFasce)) pmoFasceGrigliaCache = pmoFasceComeGriglia(pmoFasce);
+      const base = pmoFasceBase();
+      if (!pmoFasceGrigliaCache && Array.isArray(base)) pmoFasceGrigliaCache = pmoFasceComeGriglia(base);
       return pmoFasceGrigliaCache;
     }
 
+    /**
+     * Le fasce di un giorno. 🚨 L'ORDINE DELLE FONTI NON È CASUALE:
+     *   ① il calendario effettivo, che sa di periodi e chiusure — l'unico che può rispondere
+     *      giusto quando la griglia cambia con la stagione;
+     *   ② la griglia della BASE, quando il chiamante passa un giorno della settimana e non una
+     *      data (non c'è modo di sapere quale periodo intenda);
+     *   ③ il blocco vecchio `potentialSlotSchedule`, come ripiego finché la rete non ha risposto.
+     * ⛔ Un calendario disegnato VUOTO si legge «il circolo è chiuso», che è una bugia e non
+     * un'attesa: per questo il ripiego resta.
+     */
     function getDaySlots(date) {
+      if (date instanceof Date && pmoCalendarioMappa) {
+        const giorno = pmoCalendarioMappa[pmoDataChiave(date)];
+        if (giorno) return giorno.chiuso ? [] : giorno.slots;
+      }
       const day = date instanceof Date ? date.getDay() : parseInt(date, 10);
-      // ⭐ La fonte sono le FASCE. Il blocco vecchio (`potentialSlotSchedule`) resta come
-      // RIPIEGO finché le fasce non sono arrivate dalla rete: senza, un calendario aperto prima
-      // della risposta si disegnerebbe VUOTO — e un calendario vuoto si legge «il circolo è
-      // chiuso», che è una bugia, non un'attesa.
       const griglia = pmoFasceGriglia();
       if (griglia) return Array.isArray(griglia[day]) ? griglia[day] : [];
       const schedule = getPotentialSlotSchedule();
       return Array.isArray(schedule[day]) ? schedule[day] : [];
     }
 
+    /** Il circolo è chiuso quel giorno? Torna null quando non lo sappiamo ancora. */
+    function pmoGiornoChiuso(date) {
+      if (!(date instanceof Date) || !pmoCalendarioMappa) return null;
+      const giorno = pmoCalendarioMappa[pmoDataChiave(date)];
+      if (!giorno) return null;
+      return giorno.chiuso ? { chiuso: true, motivo: giorno.motivo || 'Chiuso' } : { chiuso: false, motivo: null };
+    }
+
     // Quanto paga OGNI giocatore su quella fascia, in centesimi. null = non deciso.
     // 🚨 null NON è zero: chi lo mostra deve scrivere «da definire», non «0,00 €».
     function pmoPrezzoDellaFascia(date, oraInizio) {
-      const griglia = pmoFasceGriglia();
-      if (!griglia) return null;
-      const day = date instanceof Date ? date.getDay() : parseInt(date, 10);
-      const trovata = (griglia[day] || []).find((s) => s.start === oraInizio);
+      const slots = getDaySlots(date);
+      const trovata = (slots || []).find((s) => s.start === oraInizio);
       return trovata ? (trovata.prezzoCents ?? null) : null;
     }
 
@@ -18655,47 +18736,162 @@ Grazie.`
       el.className = `matchpoint-action-state ${tipo || 'done'}`;
     }
 
+    function pmoListinoSporco() {
+      return pmoListinoSporchi.size > 0 || pmoChiusureSporche;
+    }
+
+    function pmoSegnaSporco(periodoId) {
+      if (periodoId) pmoListinoSporchi.add(periodoId);
+      pmoFasceGrigliaCache = null;
+      pmoFasceAggiornaStato('Modifiche da salvare', 'pending');
+    }
+
+    // ── LEGGERE ────────────────────────────────────────────────────────────────────
+    // 🚨 LEGGERE non vuole un permesso speciale, e metterlo è stato un difetto vero (08/09):
+    // con `cloud_sync` le fasce non si caricavano per un profilo staff che quel permesso non ce
+    // l'ha, e la Dashboard ripiegava sulla griglia cablata disegnando un lunedì senza la fascia
+    // delle 16:30 — un orario che il circolo ha davvero. Il permesso resta sulla SCRITTURA.
     async function pmoCaricaFasce(mostraEsito = false) {
       try {
         pmoFasceAggiornaStato('Carico…', 'pending');
-        // 🚨 LEGGERE non vuole un permesso speciale, e metterlo è stato un difetto vero:
-        // misurato sulla pagina viva di TEST il 08/09, con `cloud_sync` le fasce NON si
-        // caricavano per un profilo `staff` che quel permesso non ce l'ha ⇒ la Dashboard
-        // ripiegava sulla griglia cablata nel codice e disegnava **un lunedì senza la fascia
-        // delle 16:30**, cioè un orario che il circolo ha davvero. Un permesso più stretto della
-        // guardia del database non protegge niente: fa solo mentire il calendario.
-        // ⇒ Permesso vuoto = «basta un profilo staff attivo», che è esattamente ciò che chiede
-        //   `pmo_get_fasce_prenotabili`. Il permesso resta sulla SCRITTURA, che è un'altra cosa.
-        const res = await pmoStaffRpc('pmo_get_fasce_prenotabili', {}, '', 'leggere le fasce prenotabili');
+        const res = await pmoStaffRpc('pmo_get_listino', {}, '', 'leggere il listino');
         if (!res || res.ok !== true) throw new Error((res && res.error) || 'risposta non riconosciuta');
-        pmoFasce = Array.isArray(res.fasce) ? res.fasce : [];
+        pmoListino = { periodi: Array.isArray(res.periodi) ? res.periodi : [], chiusure: Array.isArray(res.chiusure) ? res.chiusure : [] };
+        if (!pmoListino.periodi.some((p) => p.id === pmoPeriodoScelto)) pmoPeriodoScelto = 'base';
+        pmoListinoSporchi = new Set();
+        pmoChiusureSporche = false;
         pmoFasceGrigliaCache = null;
-        pmoFasceSporche = false;
-        pmoRenderFasce();
-        pmoFasceAggiornaStato(`${pmoFasce.length} fasce`, 'done');
+        pmoRenderListino();
+        await pmoCaricaCalendario();
+        const quante = (pmoPeriodoCorrente()?.fasce || []).length;
+        pmoFasceAggiornaStato(`${pmoListino.periodi.length} period${pmoListino.periodi.length === 1 ? 'o' : 'i'} · ${quante} fasce`, 'done');
         try { renderInitialDashboard(); } catch {}
-        if (mostraEsito) showAlert(`✅ ${pmoFasce.length} fasce caricate.`, 'success');
+        if (mostraEsito) showAlert(`✅ Listino caricato: ${pmoListino.periodi.length} periodi, ${pmoListino.chiusure.length} chiusure.`, 'success');
       } catch (err) {
-        pmoFasceAggiornaStato('Non caricate', 'pending');
-        if (mostraEsito) showAlert('❌ Fasce non caricate: ' + err.message, 'danger');
+        pmoFasceAggiornaStato('Non caricato', 'pending');
+        if (mostraEsito) showAlert('❌ Listino non caricato: ' + err.message, 'danger');
       }
     }
 
+    /**
+     * Il calendario EFFETTIVO — chi decide è il gestionale, qui si legge e basta.
+     * Due tratte diverse per due usi diversi: 45 giorni per l'app (si prenota entro 30), un anno
+     * per il calendario di controllo del pannello, che serve proprio a vedere lontano.
+     */
+    async function pmoCaricaCalendario() {
+      const oggi = new Date();
+      const chiaveOggi = pmoDataChiave(oggi);
+      const fra = (giorni) => { const d = new Date(oggi); d.setDate(d.getDate() + giorni); return pmoDataChiave(d); };
+      try {
+        const res = await pmoStaffRpc('pmo_calendario_effettivo', { p_dal: chiaveOggi, p_al: fra(365) }, '', 'leggere il calendario del listino');
+        if (!res || res.ok !== true) return;
+        const mappa = {};
+        const controllo = [];
+        (res.giorni || []).forEach((g) => {
+          const slots = (g.fasce || []).map((f) => ({
+            start: f.ora_inizio, end: f.ora_fine, name: `${f.ora_inizio}-${f.ora_fine}`,
+            prezzoCents: (f.prezzo_cents === null || f.prezzo_cents === undefined) ? null : Number(f.prezzo_cents),
+          }));
+          mappa[g.data] = { chiuso: !!g.chiuso, motivo: g.motivo || null, slots, periodo_id: g.periodo_id, periodo_nome: g.periodo_nome };
+          controllo.push({ data: g.data, chiuso: !!g.chiuso, motivo: g.motivo || null, periodo_id: g.periodo_id, periodo_nome: g.periodo_nome, quante: slots.length });
+        });
+        pmoCalendarioMappa = mappa;
+        pmoCalendarioControllo = controllo;
+        pmoRenderOggi();
+        pmoRenderCalendarioControllo();
+      } catch (err) {
+        console.warn('[listino] calendario non letto', err);
+      }
+    }
+
+    // ── DISEGNARE ──────────────────────────────────────────────────────────────────
+    function pmoRenderListino() {
+      pmoRenderPeriodi();
+      pmoRenderFasce();
+      pmoRenderChiusure();
+      pmoRenderOggi();
+      pmoRenderCalendarioControllo();
+    }
+
+    /** La riga in cima: cosa vale OGGI. È la prima cosa che si guarda entrando. */
+    function pmoRenderOggi() {
+      const box = document.getElementById('pmoListinoOggi');
+      if (!box) return;
+      const oggi = pmoCalendarioMappa ? pmoCalendarioMappa[pmoDataChiave(new Date())] : null;
+      if (!oggi) { box.innerHTML = '<span style="opacity:.6">Oggi: — (calendario non ancora letto)</span>'; return; }
+      const data = new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+      box.innerHTML = oggi.chiuso
+        ? `<strong>Oggi ${escapeHtml(data)}: CHIUSO</strong> — ${escapeHtml(oggi.motivo || '')}`
+        : `<strong>Oggi ${escapeHtml(data)}</strong> vale <strong>${escapeHtml(oggi.periodo_nome || 'Griglia base')}</strong> — ${oggi.slots.length} fasce.`;
+    }
+
+    /** I periodi come bottoni: si clicca quello che si vuole guardare. */
+    function pmoRenderPeriodi() {
+      const box = document.getElementById('pmoListinoPeriodi');
+      if (!box || !pmoListino) return;
+      box.innerHTML = pmoListino.periodi.map((p, i) => {
+        const scelto = p.id === pmoPeriodoScelto;
+        const colore = p.id === 'base' ? '#475569' : PMO_COLORI_PERIODI[(i - 1 + PMO_COLORI_PERIODI.length) % PMO_COLORI_PERIODI.length];
+        const quando = p.dal ? `${pmoDataBreve(p.dal)} → ${pmoDataBreve(p.al)}` : 'sempre, dove non arriva nessun periodo';
+        const sporco = pmoListinoSporchi.has(p.id) ? ' •' : '';
+        return `<button type="button" onclick="pmoScegliPeriodo('${escapeHtml(p.id)}')"
+          style="border:2px solid ${colore};background:${scelto ? colore : 'transparent'};color:${scelto ? '#fff' : colore};
+                 border-radius:8px;padding:6px 10px;margin:0 6px 6px 0;cursor:pointer;text-align:left;font-size:.9em">
+          <strong>${escapeHtml(p.nome)}${sporco}</strong><br><span style="font-size:.85em;opacity:.85">${escapeHtml(quando)} · ${(p.fasce || []).length} fasce</span>
+        </button>`;
+      }).join('') + `<button type="button" onclick="pmoNuovoPeriodo()"
+          style="border:2px dashed #94a3b8;background:transparent;color:#475569;border-radius:8px;padding:6px 10px;margin:0 6px 6px 0;cursor:pointer;font-size:.9em">
+          <strong>+ Nuovo periodo</strong><br><span style="font-size:.85em;opacity:.85">estate, inverno, una settimana…</span></button>`;
+    }
+
+    function pmoDataBreve(iso) {
+      if (!iso) return '';
+      const [a, m, g] = String(iso).split('-');
+      return `${g}/${m}/${a}`;
+    }
+
+    function pmoScegliPeriodo(id) {
+      pmoPeriodoScelto = id;
+      pmoRenderPeriodi();
+      pmoRenderFasce();
+    }
+
+    /** La griglia del periodo scelto, un blocco per giorno. */
     function pmoRenderFasce() {
       const box = document.getElementById('pmoFasceTabella');
       if (!box) return;
-      if (!Array.isArray(pmoFasce)) { box.innerHTML = '<p class="matchpoint-data-copy">Premi «Ricarica» per leggere le fasce.</p>'; return; }
-      if (!pmoFasce.length) { box.innerHTML = '<p class="matchpoint-data-copy">Nessuna fascia. Aggiungine una: finché non ce n\'è, i soci non possono prenotare niente.</p>'; return; }
+      const periodo = pmoPeriodoCorrente();
+      if (!periodo) { box.innerHTML = '<p class="matchpoint-data-copy">Premi «Ricarica» per leggere il listino.</p>'; return; }
+      const fasce = Array.isArray(periodo.fasce) ? periodo.fasce : [];
+
+      const testata = `
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
+          <strong style="font-size:1.05em">${escapeHtml(periodo.nome)}</strong>
+          ${periodo.dal ? `<span style="opacity:.7">dal ${pmoDataBreve(periodo.dal)} al ${pmoDataBreve(periodo.al)}</span>
+            <button class="btn-secondary" style="padding:2px 8px" onclick="pmoCambiaDatePeriodo()">Cambia date</button>
+            <button class="btn-secondary" style="padding:2px 8px" onclick="pmoEliminaPeriodo()">Elimina periodo</button>`
+            : '<span style="opacity:.7">sempre valida — è il fondo su cui poggia tutto</span>'}
+        </div>`;
+
+      const vuoti = [0, 1, 2, 3, 4, 5, 6].filter((g) => !fasce.some((f) => Number(f.giorno) === g && f.attiva !== false));
+      const avviso = vuoti.length ? `
+        <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:.9em">
+          ⚠️ In <strong>${vuoti.map((g) => PMO_GIORNI_NOMI[g]).join(', ')}</strong> non c'è nessuna fascia:
+          in quei giorni non si prenota niente. Se il circolo è aperto, aggiungile o copiale da un altro giorno.
+        </div>` : '';
 
       const perGiorno = [0, 1, 2, 3, 4, 5, 6].map((g) => ({
         giorno: g,
-        righe: pmoFasce.filter((f) => Number(f.giorno) === g)
-          .sort((a, b) => toMinutes(a.ora_inizio) - toMinutes(b.ora_inizio)),
+        righe: fasce.filter((f) => Number(f.giorno) === g).sort((a, b) => toMinutes(a.ora_inizio) - toMinutes(b.ora_inizio)),
       }));
 
-      box.innerHTML = perGiorno.map(({ giorno, righe }) => `
+      box.innerHTML = testata + avviso + perGiorno.map(({ giorno, righe }) => `
         <div style="margin-bottom:14px">
-          <div style="font-weight:600;margin-bottom:4px">${PMO_GIORNI_NOMI[giorno]} <span style="font-weight:400;opacity:.6">(${righe.length})</span></div>
+          <div style="font-weight:600;margin-bottom:4px">
+            ${PMO_GIORNI_NOMI[giorno]} <span style="font-weight:400;opacity:.6">(${righe.length})</span>
+            <button class="btn-secondary" style="padding:1px 7px;font-size:.85em;margin-left:6px" onclick="pmoAggiungiFascia(${giorno})">+ fascia</button>
+            <button class="btn-secondary" style="padding:1px 7px;font-size:.85em" onclick="pmoCopiaGiorno(${giorno})">copia da…</button>
+          </div>
           ${righe.length ? `<table style="width:100%;border-collapse:collapse;font-size:.92em">
             <tr style="text-align:left;opacity:.6"><th style="padding:2px 6px">dalle</th><th style="padding:2px 6px">alle</th><th style="padding:2px 6px">€ a giocatore</th><th style="padding:2px 6px">attiva</th><th style="padding:2px 6px">nota</th><th></th></tr>
             ${righe.map((f) => `<tr data-id="${escapeHtml(f.id)}">
@@ -18710,8 +18906,88 @@ Grazie.`
         </div>`).join('');
     }
 
+    /** Le chiusure: una riga per festività o ponte. */
+    function pmoRenderChiusure() {
+      const box = document.getElementById('pmoChiusureTabella');
+      if (!box || !pmoListino) return;
+      const righe = pmoListino.chiusure || [];
+      box.innerHTML = righe.length ? `<table style="width:100%;border-collapse:collapse;font-size:.92em">
+        <tr style="text-align:left;opacity:.6"><th style="padding:2px 6px">dal</th><th style="padding:2px 6px">al</th><th style="padding:2px 6px">motivo</th><th style="padding:2px 6px">ogni anno</th><th></th></tr>
+        ${righe.map((c) => `<tr>
+          <td style="padding:2px 6px"><input type="date" value="${escapeHtml(c.dal)}" onchange="pmoCambiaChiusura('${escapeHtml(c.id)}','dal',this.value)"></td>
+          <td style="padding:2px 6px"><input type="date" value="${escapeHtml(c.al)}" onchange="pmoCambiaChiusura('${escapeHtml(c.id)}','al',this.value)"></td>
+          <td style="padding:2px 6px"><input type="text" value="${escapeHtml(c.motivo || '')}" onchange="pmoCambiaChiusura('${escapeHtml(c.id)}','motivo',this.value)" style="width:100%"></td>
+          <td style="padding:2px 6px"><input type="checkbox" ${c.ogni_anno ? 'checked' : ''} onchange="pmoCambiaChiusura('${escapeHtml(c.id)}','ogni_anno',this.checked)"></td>
+          <td style="padding:2px 6px"><button class="btn-secondary" style="padding:2px 8px" onclick="pmoRimuoviChiusura('${escapeHtml(c.id)}')">✕</button></td>
+        </tr>`).join('')}
+      </table>` : '<div style="opacity:.5;font-size:.9em">— nessuna chiusura: il circolo risulta aperto tutti i giorni —</div>';
+    }
+
+    /**
+     * IL CALENDARIO DI CONTROLLO — un anno avanti, un quadratino per giorno.
+     * 🎯 Serve a **vedere** quello che le regole promettono: che colore ha ogni giorno (quale
+     * griglia vale) e quali sono chiusi. Un buco di copertura qui si vede a colpo d'occhio,
+     * invece di scoprirlo dal primo socio che non trova orari.
+     */
+    function pmoRenderCalendarioControllo() {
+      const box = document.getElementById('pmoCalendarioControllo');
+      if (!box) return;
+      if (!Array.isArray(pmoCalendarioControllo) || !pmoCalendarioControllo.length) {
+        box.innerHTML = '<div style="opacity:.5;font-size:.9em">— calendario non ancora letto —</div>';
+        return;
+      }
+      const coloreDi = {};
+      let n = 0;
+      (pmoListino?.periodi || []).forEach((p) => {
+        if (p.id === 'base') coloreDi[p.id] = '#e2e8f0';
+        else coloreDi[p.id] = PMO_COLORI_PERIODI[n++ % PMO_COLORI_PERIODI.length];
+      });
+
+      const perMese = {};
+      pmoCalendarioControllo.forEach((g) => {
+        const mese = g.data.slice(0, 7);
+        (perMese[mese] = perMese[mese] || []).push(g);
+      });
+
+      const mesi = Object.keys(perMese).sort().map((mese) => {
+        const giorni = perMese[mese];
+        const primo = new Date(`${giorni[0].data}T12:00`);
+        const nome = primo.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+        const vuotiPrima = (new Date(`${mese}-01T12:00`)).getDay();
+        const celle = [];
+        for (let i = 0; i < vuotiPrima; i++) celle.push('<div></div>');
+        giorni.forEach((g) => {
+          const numero = Number(g.data.slice(8, 10));
+          const colore = g.chiuso ? '#fecaca' : (coloreDi[g.periodo_id] || '#e2e8f0');
+          const testo = g.chiuso ? '#7f1d1d' : (g.periodo_id === 'base' ? '#334155' : '#fff');
+          const titolo = g.chiuso ? `${g.data} — CHIUSO: ${g.motivo || ''}` : `${g.data} — ${g.periodo_nome} · ${g.quante} fasce`;
+          const senzaFasce = !g.chiuso && g.quante === 0;
+          celle.push(`<div title="${escapeHtml(titolo)}" style="background:${colore};color:${testo};border-radius:4px;
+            text-align:center;font-size:.72em;line-height:1.7;${senzaFasce ? 'outline:2px solid #f59e0b;' : ''}">${numero}</div>`);
+        });
+        return `<div style="min-width:150px">
+          <div style="font-weight:600;font-size:.85em;margin-bottom:2px;text-transform:capitalize">${escapeHtml(nome)}</div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;opacity:.55;font-size:.7em;text-align:center">
+            ${PMO_GIORNI_INIZIALI.map((i) => `<div>${i}</div>`).join('')}
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">${celle.join('')}</div>
+        </div>`;
+      }).join('');
+
+      const legenda = (pmoListino?.periodi || []).map((p) =>
+        `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px">
+           <span style="width:12px;height:12px;border-radius:3px;background:${coloreDi[p.id]};display:inline-block"></span>${escapeHtml(p.nome)}</span>`).join('')
+        + '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px"><span style="width:12px;height:12px;border-radius:3px;background:#fecaca;display:inline-block"></span>chiuso</span>'
+        + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:12px;height:12px;border-radius:3px;outline:2px solid #f59e0b;display:inline-block"></span>aperto ma senza fasce</span>';
+
+      box.innerHTML = `<div style="font-size:.85em;margin-bottom:8px">${legenda}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:14px">${mesi}</div>`;
+    }
+
+    // ── CAMBIARE ───────────────────────────────────────────────────────────────────
     function pmoCambiaFascia(id, campo, valore) {
-      const f = (pmoFasce || []).find((x) => x.id === id);
+      const periodo = pmoPeriodoCorrente();
+      const f = (periodo?.fasce || []).find((x) => x.id === id);
       if (!f) return;
       if (campo === 'prezzo') {
         // Vuoto = «non deciso» (null), non zero. Sono due cose diverse e il vincolo del
@@ -18724,62 +19000,249 @@ Grazie.`
       } else {
         f[campo] = valore;
       }
-      pmoFasceSporche = true;
-      pmoFasceGrigliaCache = null;
-      pmoFasceAggiornaStato('Modifiche da salvare', 'pending');
+      pmoSegnaSporco(periodo.id);
     }
 
-    function pmoAggiungiFascia() {
-      if (!Array.isArray(pmoFasce)) pmoFasce = [];
-      const giorno = parseInt(prompt('Giorno? 0 = domenica, 1 = lunedì … 6 = sabato', '1'), 10);
+    function pmoAggiungiFascia(giornoPreScelto) {
+      const periodo = pmoPeriodoCorrente();
+      if (!periodo) return showAlert('⚠️ Carica prima il listino.', 'warning');
+      let giorno = giornoPreScelto;
+      if (!Number.isInteger(giorno)) {
+        giorno = parseInt(prompt('Giorno? 0 = domenica, 1 = lunedì … 6 = sabato', '1'), 10);
+      }
       if (!Number.isInteger(giorno) || giorno < 0 || giorno > 6) return showAlert('⚠️ Giorno non valido: dev\'essere da 0 (domenica) a 6 (sabato).', 'warning');
-      const inizio = String(prompt('Dalle? (hh:mm)', '18:00') || '').trim();
-      const fine = String(prompt('Alle? (hh:mm)', '19:30') || '').trim();
+      const inizio = String(prompt(`${PMO_GIORNI_NOMI[giorno]} — dalle? (hh:mm)`, '18:00') || '').trim();
+      if (!inizio) return;
+      const fine = String(prompt(`${PMO_GIORNI_NOMI[giorno]} ${inizio} — alle? (hh:mm)`, '19:30') || '').trim();
       if (!/^\d{2}:\d{2}$/.test(inizio) || !/^\d{2}:\d{2}$/.test(fine)) return showAlert('⚠️ Orari non validi: servono nel formato hh:mm.', 'warning');
       if (toMinutes(fine) <= toMinutes(inizio)) return showAlert('⚠️ La fascia finisce prima di cominciare.', 'warning');
-      const id = `${giorno}-${inizio.replace(':', '')}`;
-      if (pmoFasce.some((f) => f.id === id)) return showAlert('⚠️ Quella fascia esiste già in quel giorno.', 'warning');
-      pmoFasce.push({ id, giorno, ora_inizio: inizio, ora_fine: fine, prezzo_cents: null, attiva: true, note: null });
-      pmoFasceSporche = true;
-      pmoFasceGrigliaCache = null;
+      const id = `${periodo.id === 'base' ? '' : periodo.id + '-'}${giorno}-${inizio.replace(':', '')}`;
+      if ((periodo.fasce || []).some((f) => f.id === id)) return showAlert('⚠️ Quella fascia esiste già in quel giorno.', 'warning');
+      periodo.fasce = periodo.fasce || [];
+      periodo.fasce.push({ id, giorno, ora_inizio: inizio, ora_fine: fine, prezzo_cents: null, attiva: true, note: null });
+      pmoSegnaSporco(periodo.id);
       pmoRenderFasce();
-      pmoFasceAggiornaStato('Modifiche da salvare', 'pending');
+      pmoRenderPeriodi();
+    }
+
+    /**
+     * «Copia da…»: prende le fasce di un altro giorno e le mette qui, prezzi compresi.
+     * ⭐ È la cosa che rende sopportabile compilare una griglia: da lunedì a giovedì il circolo
+     * ha gli stessi orari, e riscriverli quattro volte è il modo in cui nasce un errore.
+     */
+    function pmoCopiaGiorno(giornoBersaglio) {
+      const periodo = pmoPeriodoCorrente();
+      if (!periodo) return;
+      const da = parseInt(prompt(`Copio in ${PMO_GIORNI_NOMI[giornoBersaglio]} le fasce di quale giorno?\n0 = domenica, 1 = lunedì … 6 = sabato`, '1'), 10);
+      if (!Number.isInteger(da) || da < 0 || da > 6 || da === giornoBersaglio) return;
+      const sorgenti = (periodo.fasce || []).filter((f) => Number(f.giorno) === da);
+      if (!sorgenti.length) return showAlert(`⚠️ ${PMO_GIORNI_NOMI[da]} non ha fasce da copiare.`, 'warning');
+      if (!confirm(`Sostituisco le fasce di ${PMO_GIORNI_NOMI[giornoBersaglio]} con le ${sorgenti.length} di ${PMO_GIORNI_NOMI[da]}?`)) return;
+      periodo.fasce = (periodo.fasce || []).filter((f) => Number(f.giorno) !== giornoBersaglio);
+      sorgenti.forEach((f) => {
+        periodo.fasce.push({
+          id: `${periodo.id === 'base' ? '' : periodo.id + '-'}${giornoBersaglio}-${String(f.ora_inizio).replace(':', '')}`,
+          giorno: giornoBersaglio, ora_inizio: f.ora_inizio, ora_fine: f.ora_fine,
+          prezzo_cents: f.prezzo_cents ?? null, attiva: f.attiva !== false, note: f.note || null,
+        });
+      });
+      pmoSegnaSporco(periodo.id);
+      pmoRenderFasce();
+      pmoRenderPeriodi();
     }
 
     function pmoRimuoviFascia(id) {
-      const f = (pmoFasce || []).find((x) => x.id === id);
+      const periodo = pmoPeriodoCorrente();
+      const f = (periodo?.fasce || []).find((x) => x.id === id);
       if (!f) return;
       if (!confirm(`Tolgo la fascia ${PMO_GIORNI_NOMI[Number(f.giorno)]} ${f.ora_inizio}-${f.ora_fine}?\n\nSe è solo una pausa di stagione, conviene spegnerla invece di toglierla.`)) return;
-      pmoFasce = pmoFasce.filter((x) => x.id !== id);
-      pmoFasceSporche = true;
-      pmoFasceGrigliaCache = null;
+      periodo.fasce = periodo.fasce.filter((x) => x.id !== id);
+      pmoSegnaSporco(periodo.id);
       pmoRenderFasce();
+      pmoRenderPeriodi();
+    }
+
+    /**
+     * Un periodo nuovo NASCE COME COPIA di quello che stai guardando.
+     * 🚨 E non è una comodità: un periodo con la griglia a metà **svuota** i giorni che non hai
+     * compilato — quei giorni non ricadono sulla base, perché il periodo li copre lo stesso.
+     * ⇒ Partendo da una copia, il peggio che può succedere è che i prezzi siano quelli vecchi.
+     */
+    function pmoNuovoPeriodo() {
+      if (!pmoListino) return showAlert('⚠️ Carica prima il listino.', 'warning');
+      const nome = String(prompt('Come si chiama il periodo?\n(es. «Estate 2027», «Feste di Natale»)', '') || '').trim();
+      if (!nome) return;
+      const dal = String(prompt(`«${nome}» — dal giorno? (aaaa-mm-gg)`, '') || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dal)) return showAlert('⚠️ Data non valida: serve nel formato aaaa-mm-gg.', 'warning');
+      const al = String(prompt(`«${nome}» — al giorno compreso? (aaaa-mm-gg)`, '') || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(al)) return showAlert('⚠️ Data non valida: serve nel formato aaaa-mm-gg.', 'warning');
+      if (al < dal) return showAlert('⚠️ La data di fine viene prima di quella di inizio.', 'warning');
+      const scontro = pmoListino.periodi.find((p) => p.dal && !(al < p.dal || dal > p.al));
+      if (scontro) return showAlert(`⚠️ Si accavalla con «${scontro.nome}» (${pmoDataBreve(scontro.dal)} → ${pmoDataBreve(scontro.al)}). Due periodi sullo stesso giorno darebbero due prezzi diversi.`, 'warning');
+
+      const id = pmoSlug(nome) || `periodo-${Date.now()}`;
+      if (pmoListino.periodi.some((p) => p.id === id)) return showAlert('⚠️ Esiste già un periodo con questo nome.', 'warning');
+      const sorgente = pmoPeriodoCorrente();
+      const fasce = (sorgente?.fasce || []).map((f) => ({
+        id: `${id}-${f.giorno}-${String(f.ora_inizio).replace(':', '')}`,
+        giorno: Number(f.giorno), ora_inizio: f.ora_inizio, ora_fine: f.ora_fine,
+        prezzo_cents: f.prezzo_cents ?? null, attiva: f.attiva !== false, note: f.note || null,
+      }));
+      pmoListino.periodi.push({ id, nome, dal, al, note: null, fasce });
+      pmoPeriodoScelto = id;
+      pmoSegnaSporco(id);
+      pmoRenderPeriodi();
+      pmoRenderFasce();
+      showAlert(`✅ «${nome}» creato come copia di «${sorgente?.nome || 'Griglia base'}». Cambia orari e prezzi, poi premi Salva.`, 'success');
+    }
+
+    function pmoSlug(testo) {
+      return String(testo || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    }
+
+    function pmoCambiaDatePeriodo() {
+      const periodo = pmoPeriodoCorrente();
+      if (!periodo || !periodo.dal) return;
+      const dal = String(prompt(`«${periodo.nome}» — dal giorno? (aaaa-mm-gg)`, periodo.dal) || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dal)) return;
+      const al = String(prompt(`«${periodo.nome}» — al giorno compreso? (aaaa-mm-gg)`, periodo.al) || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(al) || al < dal) return showAlert('⚠️ Date non valide.', 'warning');
+      const scontro = pmoListino.periodi.find((p) => p.id !== periodo.id && p.dal && !(al < p.dal || dal > p.al));
+      if (scontro) return showAlert(`⚠️ Si accavalla con «${scontro.nome}».`, 'warning');
+      periodo.dal = dal; periodo.al = al;
+      pmoSegnaSporco(periodo.id);
+      pmoRenderPeriodi();
+      pmoRenderFasce();
+    }
+
+    async function pmoEliminaPeriodo() {
+      const periodo = pmoPeriodoCorrente();
+      if (!periodo || periodo.id === 'base') return;
+      if (!confirm(`Elimino «${periodo.nome}» e le sue ${(periodo.fasce || []).length} fasce?\n\nDa ${pmoDataBreve(periodo.dal)} a ${pmoDataBreve(periodo.al)} tornerà a valere la griglia base.`)) return;
+      try {
+        const res = await pmoStaffRpc('pmo_elimina_periodo', { p_id: periodo.id }, 'cloud_sync', 'eliminare un periodo');
+        if (!res || res.ok !== true) throw new Error((res && (res.message || res.error)) || 'risposta non riconosciuta');
+        pmoPeriodoScelto = 'base';
+        await pmoCaricaFasce(false);
+        showAlert(`✅ «${periodo.nome}» eliminato: quei giorni tornano alla griglia base.`, 'success');
+      } catch (err) {
+        showAlert('❌ Periodo non eliminato: ' + err.message, 'danger');
+      }
+    }
+
+    // ── CHIUSURE ───────────────────────────────────────────────────────────────────
+    function pmoCambiaChiusura(id, campo, valore) {
+      const c = (pmoListino?.chiusure || []).find((x) => x.id === id);
+      if (!c) return;
+      if (campo === 'ogni_anno') c.ogni_anno = !!valore; else c[campo] = valore;
+      pmoChiusureSporche = true;
       pmoFasceAggiornaStato('Modifiche da salvare', 'pending');
     }
 
+    function pmoAggiungiChiusura() {
+      if (!pmoListino) return showAlert('⚠️ Carica prima il listino.', 'warning');
+      const motivo = String(prompt('Perché il circolo è chiuso?\n(es. «Natale», «Ferie», «Manutenzione»)', '') || '').trim();
+      if (!motivo) return;
+      const dal = String(prompt(`«${motivo}» — dal giorno? (aaaa-mm-gg)`, '') || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dal)) return showAlert('⚠️ Data non valida: serve nel formato aaaa-mm-gg.', 'warning');
+      const al = String(prompt(`«${motivo}» — fino a quale giorno compreso?\n(lascia uguale per un giorno solo)`, dal) || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(al) || al < dal) return showAlert('⚠️ Data non valida.', 'warning');
+      const ogniAnno = confirm(`«${motivo}» si ripete OGNI ANNO nelle stesse date?\n\nOK = ogni anno (Natale, Ferragosto…)\nAnnulla = solo quest'anno (ponti, ferie, manutenzioni)`);
+      const id = `${pmoSlug(motivo) || 'chiusura'}-${dal.replace(/-/g, '')}`;
+      if ((pmoListino.chiusure || []).some((c) => c.id === id)) return showAlert('⚠️ Esiste già una chiusura con questo motivo in quella data.', 'warning');
+      pmoListino.chiusure = pmoListino.chiusure || [];
+      pmoListino.chiusure.push({ id, dal, al, motivo, ogni_anno: ogniAnno, note: null });
+      pmoChiusureSporche = true;
+      pmoRenderChiusure();
+      pmoFasceAggiornaStato('Modifiche da salvare', 'pending');
+    }
+
+    /** Le feste italiane fisse, proposte in blocco: è la parte noiosa, e si fa una volta sola. */
+    function pmoAggiungiFesteItaliane() {
+      if (!pmoListino) return showAlert('⚠️ Carica prima il listino.', 'warning');
+      const anno = new Date().getFullYear();
+      const feste = [
+        ['01-01', 'Capodanno'], ['01-06', 'Epifania'], ['04-25', 'Liberazione'],
+        ['05-01', 'Festa dei lavoratori'], ['06-02', 'Festa della Repubblica'], ['08-15', 'Ferragosto'],
+        ['11-01', 'Ognissanti'], ['12-08', 'Immacolata'], ['12-25', 'Natale'], ['12-26', 'Santo Stefano'],
+      ];
+      pmoListino.chiusure = pmoListino.chiusure || [];
+      let aggiunte = 0;
+      feste.forEach(([mmdd, motivo]) => {
+        const data = `${anno}-${mmdd}`;
+        const id = `${pmoSlug(motivo)}-${data.replace(/-/g, '')}`;
+        if (pmoListino.chiusure.some((c) => c.id === id || (c.ogni_anno && String(c.dal).slice(5) === mmdd))) return;
+        pmoListino.chiusure.push({ id, dal: data, al: data, motivo, ogni_anno: true, note: null });
+        aggiunte++;
+      });
+      if (!aggiunte) return showAlert('Le feste fisse ci sono già tutte.', 'info');
+      pmoChiusureSporche = true;
+      pmoRenderChiusure();
+      pmoFasceAggiornaStato('Modifiche da salvare', 'pending');
+      showAlert(`✅ ${aggiunte} feste aggiunte come chiusure di ogni anno. Toglile se in qualcuna il circolo resta aperto, poi premi Salva.`, 'success');
+    }
+
+    function pmoRimuoviChiusura(id) {
+      const c = (pmoListino?.chiusure || []).find((x) => x.id === id);
+      if (!c) return;
+      if (!confirm(`Tolgo la chiusura «${c.motivo}» del ${pmoDataBreve(c.dal)}?\n\nDa quel giorno il circolo risulterà aperto.`)) return;
+      pmoListino.chiusure = pmoListino.chiusure.filter((x) => x.id !== id);
+      pmoChiusureSporche = true;
+      pmoRenderChiusure();
+      pmoFasceAggiornaStato('Modifiche da salvare', 'pending');
+    }
+
+    // ── SALVARE ────────────────────────────────────────────────────────────────────
+    // Un bottone solo: salva i periodi toccati e, se servono, le chiusure. Chi compila non deve
+    // ricordarsi quale metà stava cambiando.
     async function pmoSalvaFasce() {
-      if (!Array.isArray(pmoFasce) || !pmoFasce.length) return showAlert('⚠️ Non salvo un elenco vuoto: cancellerebbe tutte le fasce del circolo.', 'warning');
+      if (!pmoListino) return showAlert('⚠️ Carica prima il listino.', 'warning');
+      if (!pmoListinoSporco()) return showAlert('Non c\'è niente da salvare.', 'info');
+
       // Controllo delle sovrapposizioni PRIMA di scrivere: due fasce che si accavallano nello
-      // stesso giorno non le rifiuta il database (il vincolo guarda solo l'ora d'inizio), ma
-      // farebbero proporre al socio due volte lo stesso campo nello stesso momento.
-      for (let g = 0; g <= 6; g++) {
-        const righe = pmoFasce.filter((f) => Number(f.giorno) === g).sort((a, b) => toMinutes(a.ora_inizio) - toMinutes(b.ora_inizio));
-        for (let i = 1; i < righe.length; i++) {
-          if (toMinutes(righe[i].ora_inizio) < toMinutes(righe[i - 1].ora_fine)) {
-            return showAlert(`⚠️ ${PMO_GIORNI_NOMI[g]}: ${righe[i - 1].ora_inizio}-${righe[i - 1].ora_fine} e ${righe[i].ora_inizio}-${righe[i].ora_fine} si accavallano.`, 'warning');
+      // stesso giorno farebbero proporre al socio due volte lo stesso campo nello stesso momento.
+      // ⚖️ Lo rifiuta anche il database; qui si dice PRIMA e con parole, perché un rifiuto in
+      // faccia a chi ha appena compilato dieci righe è la differenza fra usabile e no.
+      for (const id of pmoListinoSporchi) {
+        const periodo = pmoListino.periodi.find((p) => p.id === id);
+        if (!periodo) continue;
+        if (!(periodo.fasce || []).length) {
+          return showAlert(`⚠️ «${periodo.nome}» non ha nessuna fascia: in quel periodo non si prenoterebbe niente. Se il circolo è chiuso, usa una chiusura.`, 'warning');
+        }
+        for (let g = 0; g <= 6; g++) {
+          const righe = periodo.fasce.filter((f) => Number(f.giorno) === g).sort((a, b) => toMinutes(a.ora_inizio) - toMinutes(b.ora_inizio));
+          for (let i = 1; i < righe.length; i++) {
+            if (toMinutes(righe[i].ora_inizio) < toMinutes(righe[i - 1].ora_fine)) {
+              return showAlert(`⚠️ «${periodo.nome}» — ${PMO_GIORNI_NOMI[g]}: ${righe[i - 1].ora_inizio}-${righe[i - 1].ora_fine} e ${righe[i].ora_inizio}-${righe[i].ora_fine} si accavallano.`, 'warning');
+            }
           }
         }
       }
+
       try {
         pmoFasceAggiornaStato('Salvo…', 'pending');
-        const res = await pmoStaffRpc('pmo_set_fasce_prenotabili', { p_fasce: pmoFasce }, 'cloud_sync', 'salvare le fasce prenotabili');
-        if (!res || res.ok !== true) throw new Error((res && (res.message || res.error)) || 'risposta non riconosciuta');
-        pmoFasceSporche = false;
+        let salvati = 0;
+        for (const id of Array.from(pmoListinoSporchi)) {
+          const periodo = pmoListino.periodi.find((p) => p.id === id);
+          if (!periodo) continue;
+          const res = await pmoStaffRpc('pmo_set_periodo', {
+            p_periodo: { id: periodo.id, nome: periodo.nome, dal: periodo.dal, al: periodo.al, note: periodo.note },
+            p_fasce: periodo.fasce,
+          }, 'cloud_sync', 'salvare il listino');
+          if (!res || res.ok !== true) throw new Error((res && (res.message || res.error)) || 'risposta non riconosciuta');
+          salvati++;
+        }
+        if (pmoChiusureSporche) {
+          const chiusure = pmoListino.chiusure || [];
+          const res = await pmoStaffRpc('pmo_set_chiusure', { p_chiusure: chiusure, p_svuota: chiusure.length === 0 }, 'cloud_sync', 'salvare le chiusure');
+          if (!res || res.ok !== true) throw new Error((res && (res.message || res.error)) || 'risposta non riconosciuta');
+        }
         await pmoCaricaFasce(false);
-        showAlert(`✅ ${res.quante} fasce salvate. Dashboard, Apri Partite e il bot useranno queste.`, 'success');
+        showAlert(`✅ Salvato: ${salvati} period${salvati === 1 ? 'o' : 'i'}${pmoChiusureSporche ? ' e le chiusure' : ''}. Dashboard, Apri Partite e il bot useranno questo.`, 'success');
       } catch (err) {
-        pmoFasceAggiornaStato('Non salvate', 'pending');
-        showAlert('❌ Fasce non salvate: ' + err.message, 'danger');
+        pmoFasceAggiornaStato('Non salvato', 'pending');
+        showAlert('❌ Listino non salvato: ' + err.message, 'danger');
       }
     }
     function matchesTimeFilter(slot, filter) {
