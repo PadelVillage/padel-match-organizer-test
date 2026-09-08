@@ -8689,7 +8689,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.402';
+    const APP_VERSION = '6.403';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -8805,108 +8805,34 @@ body.assessment-public-mode .assessment-public-only-card {
     // PROD perché gated PMO_IS_TEST_ENV. Precedenza sull'harness edge (__pmoPayHarness): la
     // simulazione NON si attiva quando il test pilota il percorso edge reale (mockato).
     const PMO_PAYMENTS_SIMULATE = PMO_IS_TEST_ENV;
-    // ── /test/ CHIUSO verso MATCHPOINT (SOLO TEST) ───────────────────────────────
-    // Le prove che SCRIVONO su Matchpoint — PRENOTAZIONI (crea/modifica/annulla → anche
-    // spostamenti, durata, note, giocatori) e ANAGRAFICA (crea/modifica/disattiva/riattiva
-    // socio) — NON devono toccare il Matchpoint REALE: il worker è UN processo condiviso
-    // TEST+PROD, quindi senza questo una prova su /test/ scriverebbe davvero (e la sync PROD
-    // la importa — vedi memoria "test-bookings-leak-to-prod-matchpoint"). L'app intercetta le
-    // edge di SCRITTURA matchpoint-bookings-(create|edit|cancel) e matchpoint-clients-(create|
-    // update|disable|reactivate) e restituisce una risposta SIMULATA di successo: la UI
-    // ottimistica + il cloud di TEST procedono come se MP avesse accettato, ma su Matchpoint
-    // non si scrive nulla. I READ/IMPORT (…-sync, read-tabellone) NON sono intercettati → i
-    // dati veri restano visibili. Interruttore runtime: window.__pmoBookingSim (default true
-    // in TEST) → false per prove MP REALI. I pulsanti diagnostici "Prova REALE…" bypassano via
-    // header X-PMO-Real-MP. Gated PMO_IS_TEST_ENV → zero impatto su PROD (unica verità = MP).
-    const PMO_BOOKINGS_SIMULATE = PMO_IS_TEST_ENV;
-    if (PMO_BOOKINGS_SIMULATE && typeof window !== 'undefined' && !window.__pmoBookingSimInstalled) {
-      window.__pmoBookingSimInstalled = true;
-      if (typeof window.__pmoBookingSim === 'undefined') window.__pmoBookingSim = true;
-      const _pmoRealFetch = (typeof window.fetch === 'function') ? window.fetch.bind(window) : null;
-      if (_pmoRealFetch) {
-        const _pmoUid = function () { return 'TEST-' + Date.now() + '-' + Math.floor(Math.random() * 100000); };
-        const _MP_WRITE_RE = /\/functions\/v1\/matchpoint-(bookings-(?:create|edit|cancel)|clients-(?:create|update|disable|reactivate))\b/;
-        window.fetch = function (url, opts) {
-          try {
-            const u = (typeof url === 'string') ? url : (url && url.url) || '';
-            if (window.__pmoBookingSim && _MP_WRITE_RE.test(u)) {
-              // Escape esplicito per una prova MP reale (header X-PMO-Real-MP): usato dai pulsanti diagnostici.
-              let _real = false;
-              try {
-                const h = opts && opts.headers;
-                if (h) _real = (typeof h.get === 'function') ? !!h.get('X-PMO-Real-MP') : !!(h['X-PMO-Real-MP'] || h['x-pmo-real-mp']);
-              } catch (e) {}
-              // 🔎 LETTURA, non scrittura — v6.131, col suo OK esplicito. `matchpoint-bookings-edit`
-              // con `read:true` chiede SOLTANTO l'elenco dei partecipanti della scheda Matchpoint:
-              // non tocca niente (l'edge stessa salta il record di modifica quando readOnly, e il
-              // worker legge gli input senza mai inviare il form). Finiva intercettata per un
-              // EFFETTO COLLATERALE dell'aggancio per INDIRIZZO: questa lettura condivide l'URL con
-              // la modifica, e la risposta simulata — «ok» ma SENZA giocatori — lasciava la scheda a
-              // «(nessuno)» per ogni prenotazione nata su Matchpoint ⇒ su TEST i giocatori non si
-              // vedevano MAI, e il difetto si travestiva da «stavi già modificando» (l'unico ramo
-              // rimasto a valle). Trovato dal committente aprendo la scheda, il 29/07.
-              // ⭐ Il commento in testa a questo blocco dichiarava GIÀ l'intenzione giusta — «i
-              // READ/IMPORT NON sono intercettati» —: questa riga la rende vera anche qui.
-              // 🚨 Restringe il meno possibile: quell'UNICO indirizzo e quell'UNICO flag. Ogni
-              // scrittura (create/edit/cancel senza `read`, e tutta l'anagrafica) resta SIMULATA.
-              let _isReadOnly = false;
-              try {
-                if (/matchpoint-bookings-edit\b/.test(u)) {
-                  const _rb = (opts && typeof opts.body === 'string') ? JSON.parse(opts.body) : null;
-                  _isReadOnly = !!(_rb && _rb.read === true);
-                }
-                // ⭐ v6.174 — La PROVA A VUOTO della creazione non è una scrittura: l'edge esce
-                // prima del worker e prima di qualunque upsert, e risponde solo QUALE CHIAVE
-                // userebbe. Se la si intercettasse qui, su TEST risponderebbe la simulazione e la
-                // prova direbbe «tutto bene» senza aver guardato niente — cioè il difetto che la
-                // prova a vuoto esiste per evitare. Stessa identica ragione del `read:true` sopra.
-                // 🚨 Restringe al minimo: quell'UNICO indirizzo e quell'UNICO flag.
-                if (/matchpoint-bookings-create\b/.test(u)) {
-                  const _cb = (opts && typeof opts.body === 'string') ? JSON.parse(opts.body) : null;
-                  if (_cb && _cb.provaAVuoto === true) _isReadOnly = true;
-                }
-                // Il «che cosa sai fare?» è una GET senza corpo: non tocca niente.
-                if (/matchpoint-bookings-create\b/.test(u) && /[?&]features=1/.test(u)) _isReadOnly = true;
-              } catch (e) { _isReadOnly = false; } // corpo illeggibile ⇒ si tratta come scrittura
-              if (!_real && !_isReadOnly) {
-                const isClients = /matchpoint-clients-/.test(u);
-                const kind = (u.match(/matchpoint-(?:bookings|clients)-(\w+)/) || [])[1] || 'edit';
-                const isJobPoll = /[?&]jobId=/.test(u);
-                let isAsync = false;
-                try { const b = (opts && typeof opts.body === 'string') ? JSON.parse(opts.body) : null; isAsync = !!(b && b.async); } catch (e) {}
-                let payload;
-                if (isClients) {
-                  // ANAGRAFICA: create richiede un `worker.codice` per contare come successo (vedi
-                  // pmoCreateMemberInMatchpoint); update legge `worker.updatedFields` per confermare
-                  // i campi (incluso livello) → li dichiaro tutti così non avvisa "non atterrato".
-                  if (kind === 'create') {
-                    const _c = _pmoUid();
-                    payload = { ok: true, simulated: true, worker: { codice: _c, idInterno: _c }, warning: 'TEST: socio NON creato su Matchpoint (ambiente chiuso).' };
-                  } else if (kind === 'update') {
-                    payload = { ok: true, simulated: true, worker: { updatedFields: ['nome', 'cognome', 'telefono', 'email', 'sesso', 'livello'] }, warning: 'TEST: anagrafica NON aggiornata su Matchpoint (ambiente chiuso).' };
-                  } else {
-                    payload = { ok: true, simulated: true, warning: 'TEST: anagrafica NON modificata su Matchpoint (ambiente chiuso).' };
-                  }
-                } else if (isJobPoll) {
-                  payload = { status: 'done', message: 'TEST: simulato (nessuna scrittura su Matchpoint)', worker_result: { idReserva: _pmoUid() } };
-                } else if (kind === 'create' && isAsync) {
-                  payload = { jobId: 'TESTJOB-' + Date.now(), status: 'pending', simulated: true };
-                } else if (kind === 'create') {
-                  const _id = _pmoUid();
-                  payload = { ok: true, simulated: true, idReserva: _id, worker: { idReserva: _id }, warning: 'TEST: prenotazione NON creata su Matchpoint (ambiente chiuso).' };
-                } else {
-                  payload = { ok: true, simulated: true, warning: 'TEST: modifica NON propagata a Matchpoint (ambiente chiuso).' };
-                }
-                try { console.info('[pmo-mp-sim] TEST — simulato (niente Matchpoint):', (isClients ? 'clients-' : 'bookings-') + kind, u); } catch (e) {}
-                return Promise.resolve(new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } }));
-              }
-            }
-          } catch (e) {}
-          return _pmoRealFetch(url, opts);
-        };
-        try { console.info('%c[pmo-mp-sim] TEST: prove prenotazioni + anagrafica SIMULATE — Matchpoint non viene toccato. Disattiva con window.__pmoBookingSim=false', 'color:#b45309'); } catch (e) {}
-      }
-    }
+    // ── LA SIMULAZIONE NEL BROWSER NON C'È PIÙ (08/09/2026) ──────────────────────
+    // 🗣️ Parole sue: *«le scritture sono simulate verso Matchpoint, ma devono essere proprio
+    // chiuse, non simulate, così siamo tranquilli che in futuro non ci sia dialogo fra Matchpoint
+    // e gestionale di test»*.
+    //
+    // 📍 COSA C'ERA QUI, e perché se ne va. Un intercettatore su `window.fetch` fermava le
+    // chiamate a `matchpoint-bookings-(create|edit|cancel)` e `matchpoint-clients-(create|update|
+    // disable|reactivate)` e **rispondeva da sé** `{ ok: true, simulated: true }` con un
+    // `idReserva` inventato (`TEST-…`): la richiesta non usciva nemmeno dal browser. Serviva
+    // quando l'unica difesa era qui — il worker è UN processo condiviso TEST+PROD, e una prova
+    // fatta di qua avrebbe scritto sul Matchpoint VERO.
+    //
+    // ⚖️ Quella difesa oggi sta DOVE LA PENNA TOCCA LA CARTA, cioè nell'edge
+    // (`scrittura-al-circolo.ts`, undici copie): fuori dalla produzione il worker non lo chiama
+    // nessuno. E vale **per chiunque chiami**, non solo per chi ha un browser — il bot dei soci
+    // un browser non ce l'ha mai avuto.
+    // ⇒ Con la difesa vera a valle, questa qui non proteggeva più niente: **nascondeva**. Faceva
+    //   sembrare riuscita una scrittura che nessuno aveva mai eseguito, e con un identificativo
+    //   che non esisteva da nessuna parte.
+    //
+    // 🚨 COSA SUCCEDE ORA, ed è la cosa da sapere prima di premere un bottone su TEST:
+    //   · **prenotare, modificare, annullare** → la chiamata arriva davvero all'edge, che la
+    //     scrive **nel gestionale** (nativa, `PMO-…`). Il circolo esterno non viene toccato;
+    //   · **anagrafica** (crea/modifica/disattiva/riattiva socio) → l'edge **RIFIUTA**
+    //     (`503 AMBIENTE_DI_PROVA`), e adesso il rifiuto **si vede** invece di essere coperto da
+    //     un finto «fatto». Finché l'anagrafica non sarà nativa (voce 182), da TEST non si tocca.
+    // 📌 *Una simulazione che copre una difesa vera non è una seconda difesa: è una benda
+    //   sull'unico occhio che guarda.*
     // Assistente AI: attivo in TUTTI gli ambienti (TEST e PROD).
     // 🔻 v6.321 (04/09/2026) — LA SEZIONE «Assistente AI» NON ESISTE PIÙ, per decisione del
     // committente: via il capitolo dalla barra, il pannello (Vocabolario, Modalità
@@ -9030,13 +8956,15 @@ body.assessment-public-mode .assessment-public-only-card {
     document.title = `Padel Match Organizer v${APP_VERSION}${PMO_IS_TEST_ENV ? ' TEST' : ''}`;
     document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = `v${APP_VERSION}`; });
     document.querySelectorAll('[data-env-label]').forEach(el => {
-      // In TEST col "ambiente chiuso" attivo, segnala che le prenotazioni NON toccano Matchpoint.
-      const _simOn = PMO_IS_TEST_ENV && (typeof window === 'undefined' || window.__pmoBookingSim !== false);
-      el.textContent = PMO_IS_TEST_ENV ? (_simOn ? 'TEST · MP simulato' : 'TEST · MP REALE') : '';
+      // 🔄 08/09/2026 — l'etichetta diceva «TEST · MP simulato», e da oggi sarebbe falsa: la
+      // simulazione nel browser non c'è più (vedi il blocco in cima). Qui le prenotazioni sono
+      // **native del gestionale** e il circolo esterno non si chiama mai.
+      // 📌 *Un'etichetta che descrive un meccanismo tolto è peggio di nessuna etichetta: dice
+      //   che esiste una strada, e chi legge la cerca.*
+      el.textContent = PMO_IS_TEST_ENV ? 'TEST · gestionale nuovo' : '';
       el.hidden = !PMO_IS_TEST_ENV;
-      if (PMO_IS_TEST_ENV) el.title = _simOn
-        ? 'Ambiente chiuso: le prove (prenotazioni e anagrafica) NON vengono scritte su Matchpoint (window.__pmoBookingSim=true).'
-        : '⚠️ Prenotazioni e anagrafica vengono scritte sul Matchpoint REALE condiviso (window.__pmoBookingSim=false).';
+      if (PMO_IS_TEST_ENV) el.title = 'Le prenotazioni nascono QUI, nel gestionale. '
+        + 'Il Matchpoint del circolo non viene chiamato da questo ambiente, in nessun caso.';
     });
     document.querySelectorAll('[data-test-env-only]').forEach(el => { el.hidden = !PMO_IS_TEST_ENV; });
     const FIELDS = ['Campo 1', 'Campo 2', 'Campo 3', 'Campo 4'];
@@ -45608,7 +45536,12 @@ Per confermare scrivi ELIMINA.`);
       if (_payShow && _paySimUi) {
         const simNote = document.createElement('div');
         simNote.style.cssText = 'font-size:.74rem;color:#92600a;background:#fff7e6;border:1px solid #f5d98a;border-radius:8px;padding:6px 8px;margin-bottom:8px;';
-        simNote.innerHTML = '🧪 <strong>Simulazione</strong> — gli incassi non toccano Matchpoint: appaiono solo nella sezione Incassi (cloud TEST).';
+        // 🔄 08/09/2026 — qui c'era scritto «Simulazione — appaiono nella sezione Incassi», e non
+        // è più vero: la chiamata arriva all'edge, che fuori dalla produzione **rifiuta**. Nessun
+        // incasso viene registrato da nessuna parte. 📌 *Una nota che promette un effetto che non
+        // avviene manda a cercare il difetto dove non c'è.*
+        simNote.innerHTML = '⛔ <strong>Da qui non si incassa</strong> — il gestionale rifiuta l\'incasso: '
+          + 'il Matchpoint del circolo non viene chiamato e in Incassi non compare niente.';
         playersSec.appendChild(simNote);
       }
       // ORGANIZZATORE: calcolato UNA volta per scheda (non per riga). Vale solo per le Partite,
@@ -46099,7 +46032,7 @@ Per confermare scrivi ELIMINA.`);
         const payHint = document.createElement('div');
         payHint.style.cssText = 'font-size:11px;color:var(--text-muted);margin-top:8px;';
         payHint.textContent = _paySimUi
-          ? 'Imposta il costo per ogni giocatore, poi incassa: in simulazione il pagamento appare solo in Incassi (non tocca Matchpoint).'
+          ? 'Imposta il costo per ogni giocatore. ⛔ L\'incasso da qui viene rifiutato: il gestionale non registra pagamenti in questo ambiente.'
           : (_anyUnknown
               ? 'Lo stato dei pagamenti si aggiorna da Matchpoint appena la lista giocatori è letta.'
               : (_payCollectActive
