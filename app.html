@@ -8689,7 +8689,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.403';
+    const APP_VERSION = '6.404';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -18570,7 +18570,15 @@ Grazie.`
     let pmoCalendarioControllo = null; // lo stesso, un anno avanti, per il calendario del pannello
     let pmoFasceGrigliaCache = null;
     const PMO_GIORNI_NOMI = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-    const PMO_GIORNI_INIZIALI = ['D', 'L', 'M', 'M', 'G', 'V', 'S'];
+    // 🗓️ LA SETTIMANA COMINCIA DAL LUNEDÌ — sua richiesta guardando il pannello (08/09/2026):
+    // *«la settimana deve iniziare dal lunedì con il numero 1»*.
+    // 🚨 Cambia l'ORDINE IN CUI SI MOSTRA, non il numero con cui il giorno è scritto: nel database
+    // (e in tutto il resto dell'app) `giorno` è l'indice di `Date.getDay()` — 0 = domenica — e il
+    // lunedì è **già** 1. Rinumerare vorrebbe dire tradurre in ogni lettore, compresi i due del
+    // bot, per guadagnare zero. 📌 *L'ordine è una cosa che si guarda, il numero una cosa che si
+    // scrive: cambiare il secondo per aggiustare il primo è il modo in cui nascono i disallineamenti.*
+    const PMO_GIORNI_ORDINE = [1, 2, 3, 4, 5, 6, 0];
+    const PMO_GIORNI_INIZIALI = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
     // I colori dei periodi nel calendario di controllo. La base non ha colore: è lo sfondo.
     const PMO_COLORI_PERIODI = ['#7c3aed', '#0891b2', '#ea580c', '#16a34a', '#db2777', '#ca8a04'];
 
@@ -18801,14 +18809,14 @@ Grazie.`
             : '<span style="opacity:.7">sempre valida — è il fondo su cui poggia tutto</span>'}
         </div>`;
 
-      const vuoti = [0, 1, 2, 3, 4, 5, 6].filter((g) => !fasce.some((f) => Number(f.giorno) === g && f.attiva !== false));
+      const vuoti = PMO_GIORNI_ORDINE.filter((g) => !fasce.some((f) => Number(f.giorno) === g && f.attiva !== false));
       const avviso = vuoti.length ? `
         <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:.9em">
           ⚠️ In <strong>${vuoti.map((g) => PMO_GIORNI_NOMI[g]).join(', ')}</strong> non c'è nessuna fascia:
           in quei giorni non si prenota niente. Se il circolo è aperto, aggiungile o copiale da un altro giorno.
         </div>` : '';
 
-      const perGiorno = [0, 1, 2, 3, 4, 5, 6].map((g) => ({
+      const perGiorno = PMO_GIORNI_ORDINE.map((g) => ({
         giorno: g,
         righe: fasce.filter((f) => Number(f.giorno) === g).sort((a, b) => toMinutes(a.ora_inizio) - toMinutes(b.ora_inizio)),
       }));
@@ -18881,7 +18889,9 @@ Grazie.`
         const giorni = perMese[mese];
         const primo = new Date(`${giorni[0].data}T12:00`);
         const nome = primo.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
-        const vuotiPrima = (new Date(`${mese}-01T12:00`)).getDay();
+        // 🗓️ Con la settimana che comincia di lunedì, il primo del mese scivola di (getDay+6)%7
+        // colonne invece che di getDay: domenica non è più la prima, è l'ultima.
+        const vuotiPrima = ((new Date(`${mese}-01T12:00`)).getDay() + 6) % 7;
         const celle = [];
         for (let i = 0; i < vuotiPrima; i++) celle.push('<div></div>');
         giorni.forEach((g) => {
@@ -18936,7 +18946,7 @@ Grazie.`
       if (!periodo) return showAlert('⚠️ Carica prima il listino.', 'warning');
       let giorno = giornoPreScelto;
       if (!Number.isInteger(giorno)) {
-        giorno = parseInt(prompt('Giorno? 0 = domenica, 1 = lunedì … 6 = sabato', '1'), 10);
+        giorno = parseInt(prompt('Giorno? 1 = lunedì, 2 = martedì … 6 = sabato, 0 = domenica', '1'), 10);
       }
       if (!Number.isInteger(giorno) || giorno < 0 || giorno > 6) return showAlert('⚠️ Giorno non valido: dev\'essere da 0 (domenica) a 6 (sabato).', 'warning');
       const inizio = String(prompt(`${PMO_GIORNI_NOMI[giorno]} — dalle? (hh:mm)`, '18:00') || '').trim();
@@ -18961,7 +18971,7 @@ Grazie.`
     function pmoCopiaGiorno(giornoBersaglio) {
       const periodo = pmoPeriodoCorrente();
       if (!periodo) return;
-      const da = parseInt(prompt(`Copio in ${PMO_GIORNI_NOMI[giornoBersaglio]} le fasce di quale giorno?\n0 = domenica, 1 = lunedì … 6 = sabato`, '1'), 10);
+      const da = parseInt(prompt(`Copio in ${PMO_GIORNI_NOMI[giornoBersaglio]} le fasce di quale giorno?\n1 = lunedì, 2 = martedì … 6 = sabato, 0 = domenica`, '1'), 10);
       if (!Number.isInteger(da) || da < 0 || da > 6 || da === giornoBersaglio) return;
       const sorgenti = (periodo.fasce || []).filter((f) => Number(f.giorno) === da);
       if (!sorgenti.length) return showAlert(`⚠️ ${PMO_GIORNI_NOMI[da]} non ha fasce da copiare.`, 'warning');
@@ -19138,7 +19148,7 @@ Grazie.`
         if (!(periodo.fasce || []).length) {
           return showAlert(`⚠️ «${periodo.nome}» non ha nessuna fascia: in quel periodo non si prenoterebbe niente. Se il circolo è chiuso, usa una chiusura.`, 'warning');
         }
-        for (let g = 0; g <= 6; g++) {
+        for (const g of PMO_GIORNI_ORDINE) {
           const righe = periodo.fasce.filter((f) => Number(f.giorno) === g).sort((a, b) => toMinutes(a.ora_inizio) - toMinutes(b.ora_inizio));
           for (let i = 1; i < righe.length; i++) {
             if (toMinutes(righe[i].ora_inizio) < toMinutes(righe[i - 1].ora_fine)) {
