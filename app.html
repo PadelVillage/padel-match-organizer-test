@@ -8699,7 +8699,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.406';
+    const APP_VERSION = '6.407';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -42156,6 +42156,69 @@ Per confermare scrivi ELIMINA.`);
       try { if (typeof renderStaffCalendar === 'function') renderStaffCalendar(); } catch (e) {}
     } catch (e) { console.warn('persist roster da worker:', e); }
   }
+  /** 🆕⭐⭐ VOCE 180 — LE RIGHE CHE ESISTEVANO PRIMA DELLA CURA PRENDONO IL PREZZO.
+   *
+   * 📏 La misura che apre il problema: delle `staff_booking` vive sul gestionale nuovo, **due**
+   * portano gli importi — e sono le due che qualcuno ha aperto a mano, cioè quelle con `lettoAt`.
+   * Tutte le altre hanno **solo i nomi**. ⇒ La cassa non avrebbe su cosa addebitare, e il prezzo
+   * che nasce dal listino (creazione, e giocatore aggiunto) vale solo da qui in avanti.
+   *
+   * ⚖️ **PERCHÉ ALL'APERTURA E NON UNA MIGRAZIONE UNA-TANTUM**, che era l'altra strada:
+   *   · una migrazione **invecchia**: cura le righe di oggi e non quelle create domani da una
+   *     strada che ancora non conosciamo — e ne resterà almeno una, perché la lista delle strade
+   *     non è chiusa;
+   *   · questa è **idempotente per costruzione** (regola ②: un importo già presente vince), quindi
+   *     può girare mille volte senza fare danno — e la seconda apertura non scrive niente;
+   *   · e mette il prezzo **nel momento in cui qualcuno sta per usarlo**, invece che in un istante
+   *     scelto da noi.
+   *
+   * ⛔ QUELLO CHE NON FA, e va saputo perché è la metà che resta scoperta:
+   *   · una riga che **nessuno apre** resta senza importo. È onesto (la casella dirà «—»), non
+   *     completo: se la cassa dovrà addebitare senza passare dalla scheda, quelle righe le vedrà
+   *     vuote;
+   *   · una prenotazione **passata** non ha prezzo, perché il calendario che l'app carica parte da
+   *     oggi. `null` ⇒ non si scrive niente, che è la regola ①. Inventarne uno a ritroso sarebbe
+   *     peggio del vuoto.
+   *   · non tocca le **occupazioni** che arrivano dal sync (niente `id`): quelle non sono nostre.
+   *
+   * 🚨 E scrive SOLO se qualcosa è davvero cambiato: senza quella guardia ogni apertura di scheda
+   * ripingerebbe il record al cloud. *Un campanello che suona sempre non dice più niente* — è la
+   * stessa ragione per cui `_pmoRosterCambiato` esiste. Torna `true` se ha riempito. */
+  function _staffCalRiempiImportiDalListino(iso, campoNum, ora) {
+    try {
+      const prezzo = _pmoPrezzoDelloSlot(
+        (typeof pmoCalendarioMappa !== 'undefined' ? pmoCalendarioMappa : null), iso, ora);
+      // ① prezzo non deciso (listino non caricato, giorno chiuso, fascia senza prezzo, data
+      //    passata) ⇒ non si scrive niente. Uno zero qui vorrebbe dire «gratis».
+      if (prezzo === null) return false;
+      const list = (typeof safeLoad === 'function') ? safeLoad('staffBookings', []) : [];
+      if (!Array.isArray(list)) return false;
+      const b = list.find(function (x) {
+        return x && String(x.data).trim() === String(iso).trim()
+          && Number(String(x.campo).replace(/\D/g, '')) === campoNum
+          && String(x.ora).trim() === String(ora).trim();
+      });
+      // ⛔ Solo le prenotazioni NOSTRE: le occupazioni del sync non hanno `id` e non ci appartengono.
+      if (!b || !b.id || !Array.isArray(b.giocatori) || !b.giocatori.length) return false;
+      // 🩹 Le righe possono essere STRINGHE (il sync scrive l'elenco come nomi): si portano alla
+      //    forma a oggetto prima, o l'importo finirebbe addosso a un `String`. È lo stesso caso
+      //    che la voce 142 ha trovato su un quarto delle prenotazioni.
+      const prima = b.giocatori.map(function (g) {
+        return (typeof g === 'string') ? { nome: g.trim() } : Object.assign({}, g);
+      });
+      const dopo = _pmoImportiDalListino(prima, prezzo, new Date().toISOString());
+      const cambiato = dopo.some(function (r, i) {
+        const v = prima[i] || {};
+        return r.importoCents !== v.importoCents || r.pendenteCents !== v.pendenteCents;
+      });
+      if (!cambiato) return false;
+      b.giocatori = dopo;
+      if (typeof save === 'function') save('staffBookings', list);
+      try { if (typeof staffCalCloudSyncEdit === 'function') staffCalCloudSyncEdit(iso, campoNum, ora); } catch (e) {}
+      return true;
+    } catch (e) { console.warn('riempi importi dal listino:', e); return false; }
+  }
+
   // Push al cloud di uno SPOSTAMENTO staff. Modellato come "annulla origine + crea destinazione":
   // alla voce spostata (già al nuovo slot in locale) assegna un id NUOVO, poi spinge il vecchio id
   // come deleted (slot d'origine) + staff_suppress(origine) + il nuovo record attivo. Così su tutti
@@ -45236,6 +45299,9 @@ Per confermare scrivi ELIMINA.`);
         .filter(Boolean)
         .map(function (p, i) { return Object.assign({}, p, { idx: (p.idx != null ? p.idx : i), nome: String(p.nome).trim() }); });
     };
+    // 🆕 VOCE 180 — si riempie PRIMA di leggere, o la scheda mostrerebbe lo stato vecchio e il
+    //    prezzo comparirebbe solo alla riapertura. Idempotente: la seconda volta non scrive niente.
+    try { _staffCalRiempiImportiDalListino(isoDate, campoNum, ora); } catch (e) {}
     let _localRoster = [];
     try {
       const _list = (typeof safeLoad === 'function') ? safeLoad('staffBookings', []) : [];
