@@ -8661,7 +8661,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.399';
+    const APP_VERSION = '6.400';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -18643,7 +18643,15 @@ Grazie.`
     async function pmoCaricaFasce(mostraEsito = false) {
       try {
         pmoFasceAggiornaStato('Carico…', 'pending');
-        const res = await pmoStaffRpc('pmo_get_fasce_prenotabili', {}, 'cloud_sync', 'leggere le fasce prenotabili');
+        // 🚨 LEGGERE non vuole un permesso speciale, e metterlo è stato un difetto vero:
+        // misurato sulla pagina viva di TEST il 08/09, con `cloud_sync` le fasce NON si
+        // caricavano per un profilo `staff` che quel permesso non ce l'ha ⇒ la Dashboard
+        // ripiegava sulla griglia cablata nel codice e disegnava **un lunedì senza la fascia
+        // delle 16:30**, cioè un orario che il circolo ha davvero. Un permesso più stretto della
+        // guardia del database non protegge niente: fa solo mentire il calendario.
+        // ⇒ Permesso vuoto = «basta un profilo staff attivo», che è esattamente ciò che chiede
+        //   `pmo_get_fasce_prenotabili`. Il permesso resta sulla SCRITTURA, che è un'altra cosa.
+        const res = await pmoStaffRpc('pmo_get_fasce_prenotabili', {}, '', 'leggere le fasce prenotabili');
         if (!res || res.ok !== true) throw new Error((res && res.error) || 'risposta non riconosciuta');
         pmoFasce = Array.isArray(res.fasce) ? res.fasce : [];
         pmoFasceGrigliaCache = null;
