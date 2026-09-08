@@ -8661,7 +8661,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.400';
+    const APP_VERSION = '6.401';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -9969,6 +9969,13 @@ Grazie.`
         if (passwordInput) passwordInput.value = '';
         setStaffAuthState(true);
         renderPmoAdministration();
+        // ⭐ VOCE 176 — le fasce si caricano ANCHE qui, e non solo all'avvio.
+        // 📏 Misurato sulla pagina viva di TEST il 08/09: chi entra con email e password fa
+        // partire il boot PRIMA di avere la sessione, quindi il caricamento all'avvio parte
+        // senza gettone e fallisce — e la Dashboard resta sul ripiego, disegnando un lunedì
+        // senza la fascia delle 16:30. Il boot serve a chi ha già la sessione, questo a chi
+        // sta entrando adesso: sono due momenti diversi e servono tutti e due.
+        try { pmoCaricaFasce(false); } catch (err) { console.warn('pmoCaricaFasce login', err); }
       } catch (err) {
         pmoClearSupabaseStaffSession();
         pmoSetLoginMessage(err.message || 'Accesso non riuscito.');
@@ -17886,6 +17893,14 @@ Grazie.`
       panel.classList.toggle('open', shouldOpen);
       const button = panel.querySelector('.matchpoint-data-accordion-toggle');
       if (button) button.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+      // ⭐ VOCE 176 — aprire il pannello delle fasce è il terzo momento in cui vale la pena
+      // andarle a prendere: il boot serve a chi ha già la sessione, il login a chi entra
+      // adesso, e questo a chi apre il pannello dopo che uno dei due è andato storto.
+      // ⚖️ Solo se non ci sono già: riaprire il pannello non deve buttare via le modifiche
+      // non ancora salvate.
+      if (shouldOpen && id === 'matchpointSlotAccordion' && !Array.isArray(pmoFasce)) {
+        try { pmoCaricaFasce(false); } catch (err) { console.warn('pmoCaricaFasce accordion', err); }
+      }
       return shouldOpen;
     }
 

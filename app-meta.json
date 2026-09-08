@@ -1,8 +1,8 @@
 {
   "source_repo": "PadelVillage/padel-match-organizer",
   "source_branch": "test-preview",
-  "source_sha": "dc4e58247527e122dd90da6429623aa863ebc45e",
-  "source_commit_date": "2026-09-08T13:41:24Z",
-  "synced_at": "2026-09-08T13:41:43Z",
+  "source_sha": "6c129b99ffa6e00a6967cf199250ed8cddcda205",
+  "source_commit_date": "2026-09-08T13:44:21Z",
+  "synced_at": "2026-09-08T13:44:38Z",
   "note": "app.html e questo file sono COPIE generate: non modificarli a mano. Sorgente: index.html sul ramo test-preview."
 }
