@@ -8422,33 +8422,27 @@ body.assessment-public-mode .assessment-public-only-card {
               <div class="matchpoint-data-accordion" id="matchpointSlotAccordion">
                 <button type="button" class="matchpoint-data-accordion-toggle" aria-expanded="false" aria-controls="matchpointSlotAccordionPanel" onclick="toggleMatchpointDataAccordion('matchpointSlotAccordion')">
                   <span>
-                    <span class="matchpoint-data-accordion-title"><span class="matchpoint-data-step">6</span> Slot potenziali Matchpoint</span>
-                    <span class="matchpoint-data-accordion-subtitle">Griglia teorica settimanale usata da Dashboard e Apri Partite.</span>
+                    <span class="matchpoint-data-accordion-title"><span class="matchpoint-data-step">6</span> Fasce prenotabili</span>
+                    <span class="matchpoint-data-accordion-subtitle">Quando si gioca e quanto paga ogni giocatore. Griglia NOSTRA, non più di Matchpoint.</span>
                   </span>
                   <span class="matchpoint-data-chevron">›</span>
                 </button>
                 <div class="matchpoint-data-accordion-panel" id="matchpointSlotAccordionPanel">
                   <article class="matchpoint-data-box potential wide" id="anchor-matchpoint-slot-potenziali">
-                    <p class="matchpoint-data-copy">Gestisce la griglia teorica settimanale degli slot vendibili del club per Dashboard e Apri Partite.</p>
+                    <p class="matchpoint-data-copy">
+                      Le fasce su cui i soci possono prenotare, e quanto paga <strong>ogni giocatore</strong>.
+                      Le decidi qui: una griglia sola, valida su tutti e quattro i campi — quale campo sia
+                      libero lo dice chi ha già prenotato, non questa tabella.
+                      <br><em>Il prezzo vuoto vuol dire «non ancora deciso», che è diverso da gratis.</em>
+                    </p>
+                    <div class="matchpoint-data-actions">
+                      <button class="btn-secondary" onclick="setActionAnchor(this); pmoCaricaFasce(true)">Ricarica</button>
+                      <button class="btn-secondary" onclick="setActionAnchor(this); pmoAggiungiFascia()">+ Aggiungi fascia</button>
+                      <button id="pmoFasceSalvaBtn" class="btn-warning" onclick="setActionAnchor(this); pmoSalvaFasce()">Salva fasce</button>
+                      <div id="pmoFasceStato" class="matchpoint-action-state done">Non ancora caricate</div>
+                    </div>
                     <div class="potential-slot-details">
-                      <div class="potential-slot-horizontal">
-                        <div class="potential-slot-panel">
-                          <button class="btn-primary" onclick="syncSlotScheduleFromMatchpoint(this)" id="syncSlotScheduleBtn">Sincronizza da Matchpoint</button>
-                          <div id="syncSlotScheduleStatus" class="potential-slot-import-status" hidden></div>
-                        </div>
-                        <div class="potential-slot-panel">
-                          <div class="potential-slot-editor">
-                            <label for="potentialSlotScheduleEditor">Griglia slot operativa</label>
-                            <textarea id="potentialSlotScheduleEditor" spellcheck="false" oninput="markPotentialSlotEditorDirty()" placeholder="Lunedì: 12:30-14:00, 14:00-15:30"></textarea>
-                            <div class="potential-slot-editor-help">Formato: un giorno per riga, orari separati da virgola. Questa griglia aggiorna Dashboard e Apri Partite.</div>
-                          </div>
-                          <div class="matchpoint-data-actions">
-                            <button id="potentialSlotSaveButton" class="btn-warning" onclick="setActionAnchor(this); savePotentialSlotScheduleFromEditor()">Salva griglia slot</button>
-                            <div id="potentialSlotActionState" class="matchpoint-action-state pending">Da salvare</div>
-                            <button class="btn-secondary" onclick="setActionAnchor(this); resetPotentialSlotScheduleEditorToDefault()">Ripristina standard</button>
-                          </div>
-                        </div>
-                      </div>
+                      <div id="pmoFasceTabella"></div>
                     </div>
                   </article>
                 </div>
@@ -8667,7 +8661,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.398';
+    const APP_VERSION = '6.399';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -18580,10 +18574,190 @@ Grazie.`
       resetPotentialSlotScheduleEditorToDefault();
     }
 
+    // ══════════════════════════════════════════════════════════════════════════════
+    // VOCE 176 — LE FASCE PRENOTABILI SONO UNA TABELLA NOSTRA (`pmo_fasce_prenotabili`)
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 🗣️ Richiesta del committente (08/09/2026): «dobbiamo rifarla per conto nostro» e «devi
+    // darmi la possibilità di definire io come voglio gli slot prenotabili».
+    // ⇒ La griglia non arriva più da Matchpoint: la scrive lui, qui dentro.
+    // 🔌 Il bottone «Sincronizza da Matchpoint» è stato tolto perché muore col distacco: la
+    // pagina «Sistema → Campi → Orari» si legge dal worker, e senza Matchpoint non c'è.
+    let pmoFasce = null;              // elenco vivo dal database. null = non ancora caricate.
+    let pmoFasceSporche = false;      // ci sono modifiche non salvate
+    let pmoFasceGrigliaCache = null;  // la stessa cosa nella forma che l'app già sa disegnare
+    const PMO_GIORNI_NOMI = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+
+    // Dalla tabella alla forma che i disegnatori già conoscono ({start,end,name}).
+    // ⚖️ Le fasce SPENTE non entrano: `attiva=false` vuol dire «esiste ma oggi non si prenota».
+    function pmoFasceComeGriglia(fasce) {
+      const griglia = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+      (Array.isArray(fasce) ? fasce : []).forEach((f) => {
+        if (!f || f.attiva === false) return;
+        const g = Number(f.giorno);
+        if (!Number.isInteger(g) || g < 0 || g > 6) return;
+        griglia[g].push({
+          start: f.ora_inizio,
+          end: f.ora_fine,
+          name: `${f.ora_inizio}-${f.ora_fine}`,
+          prezzoCents: (f.prezzo_cents === null || f.prezzo_cents === undefined) ? null : Number(f.prezzo_cents),
+        });
+      });
+      Object.keys(griglia).forEach((k) => griglia[k].sort((a, b) => toMinutes(a.start) - toMinutes(b.start)));
+      return griglia;
+    }
+
+    function pmoFasceGriglia() {
+      if (!pmoFasceGrigliaCache && Array.isArray(pmoFasce)) pmoFasceGrigliaCache = pmoFasceComeGriglia(pmoFasce);
+      return pmoFasceGrigliaCache;
+    }
+
     function getDaySlots(date) {
       const day = date instanceof Date ? date.getDay() : parseInt(date, 10);
+      // ⭐ La fonte sono le FASCE. Il blocco vecchio (`potentialSlotSchedule`) resta come
+      // RIPIEGO finché le fasce non sono arrivate dalla rete: senza, un calendario aperto prima
+      // della risposta si disegnerebbe VUOTO — e un calendario vuoto si legge «il circolo è
+      // chiuso», che è una bugia, non un'attesa.
+      const griglia = pmoFasceGriglia();
+      if (griglia) return Array.isArray(griglia[day]) ? griglia[day] : [];
       const schedule = getPotentialSlotSchedule();
       return Array.isArray(schedule[day]) ? schedule[day] : [];
+    }
+
+    // Quanto paga OGNI giocatore su quella fascia, in centesimi. null = non deciso.
+    // 🚨 null NON è zero: chi lo mostra deve scrivere «da definire», non «0,00 €».
+    function pmoPrezzoDellaFascia(date, oraInizio) {
+      const griglia = pmoFasceGriglia();
+      if (!griglia) return null;
+      const day = date instanceof Date ? date.getDay() : parseInt(date, 10);
+      const trovata = (griglia[day] || []).find((s) => s.start === oraInizio);
+      return trovata ? (trovata.prezzoCents ?? null) : null;
+    }
+
+    function pmoFasceAggiornaStato(testo, tipo) {
+      const el = document.getElementById('pmoFasceStato');
+      if (!el) return;
+      el.textContent = testo;
+      el.className = `matchpoint-action-state ${tipo || 'done'}`;
+    }
+
+    async function pmoCaricaFasce(mostraEsito = false) {
+      try {
+        pmoFasceAggiornaStato('Carico…', 'pending');
+        const res = await pmoStaffRpc('pmo_get_fasce_prenotabili', {}, 'cloud_sync', 'leggere le fasce prenotabili');
+        if (!res || res.ok !== true) throw new Error((res && res.error) || 'risposta non riconosciuta');
+        pmoFasce = Array.isArray(res.fasce) ? res.fasce : [];
+        pmoFasceGrigliaCache = null;
+        pmoFasceSporche = false;
+        pmoRenderFasce();
+        pmoFasceAggiornaStato(`${pmoFasce.length} fasce`, 'done');
+        try { renderInitialDashboard(); } catch {}
+        if (mostraEsito) showAlert(`✅ ${pmoFasce.length} fasce caricate.`, 'success');
+      } catch (err) {
+        pmoFasceAggiornaStato('Non caricate', 'pending');
+        if (mostraEsito) showAlert('❌ Fasce non caricate: ' + err.message, 'danger');
+      }
+    }
+
+    function pmoRenderFasce() {
+      const box = document.getElementById('pmoFasceTabella');
+      if (!box) return;
+      if (!Array.isArray(pmoFasce)) { box.innerHTML = '<p class="matchpoint-data-copy">Premi «Ricarica» per leggere le fasce.</p>'; return; }
+      if (!pmoFasce.length) { box.innerHTML = '<p class="matchpoint-data-copy">Nessuna fascia. Aggiungine una: finché non ce n\'è, i soci non possono prenotare niente.</p>'; return; }
+
+      const perGiorno = [0, 1, 2, 3, 4, 5, 6].map((g) => ({
+        giorno: g,
+        righe: pmoFasce.filter((f) => Number(f.giorno) === g)
+          .sort((a, b) => toMinutes(a.ora_inizio) - toMinutes(b.ora_inizio)),
+      }));
+
+      box.innerHTML = perGiorno.map(({ giorno, righe }) => `
+        <div style="margin-bottom:14px">
+          <div style="font-weight:600;margin-bottom:4px">${PMO_GIORNI_NOMI[giorno]} <span style="font-weight:400;opacity:.6">(${righe.length})</span></div>
+          ${righe.length ? `<table style="width:100%;border-collapse:collapse;font-size:.92em">
+            <tr style="text-align:left;opacity:.6"><th style="padding:2px 6px">dalle</th><th style="padding:2px 6px">alle</th><th style="padding:2px 6px">€ a giocatore</th><th style="padding:2px 6px">attiva</th><th style="padding:2px 6px">nota</th><th></th></tr>
+            ${righe.map((f) => `<tr data-id="${escapeHtml(f.id)}">
+              <td style="padding:2px 6px"><input type="time" value="${escapeHtml(f.ora_inizio)}" onchange="pmoCambiaFascia('${escapeHtml(f.id)}','ora_inizio',this.value)" style="width:100px"></td>
+              <td style="padding:2px 6px"><input type="time" value="${escapeHtml(f.ora_fine)}" onchange="pmoCambiaFascia('${escapeHtml(f.id)}','ora_fine',this.value)" style="width:100px"></td>
+              <td style="padding:2px 6px"><input type="number" min="0" step="0.50" placeholder="da definire" value="${f.prezzo_cents === null || f.prezzo_cents === undefined ? '' : (Number(f.prezzo_cents) / 100).toFixed(2)}" onchange="pmoCambiaFascia('${escapeHtml(f.id)}','prezzo',this.value)" style="width:110px"></td>
+              <td style="padding:2px 6px"><input type="checkbox" ${f.attiva === false ? '' : 'checked'} onchange="pmoCambiaFascia('${escapeHtml(f.id)}','attiva',this.checked)"></td>
+              <td style="padding:2px 6px"><input type="text" value="${escapeHtml(f.note || '')}" onchange="pmoCambiaFascia('${escapeHtml(f.id)}','note',this.value)" style="width:100%"></td>
+              <td style="padding:2px 6px"><button class="btn-secondary" style="padding:2px 8px" onclick="pmoRimuoviFascia('${escapeHtml(f.id)}')">✕</button></td>
+            </tr>`).join('')}
+          </table>` : '<div style="opacity:.5;font-size:.9em">— nessuna fascia, in questo giorno non si prenota —</div>'}
+        </div>`).join('');
+    }
+
+    function pmoCambiaFascia(id, campo, valore) {
+      const f = (pmoFasce || []).find((x) => x.id === id);
+      if (!f) return;
+      if (campo === 'prezzo') {
+        // Vuoto = «non deciso» (null), non zero. Sono due cose diverse e il vincolo del
+        // database le distingue: 0 è «gratis», null è «nessuno l'ha ancora detto».
+        const testo = String(valore ?? '').trim().replace(',', '.');
+        f.prezzo_cents = testo === '' ? null : Math.round(parseFloat(testo) * 100);
+        if (Number.isNaN(f.prezzo_cents)) f.prezzo_cents = null;
+      } else if (campo === 'attiva') {
+        f.attiva = !!valore;
+      } else {
+        f[campo] = valore;
+      }
+      pmoFasceSporche = true;
+      pmoFasceGrigliaCache = null;
+      pmoFasceAggiornaStato('Modifiche da salvare', 'pending');
+    }
+
+    function pmoAggiungiFascia() {
+      if (!Array.isArray(pmoFasce)) pmoFasce = [];
+      const giorno = parseInt(prompt('Giorno? 0 = domenica, 1 = lunedì … 6 = sabato', '1'), 10);
+      if (!Number.isInteger(giorno) || giorno < 0 || giorno > 6) return showAlert('⚠️ Giorno non valido: dev\'essere da 0 (domenica) a 6 (sabato).', 'warning');
+      const inizio = String(prompt('Dalle? (hh:mm)', '18:00') || '').trim();
+      const fine = String(prompt('Alle? (hh:mm)', '19:30') || '').trim();
+      if (!/^\d{2}:\d{2}$/.test(inizio) || !/^\d{2}:\d{2}$/.test(fine)) return showAlert('⚠️ Orari non validi: servono nel formato hh:mm.', 'warning');
+      if (toMinutes(fine) <= toMinutes(inizio)) return showAlert('⚠️ La fascia finisce prima di cominciare.', 'warning');
+      const id = `${giorno}-${inizio.replace(':', '')}`;
+      if (pmoFasce.some((f) => f.id === id)) return showAlert('⚠️ Quella fascia esiste già in quel giorno.', 'warning');
+      pmoFasce.push({ id, giorno, ora_inizio: inizio, ora_fine: fine, prezzo_cents: null, attiva: true, note: null });
+      pmoFasceSporche = true;
+      pmoFasceGrigliaCache = null;
+      pmoRenderFasce();
+      pmoFasceAggiornaStato('Modifiche da salvare', 'pending');
+    }
+
+    function pmoRimuoviFascia(id) {
+      const f = (pmoFasce || []).find((x) => x.id === id);
+      if (!f) return;
+      if (!confirm(`Tolgo la fascia ${PMO_GIORNI_NOMI[Number(f.giorno)]} ${f.ora_inizio}-${f.ora_fine}?\n\nSe è solo una pausa di stagione, conviene spegnerla invece di toglierla.`)) return;
+      pmoFasce = pmoFasce.filter((x) => x.id !== id);
+      pmoFasceSporche = true;
+      pmoFasceGrigliaCache = null;
+      pmoRenderFasce();
+      pmoFasceAggiornaStato('Modifiche da salvare', 'pending');
+    }
+
+    async function pmoSalvaFasce() {
+      if (!Array.isArray(pmoFasce) || !pmoFasce.length) return showAlert('⚠️ Non salvo un elenco vuoto: cancellerebbe tutte le fasce del circolo.', 'warning');
+      // Controllo delle sovrapposizioni PRIMA di scrivere: due fasce che si accavallano nello
+      // stesso giorno non le rifiuta il database (il vincolo guarda solo l'ora d'inizio), ma
+      // farebbero proporre al socio due volte lo stesso campo nello stesso momento.
+      for (let g = 0; g <= 6; g++) {
+        const righe = pmoFasce.filter((f) => Number(f.giorno) === g).sort((a, b) => toMinutes(a.ora_inizio) - toMinutes(b.ora_inizio));
+        for (let i = 1; i < righe.length; i++) {
+          if (toMinutes(righe[i].ora_inizio) < toMinutes(righe[i - 1].ora_fine)) {
+            return showAlert(`⚠️ ${PMO_GIORNI_NOMI[g]}: ${righe[i - 1].ora_inizio}-${righe[i - 1].ora_fine} e ${righe[i].ora_inizio}-${righe[i].ora_fine} si accavallano.`, 'warning');
+          }
+        }
+      }
+      try {
+        pmoFasceAggiornaStato('Salvo…', 'pending');
+        const res = await pmoStaffRpc('pmo_set_fasce_prenotabili', { p_fasce: pmoFasce }, 'cloud_sync', 'salvare le fasce prenotabili');
+        if (!res || res.ok !== true) throw new Error((res && (res.message || res.error)) || 'risposta non riconosciuta');
+        pmoFasceSporche = false;
+        await pmoCaricaFasce(false);
+        showAlert(`✅ ${res.quante} fasce salvate. Dashboard, Apri Partite e il bot useranno queste.`, 'success');
+      } catch (err) {
+        pmoFasceAggiornaStato('Non salvate', 'pending');
+        showAlert('❌ Fasce non salvate: ' + err.message, 'danger');
+      }
     }
     function matchesTimeFilter(slot, filter) {
       if (!filter) return true;
@@ -32517,6 +32691,10 @@ Per confermare scrivi ELIMINA.`);
 	      // Riallinea ruolo/permessi dal cloud al reload (non solo al login): un cambio permessi
 	      // dell'admin si propaga senza logout. Fire-and-forget, con throttle interno.
 	      try { if (typeof pmoRefreshStaffProfileFromCloud === 'function') pmoRefreshStaffProfileFromCloud(); } catch (err) { console.warn('pmoRefreshStaffProfileFromCloud boot', err); }
+	      // ⭐ VOCE 176 — le fasce prenotabili arrivano dalla loro tabella. Fire-and-forget: finché
+	      // non atterrano, `getDaySlots` ripiega sul blocco vecchio, quindi il calendario non
+	      // nasce mai vuoto. Al ritorno ridisegna la Dashboard da sé.
+	      try { if (typeof pmoCaricaFasce === 'function') pmoCaricaFasce(false); } catch (err) { console.warn('pmoCaricaFasce boot', err); }
 	      refreshAssistantGroupsCountBadge();
       checkLocalDataSafetyOnStartup();
       if (assessmentMatchpointDemoEnabled()) {
