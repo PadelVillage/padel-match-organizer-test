@@ -3270,6 +3270,16 @@
        che sappiamo. 📌 *Il grado dell'avviso deve corrispondere al grado del dubbio.*
        ⏳ Dura pochi secondi: appena la lettura viva atterra il bordo torna pieno da sé. */
     .svc-pl-eur-ricordato { border-style:dashed; }
+    /* 💶 VOCE 180 — la casella col numero NATO QUI (prezzo del listino del gestionale, mai letto
+       dal circolo). ⚖️ Il segno è **puntinato** e non tratteggiato apposta: stesso peso visivo del
+       «ricordato» — perché il grado del dubbio è lo stesso, cioè basso — ma **distinguibile**, che
+       è tutto il suo mestiere. Due segni identici per due cose diverse sarebbero un segno solo.
+       ⛔ E non è un avviso di errore: il numero è nostro ed è **giusto**. Dice soltanto che a
+       pronunciarlo non è stato il circolo. 📌 *Il grado dell'avviso deve corrispondere al grado del
+       dubbio — e la FORMA dell'avviso al tipo di dubbio.*
+       ⏳ Il giorno del distacco sarà il caso normale e questa riga si toglie: finché i due mondi
+       convivono, è la differenza che si ha bisogno di vedere. */
+    .svc-pl-eur-listino { border-style:dotted; }
     /* 👛 VOCE 139 — la pastiglia del borsellino: è un'INFORMAZIONE, non un bottone.
        Niente bordo, niente sfondo, `cursor:default`: sta accanto all'importo e si legge. Sua
        decisione «pastiglia muta» — in una scheda dove ogni cosa cliccabile tocca il circolo, un
@@ -8689,7 +8699,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.404';
+    const APP_VERSION = '6.405';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -25889,8 +25899,31 @@ Grazie!`
      *  uno appena letto — e chi lo guarda non ha modo di sapere quale dei due ha davanti.*
      *  ⛔ `ricordato` NON è un terzo modo di dire «ignoto»: il numero c'è, si mostra e si può
      *  cambiare. Cambia **come lo si dichiara** quando si chiede a una persona di confermare del
-     *  denaro. PURA, così il banco la ESEGUE invece di riscriverla. */
-    function _pmoImportoCasella(importoCents, pendenteCents, lettoAt) {
+     *  denaro. PURA, così il banco la ESEGUE invece di riscriverla.
+     *
+     *  🆕⭐⭐ VOCE 180 (09/09/2026) — IL **QUARTO** ESITO: «nato qui». E non nasce da un'idea: nasce
+     *  da un difetto che era **già in servizio da una notte**. Dall'08/09 la creazione nativa fa
+     *  **nascere** l'importo dal listino (`origineImporto: 'listino'`) e — giustamente — **non
+     *  scrive `lettoAt`**, perché quel campo vuol dire *«questo numero l'ho letto dal circolo»*.
+     *  🚨 Ma questa funzione conosceva **solo** `lettoAt` per distinguere le provenienze ⇒ un
+     *  importo nato dal listino cadeva nel ramo «letto adesso», e la scheda lo mostrava alla
+     *  segreteria **come se il circolo l'avesse appena confermato**. La regola ④ della 180 ha
+     *  tenuto onesto il database e ha perso lo schermo.
+     *  📌 *Un dato può restare onesto in ogni campo in cui è scritto e diventare falso nell'unico
+     *     punto in cui qualcuno lo legge: una provenienza non è salva finché non arriva agli occhi.*
+     *
+     *  ⚖️ **Perché `lettoAt` VINCE su `origineImporto`**, e non il contrario: se il circolo ha poi
+     *  letto quel numero, quel numero **è** letto — nascere dal listino è la sua storia, non la sua
+     *  provenienza di adesso. ⇒ I tre esiti con un numero sono **mutuamente esclusivi per
+     *  costruzione**, non per disciplina di chi li scrive: `ricordato` esige `lettoAt`, `natoQui`
+     *  esige che non ci sia.
+     *  ⛔ E `natoQui` **non è un dubbio sul numero**: il prezzo è **nostro** e non è mai stato più
+     *  certo di così. È un dubbio su **chi l'ha detto** — e il grado dell'avviso corrisponde a
+     *  quello, come già per il «ricordato».
+     *  ⏳ Il giorno del distacco questo diventerà il caso **normale** (nessun circolo da leggere):
+     *  allora il segno sarà rumore e si toglierà. Oggi i due mondi convivono, ed è esattamente
+     *  quando serve. */
+    function _pmoImportoCasella(importoCents, pendenteCents, lettoAt, origineImporto) {
       const ignoto = (importoCents == null && pendenteCents == null);
       const dovutoCents = (pendenteCents != null && pendenteCents > 0) ? pendenteCents
         : (importoCents != null ? importoCents : null);
@@ -25899,6 +25932,9 @@ Grazie!`
         ignoto: ignoto,
         // 🚨 Un «ricordato» senza numero non esiste: se non si sa quanto, l'unica cosa vera è «—».
         ricordato: !ignoto && !!_quando,
+        // 🚨 E nemmeno un «nato qui» senza numero: una provenienza appiccicata a una casella vuota
+        //    dichiarerebbe da dove viene **niente**. Stessa regola del ricordato, stessa ragione.
+        natoQui: !ignoto && !_quando && String(origineImporto || '') === 'listino',
         lettoAt: ignoto ? null : _quando,
         valore: ignoto ? '' : ((dovutoCents || 0) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         baseCents: ignoto ? null : (dovutoCents || 0),
@@ -25931,13 +25967,23 @@ Grazie!`
      *     letto è un «da» inventato esattamente come lo zero, solo più credibile perché è un
      *     numero vero — è stato vero, prima;
      *  ③ **letto adesso** → `8,00` e basta, che è il caso normale e non deve ingrassare.
+     *  🆕 ④ **nato qui** (VOCE 180) → `13,00 (dal listino)`. 🚨 È lo stesso difetto del ②, un piano
+     *     più in là e nel punto peggiore: qui si chiede a una persona di **confermare del denaro**,
+     *     e un prezzo nostro stampato nudo le farebbe credere che il circolo avesse detto quella
+     *     cifra. La 151 lo scrisse per il numero vecchio; vale identico per il numero nostro.
+     *     📌 *Il posto dove una provenienza sbagliata costa di più è quello dove si chiede «confermi?».*
      *  PURA (il formato dei soldi e l'ora arrivano da fuori). */
-    function _pmoImportoDa(daCents, daLettoAt, euro, quando) {
+    function _pmoImportoDa(daCents, daLettoAt, euro, quando, daNatoQui) {
       if (daCents == null) return '(non letto)';
       const eur = euro(daCents);
-      if (!daLettoAt) return eur;
-      const q = quando(daLettoAt);
-      return eur + ' (letto ' + (q || 'prima') + ')';
+      if (daLettoAt) {
+        const q = quando(daLettoAt);
+        return eur + ' (letto ' + (q || 'prima') + ')';
+      }
+      // ⚖️ Dopo `daLettoAt` e mai prima: è la stessa precedenza della casella, e le due si
+      //    smentirebbero a vicenda se qui fosse scritta al contrario.
+      if (daNatoQui) return eur + ' (dal listino)';
+      return eur;
     }
     /** 🆕💰⭐⭐ VOCE 152 — IL CONTO DELLA PARTITA: a carico · già incassato · manca.
      *
@@ -43052,7 +43098,7 @@ Per confermare scrivi ELIMINA.`);
     // era stato letto da Matchpoint, e stampare «0,00 →» sarebbe un valore di partenza inventato.
     const _riga = function (c) {
       // VOCE 151 — stessa regola del popup, eseguita e non ricopiata.
-      return esc(c.nome) + ' ' + esc(_pmoImportoDa(c.daCents, c.daLettoAt, _incassiEuro, _pmoQuandoLetto))
+      return esc(c.nome) + ' ' + esc(_pmoImportoDa(c.daCents, c.daLettoAt, _incassiEuro, _pmoQuandoLetto, c.daNatoQui))
         + ' → ' + _incassiEuro(c.aCents);
     };
     const note = svcAddMessage('system', '↻ Salvo su Matchpoint ' + (changes.length === 1 ? 'l\'importo' : 'gli importi') + ' a carico… (non chiudere)<br><span style="color:var(--text-muted);font-size:.78rem;">' + changes.map(_riga).join('<br>') + '</span>');
@@ -43109,6 +43155,14 @@ Per confermare scrivi ELIMINA.`);
             if (tgt) {
               tgt.importoCents = c.aCents;
               tgt.pendenteCents = (typeof esito.pendenteCents === 'number') ? esito.pendenteCents : c.aCents;
+              // 🆕🚨 VOCE 180 — questo numero l'ha DECISO la segreteria, e il listino non l'ha mai
+              // detto: la marca di provenienza va tolta insieme al numero che descriveva. Senza
+              // questa riga la casella continuerebbe a dire «dal listino» sopra una cifra scritta
+              // a mano — la stessa bugia curata dal quarto esito, rimessa in piedi dal ramo che
+              // cambia il dato. 📌 *Una provenienza che sopravvive al dato che descriveva non è un
+              // ricordo: è un'etichetta staccata, e si riattacca al primo numero che passa.*
+              delete tgt.origineImporto;
+              delete tgt.importoAt;
             }
           }
         } catch (e) {}
@@ -45826,10 +45880,16 @@ Per confermare scrivi ELIMINA.`);
             //    `st.roster` viene sostituito con le righe del worker e il «ricordato» sparisce da
             //    sé, senza che nessuno lo spenga. *Lo stato più difficile da sbagliare è quello che
             //    nessuno deve ricordarsi di azzerare.*
-            const _cas = _pmoImportoCasella(importoCents, pendenteCents, p.lettoAt);
+            // 🆕 VOCE 180 — `p.origineImporto` viaggia sulle righe della COPIA LOCALE (lo scrive
+            //    la creazione nativa, `importo-dal-listino.ts`) e non esiste sulle righe del
+            //    worker: è la sola cosa che separa «prezzo nostro» da «numero del circolo» quando
+            //    `lettoAt` non c'è in nessuno dei due casi.
+            const _cas = _pmoImportoCasella(importoCents, pendenteCents, p.lettoAt, p.origineImporto);
             const _importoIgnoto = _cas.ignoto;
             const eur = document.createElement('div');
-            eur.className = 'svc-pl-eur' + (_cas.ricordato ? ' svc-pl-eur-ricordato' : '');
+            eur.className = 'svc-pl-eur'
+              + (_cas.ricordato ? ' svc-pl-eur-ricordato' : '')
+              + (_cas.natoQui ? ' svc-pl-eur-listino' : '');
             const sym = document.createElement('span'); sym.className = 'svc-pl-eur-sym'; sym.textContent = '€';
             amt = document.createElement('input');
             amt.type = 'text'; amt.inputMode = 'decimal'; amt.className = 'svc-pl-eur-input';
@@ -45846,10 +45906,15 @@ Per confermare scrivi ELIMINA.`);
               const _q = _pmoQuandoLetto(_cas.lettoAt);
               amt.title = 'Importo letto da Matchpoint ' + (_q || 'in una lettura precedente')
                 + (st.rosterRefreshing ? ' — sto rileggendo adesso' : ' — non ancora riletto');
+            } else if (_cas.natoQui) {
+              // ⚖️ Si dice da dove viene, non che sia dubbio: il prezzo è quello del listino del
+              //    gestionale, ed è esatto. Quello che NON si può dire è che l'abbia detto il circolo.
+              amt.title = 'Importo dal listino del gestionale (prezzo della fascia) — non letto dal circolo';
             }
             amt.disabled = !_payCollectActive;
             amt.setAttribute('aria-label', 'Importo a carico di ' + p.nome
-              + (_cas.ricordato ? ' (letto ' + (_pmoQuandoLetto(_cas.lettoAt) || 'prima') + ', non ancora riletto)' : ''));
+              + (_cas.ricordato ? ' (letto ' + (_pmoQuandoLetto(_cas.lettoAt) || 'prima') + ', non ancora riletto)' : '')
+              + (_cas.natoQui ? ' (dal listino del gestionale)' : ''));
             eur.appendChild(sym); eur.appendChild(amt);
             money.appendChild(eur);
             _payAmtInputs.push(amt);
@@ -45861,6 +45926,9 @@ Per confermare scrivi ELIMINA.`);
               // che chiede di confermare del denaro non può far passare un numero vecchio per uno
               // appena letto.
               baseLettoAt: (_cas.ricordato ? _cas.lettoAt : null),
+              // VOCE 180 — e la stessa cosa per il «da» nato dal listino: il riepilogo che chiede
+              // di confermare del denaro non può far passare un prezzo NOSTRO per uno del circolo.
+              baseNatoQui: !!_cas.natoQui,
               idCliente: (p.idCliente != null ? String(p.idCliente) : ''),
               idx: (p.idx != null ? String(p.idx) : ''),
               nome: p.nome,
@@ -46669,7 +46737,7 @@ Per confermare scrivi ELIMINA.`);
         if (r.idx != null && st.remove[r.idx]) return;
         const c = _pmoEuroToCents(r.input.value);
         if (c == null || !(c >= 0) || c === r.baseCents) return;
-        out.push({ idCliente: r.idCliente, idx: r.idx, nome: r.nome, daCents: r.baseCents, daLettoAt: (r.baseLettoAt || null), aCents: c });
+        out.push({ idCliente: r.idCliente, idx: r.idx, nome: r.nome, daCents: r.baseCents, daLettoAt: (r.baseLettoAt || null), daNatoQui: !!r.baseNatoQui, aCents: c });
       });
       return out;
     })();
@@ -46698,9 +46766,10 @@ Per confermare scrivi ELIMINA.`);
         // 🚨 VOCE 149 — se il «da» non è stato letto da Matchpoint lo si DICHIARA, non lo si
         //    inventa a 0,00: qui si sta chiedendo a una persona di confermare del denaro, e
         //    «0,00 → 9,00» le farebbe credere che quel giocatore non dovesse niente.
-        // VOCE 151 — tre esiti, non due: la regola sta in `_pmoImportoDa` e qui la si esegue.
+        // VOCE 151 → VOCE 180 — QUATTRO esiti, non due: la regola sta in `_pmoImportoDa` e qui
+        //    la si esegue, così i due punti che la stampano non possono divergere.
         parts.push('Importo ' + c.nome + ': '
-          + _pmoImportoDa(c.daCents, c.daLettoAt, _incassiEuro, _pmoQuandoLetto)
+          + _pmoImportoDa(c.daCents, c.daLettoAt, _incassiEuro, _pmoQuandoLetto, c.daNatoQui)
           + ' → ' + _incassiEuro(c.aCents));
       });
     }
