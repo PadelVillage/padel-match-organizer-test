@@ -8699,7 +8699,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.405';
+    const APP_VERSION = '6.406';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -25985,6 +25985,81 @@ Grazie!`
       if (daNatoQui) return eur + ' (dal listino)';
       return eur;
     }
+    /** 🆕⭐⭐ VOCE 180 — IL PREZZO DI UNO SLOT, dal listino del gestionale.
+     *
+     *  🗣️ Il buco che chiude: alla creazione la partita prende gli importi dal listino, ma un
+     *  giocatore **aggiunto dopo** nasceva senza. ⇒ Su una partita di quattro dove due entrano
+     *  più tardi, la cassa avrebbe metà delle righe da addebitare e metà no — e la metà mancante
+     *  non si distingue da un importo che nessuno ha ancora letto.
+     *
+     *  ⭐ **Il prezzo NON si calcola qui**: si legge da `pmoCalendarioMappa`, che è la risposta di
+     *  `pmo_calendario_effettivo` — la stessa funzione che risponde alla creazione e alle due edge
+     *  del bot. Qui si sceglie la fascia, non si decide il prezzo.
+     *  ⚖️ **Si guarda l'ora d'INIZIO**, identico a `prezzoDellaFascia` nell'edge: una prenotazione
+     *  che comincia a metà di una fascia non è quella fascia, e indovinarle un prezzo sarebbe
+     *  inventarlo. `null` vuol dire **«non lo sappiamo»**, e chi legge lo deve dire.
+     *  🚨 `null` anche quando il calendario **non è caricato**: un listino assente non è un listino
+     *  vuoto, e un prezzo mancante è meglio di uno sbagliato. PURA (la mappa arriva da fuori). */
+    function _pmoOraPulita(v) {
+      if (typeof v !== 'string') return null;
+      const m = /^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/.exec(v.trim());
+      if (!m) return null;
+      const h = Number(m[1]), mi = Number(m[2]);
+      if (h > 23 || mi > 59) return null;
+      return String(h).padStart(2, '0') + ':' + m[2];
+    }
+    function _pmoPrezzoDelloSlot(mappa, isoDate, ora) {
+      const cercata = _pmoOraPulita(ora);
+      if (!cercata || !mappa || typeof mappa !== 'object') return null;
+      const giorno = mappa[String(isoDate || '').trim()];
+      if (!giorno || !Array.isArray(giorno.slots)) return null;
+      // ⛔ Un giorno CHIUSO non ha un prezzo: se il circolo è chiuso quel prezzo non esiste.
+      if (giorno.chiuso) return null;
+      for (let i = 0; i < giorno.slots.length; i++) {
+        const f = giorno.slots[i];
+        if (!f || _pmoOraPulita(f.start) !== cercata) continue;
+        const pz = f.prezzoCents;
+        return (typeof pz === 'number' && isFinite(pz) && pz >= 0) ? Math.round(pz) : null;
+      }
+      return null;
+    }
+
+    /** 🆕⭐⭐ VOCE 180 — le QUATTRO REGOLE dell'importo dal listino, eseguite dall'app.
+     *
+     *  🚨⭐⭐ **QUESTA È LA GEMELLA di `importiDalListino` in
+     *  `supabase/functions/matchpoint-bookings-create/importo-dal-listino.ts`**, e le due
+     *  **devono** dare la stessa risposta: la creazione passa dall'edge, l'aggiunta di un
+     *  giocatore passa da qui, e se divergessero due righe della **stessa partita** porterebbero
+     *  regole diverse sugli stessi soldi.
+     *  ⛔ Non si può condividere il file (un modulo Deno non entra in una pagina), quindi la copia
+     *  è inevitabile — ma **non è lasciata all'attenzione di chi la tocca**: il banco
+     *  `limporto-del-giocatore-aggiunto.test.mjs` esercita le DUE implementazioni sulla **stessa
+     *  tabella di casi** e pretende risposte identiche. 📌 *Due copie che oggi coincidono sono un
+     *  guasto che aspetta il primo cambio, a meno che qualcosa le tenga legate.*
+     *
+     *  ① `null` non è `0` — prezzo non deciso ⇒ non si scrive niente. Zero vorrebbe dire «gratis»;
+     *  ② un importo GIÀ presente vince — può venire dal circolo (letto) o dalla segreteria (deciso);
+     *  ③ `pendenteCents` nasce uguale all'importo — nessuno ha ancora pagato;
+     *  ④ 🚨 mai `lettoAt`: questo numero non l'ha detto il circolo. `origineImporto: 'listino'`.
+     *  PURA, così il banco la ESEGUE invece di riscriverla. */
+    function _pmoImportiDalListino(giocatori, prezzoCents, quando) {
+      const elenco = Array.isArray(giocatori) ? giocatori : [];
+      if (prezzoCents === null || prezzoCents === undefined || !isFinite(prezzoCents) || prezzoCents < 0) {
+        return elenco.map(function (g) { return Object.assign({}, g); });
+      }
+      return elenco.map(function (g) {
+        const riga = Object.assign({}, g);
+        const gia = riga.importoCents;
+        if (typeof gia === 'number' && isFinite(gia)) return riga;
+        riga.importoCents = prezzoCents;
+        const pen = riga.pendenteCents;
+        if (!(typeof pen === 'number' && isFinite(pen))) riga.pendenteCents = prezzoCents;
+        riga.origineImporto = 'listino';
+        riga.importoAt = String(quando || '');
+        return riga;
+      });
+    }
+
     /** 🆕💰⭐⭐ VOCE 152 — IL CONTO DELLA PARTITA: a carico · già incassato · manca.
      *
      * 🗣️ Nato dal mockup «La scheda entra tutta», variante **A**, scelta da lui: *«fai la A»*.
@@ -47226,13 +47301,37 @@ Per confermare scrivi ELIMINA.`);
           });
         }
         if (Array.isArray(addArr) && addArr.length) {
+          // 🆕⭐⭐ VOCE 180 — CHI ENTRA DOPO PAGA COME CHI C'ERA GIÀ.
+          //
+          // 🚨 Il buco: alla creazione la partita prende gli importi dal listino (l'edge, con
+          //    `pmo_calendario_effettivo`), ma un giocatore aggiunto **dopo** nasceva senza — e la
+          //    riga senza importo non si distingue da una che nessuno ha ancora letto. ⇒ Su una
+          //    partita dove due entrano più tardi, la cassa avrebbe metà delle righe da addebitare.
+          // ⭐ Il prezzo lo dice il GESTIONALE, non questa funzione: `pmoCalendarioMappa` è la
+          //    risposta di `pmo_calendario_effettivo`, la stessa che risponde alla creazione e al
+          //    bot. Qui si sceglie la fascia e si eseguono le quattro regole.
+          // ⚖️ Il prezzo si chiede per lo slot di **questa** prenotazione (la sua data e la sua
+          //    ora), non per «adesso»: un giocatore aggiunto oggi a una partita di martedì paga il
+          //    martedì. 📌 *Il prezzo appartiene allo slot, non al momento in cui qualcuno preme.*
+          // 🩹 E se il listino non risponde — calendario non caricato, giorno chiuso, fascia senza
+          //    prezzo — la riga nasce **senza importo**, come prima: un prezzo inventato è peggio
+          //    di un prezzo mancante, ed è la regola ① scritta in `_pmoImportiDalListino`.
+          const _prezzoSlot = (function () {
+            try { return _pmoPrezzoDelloSlot(pmoCalendarioMappa, isoDate, ora); } catch (e) { return null; }
+          })();
+          const _nuovi = [];
           addArr.forEach(function (a) {
             const nm = String((a && a.nome) || '').trim();
             if (!nm) return;
             // Niente dedup per nome: un socio (in particolare "Ospite", jolly) può comparire
             // PIÙ VOLTE nella stessa partita. Il dedup faceva sparire dal box il 2° Ospite.
-            g.push({ nome: nm, codice: String((a && a.codice) || '') });
+            _nuovi.push({ nome: nm, codice: String((a && a.codice) || '') });
           });
+          // ⛔ Le regole si applicano SOLO ai nuovi: `g` porta righe che possono avere un importo
+          //    letto dal circolo o deciso dalla segreteria, e la regola ② le difende comunque —
+          //    ma passarle di qui riscriverebbe `origineImporto` su chi non c'entra niente.
+          _pmoImportiDalListino(_nuovi, _prezzoSlot, new Date().toISOString())
+            .forEach(function (r) { g.push(r); });
         }
         b.giocatori = g;
         changed = true;
