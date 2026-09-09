@@ -8699,7 +8699,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.410';
+    const APP_VERSION = '6.411';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -26504,15 +26504,90 @@ Grazie!`
       try { if (!g || !window.__pmoWalletCloud) return null; return window.__pmoWalletCloud.get(String(g.id)) || null; }
       catch (e) { return null; }
     }
-    // Saldo "migliore" per il socio: tra cloud (sync) e on-demand (↻) vince il più RECENTE.
+    /* 👛⭐⭐ VOCE 181, SECONDA METÀ — IL SALDO SI SOMMA, NON SI FOTOGRAFA.
+     *
+     * 🚨 IL DIFETTO, misurato il 09/09: `wallet_balance` è una **fotografia** presa da Matchpoint,
+     * e sul sistema nuovo non la rinfresca più nessuno. ⇒ Un incasso col metodo «Wallet» registrava
+     * l'entrata e **non scalava niente**: il bottone continuava a mostrare il saldo vecchio, e la
+     * stessa persona poteva **spendere due volte lo stesso denaro**. Il bottone si spegne quando il
+     * saldo non basta — ma leggeva un numero fermo, quindi non si spegneva mai.
+     * 📌 *Una fotografia del saldo non si può stornare: si può solo riscattare — e al distacco non
+     *    ci sarà più nessuno da cui riscattarla.*
+     *
+     * ⇒ **La fotografia diventa il saldo D'APERTURA**, e sopra ci si sommano i movimenti nostri.
+     * ⭐ E NON si scrive un secondo record: un pagamento col borsellino **è già** un movimento del
+     * borsellino. Duplicarlo in `wallet_txn` creerebbe **due fonti per lo stesso fatto** — che è
+     * esattamente ciò che questo progetto passa il tempo a smontare. Il mastro sono le righe che
+     * ci sono già: i nostri `payment` col metodo `wallet`, più i `wallet_txn` delle ricariche.
+     *
+     * ⛔ E si contano SOLO i movimenti successivi alla fotografia (`recorded_at > synced_at`): se un
+     * domani quella sync tornasse ad accendersi, la fotografia nuova conterrebbe già quelle spese e
+     * sommarle di nuovo le conterebbe **due volte**. Oggi su `cudi` non si rinfresca — ma una
+     * protezione che vale solo finché una cosa resta spenta non è una protezione, è una scommessa. */
+    window.__pmoWalletDelta = window.__pmoWalletDelta || new Map();
+    /** Le chiavi con cui una riga di cassa si attribuisce a un borsellino. Mai il nome:
+     *  `_pmoPagRigaSocio` non lo guarda, e due «Ospite» sarebbero la stessa persona. */
+    function _pmoWalletChiavi(payload) {
+      const out = [];
+      const mid = String((payload && payload.member_local_id) || '').trim();
+      const idc = String((payload && (payload.id_cliente || payload.id_cliente_mp)) || '').trim();
+      if (mid) out.push('m:' + mid);
+      if (idc) out.push('c:' + idc);
+      return out;
+    }
+    /** Il socio (id locale) da un id cliente Matchpoint, se lo conosciamo. */
+    function _pmoSocioLocalId(idCliente) {
+      try {
+        const idc = String(idCliente || '').trim();
+        if (!idc || typeof giocatori === 'undefined' || !Array.isArray(giocatori)) return null;
+        const g = giocatori.find(function (x) { return String(_walletClientId(x) || '') === idc; });
+        return g ? String(g.id) : null;
+      } catch (e) { return null; }
+    }
+    /** Quanto pesa una riga sul borsellino. `0` = non lo tocca. */
+    function _pmoWalletPesoRiga(payload, tipo) {
+      if (!payload) return 0;
+      if (tipo === 'wallet_txn') return Number(payload.amount_cents) || 0;   // già col segno
+      if (String(payload.source || '') !== PMO_CASSA_SOURCE) return 0;       // solo la cassa NOSTRA
+      if (String(payload.method || '') !== 'wallet') return 0;
+      if (payload.voided === true || String(payload.status || '') === 'void') return 0;
+      return -(Number(payload.amount_cents) || 0);
+    }
+    /** Muove il delta in memoria, senza aspettare il prossimo giro di lettura. */
+    function _pmoWalletDeltaAggiorna(payload, segno) {
+      const peso = _pmoWalletPesoRiga(payload, 'payment') * (segno < 0 ? -1 : 1);
+      if (!peso) return;
+      for (const k of _pmoWalletChiavi(payload)) {
+        window.__pmoWalletDelta.set(k, (window.__pmoWalletDelta.get(k) || 0) + peso);
+      }
+    }
+    function _pmoWalletDeltaDi(g) {
+      try {
+        if (!g || !window.__pmoWalletDelta) return 0;
+        const perId = window.__pmoWalletDelta.get('m:' + String(g.id));
+        if (typeof perId === 'number') return perId;
+        const idc = String(_walletClientId(g) || '').trim();
+        const perCli = idc ? window.__pmoWalletDelta.get('c:' + idc) : undefined;
+        return (typeof perCli === 'number') ? perCli : 0;
+      } catch (e) { return 0; }
+    }
+    // Saldo "migliore" per il socio: tra cloud (sync) e on-demand (↻) vince il più RECENTE,
+    // e sopra si sommano i movimenti nostri (voce 181/2).
     function _walletResolve(g) {
       const cloud = _walletCloudGet(g);
       const live = _walletCacheGet(g);
+      let base = null;
       if (cloud && live) {
         const tc = Date.parse(cloud.synced_at || '') || 0, tl = Date.parse(live.synced_at || '') || 0;
-        return tl >= tc ? live : cloud;
-      }
-      return live || cloud || null;
+        base = tl >= tc ? live : cloud;
+      } else base = live || cloud || null;
+      if (!base || typeof base.balance_cents !== 'number') return base;
+      const delta = _pmoWalletDeltaDi(g);
+      if (!delta) return base;
+      // ⚖️ Si torna un oggetto NUOVO: la cache dei saldi non si sporca col totale calcolato, o al
+      // giro dopo il delta si sommerebbe a sé stesso — e nessuno saprebbe distinguere le due cose.
+      return { balance_cents: base.balance_cents + delta, synced_at: base.synced_at,
+               apertura_cents: base.balance_cents, movimenti_cents: delta };
     }
     // Carica i saldi cloud (wallet_balance) e ridisegna la lista. Lazy + cache 2 min.
     async function pmoLoadWalletBalances(force) {
@@ -26521,8 +26596,10 @@ Grazie!`
       if (!force && __pmoWalletCloudLoadedAt && (Date.now() - __pmoWalletCloudLoadedAt) < 120000) return;
       __pmoWalletCloudInflight = (async function () {
         try {
+          // 👛 VOCE 181/2 — le fotografie E i movimenti, in UNA lettura sola: chiederli in due
+          // giri vorrebbe dire sommare movimenti a una fotografia presa in un altro istante.
           const rows = await pmoStaffRpcPaged('pmo_get_records_admin',
-            { p_record_types: ['wallet_balance'], p_since: null }, 'cloud_sync', 'leggere i saldi wallet');
+            { p_record_types: ['wallet_balance', 'payment', 'wallet_txn'], p_since: null }, 'cloud_sync', 'leggere i saldi wallet');
           const next = new Map();
           (rows || []).forEach(function (r) {
             if (!r || r.record_type !== 'wallet_balance' || r.deleted || !r.payload) return;
@@ -26531,6 +26608,24 @@ Grazie!`
             next.set(id, { balance_cents: Number(r.payload.balance_cents) || 0, synced_at: r.payload.synced_at || r.synced_at || '' });
           });
           window.__pmoWalletCloud = next;
+          // Il delta si RIFÀ da zero: sommarlo a quello di prima conterebbe due volte ciò che
+          // nel frattempo è già finito nel database.
+          const delta = new Map();
+          (rows || []).forEach(function (r) {
+            if (!r || r.deleted || !r.payload) return;
+            if (r.record_type !== 'payment' && r.record_type !== 'wallet_txn') return;
+            const peso = _pmoWalletPesoRiga(r.payload, r.record_type);
+            if (!peso) return;
+            const chiavi = _pmoWalletChiavi(r.payload);
+            if (!chiavi.length) return;
+            // ⛔ Solo ciò che è successo DOPO la fotografia di quel socio (vedi `_walletResolve`).
+            const foto = next.get(String(r.payload.member_local_id || '')) || null;
+            const tFoto = foto ? (Date.parse(foto.synced_at || '') || 0) : 0;
+            const tRiga = Date.parse(r.payload.recorded_at || r.payload.data || '') || 0;
+            if (tFoto && tRiga && tRiga <= tFoto) return;
+            for (const k of chiavi) delta.set(k, (delta.get(k) || 0) + peso);
+          });
+          window.__pmoWalletDelta = delta;
           __pmoWalletCloudLoadedAt = Date.now();
           if (typeof displayMembers === 'function' && document.getElementById('memberTableBody')) displayMembers();
         } catch (e) { console.warn('pmoLoadWalletBalances:', e); }
@@ -42925,6 +43020,27 @@ Per confermare scrivi ELIMINA.`);
    * ⚖️ E il caso «pago, storno, ripago» resta giusto **per costruzione**: la seconda scrittura
    *   ricade sulla stessa chiave e riporta la riga a `paid`, invece di lasciarne due che
    *   raccontano storie diverse dello stesso incasso. */
+  /* 👛🚨⭐⭐ COL BORSELLINO NON SI SPENDE PIÙ DI QUELLO CHE C'È — e la regola sta QUI, non nel
+   * bottone. Il bottone è una UI: si disegna una volta, e fra il disegno e il clic passa tutto il
+   * tempo che il cassiere ci mette. La funzione è l'unico punto che nessuno può saltare.
+   *
+   * 🩹 ED È NATA DA UN SABOTAGGIO RIMASTO VERDE. Prima il controllo era scritto in linea, e il
+   * banco lo sorvegliava cercando la parola `SALDO_INSUFFICIENTE` nel corpo della funzione:
+   * spegnendo il controllo (`if (false)`) **le parole restavano tutte** e il banco non se ne
+   * accorgeva. 📌 *Una guardia che cerca una parola prova che la parola c'è, non che il codice
+   * succeda.* ⇒ La regola si è staccata in una funzione **pura**, così il banco la ESEGUE.
+   *
+   * ⛔ `null` vuol dire «non mi riguarda»: fuori dalla cassa nostra a dire di no è Matchpoint, e
+   * tenere qui una seconda copia della sua regola vorrebbe dire due regole che un giorno
+   * diranno cose diverse.
+   * 🚨 E un saldo che NON si conosce non è un saldo che basta: si rifiuta, invece di indovinare. */
+  function _pmoCassaVerdettoBorsellino(cassaNativa, method, saldoCents, amountCents) {
+    if (!cassaNativa || method !== 'wallet') return null;
+    if (typeof saldoCents !== 'number' || !isFinite(saldoCents)) return 'SALDO_SCONOSCIUTO';
+    if (!(typeof amountCents === 'number' && isFinite(amountCents))) return 'SALDO_SCONOSCIUTO';
+    if (amountCents > saldoCents) return 'SALDO_INSUFFICIENTE';
+    return null;
+  }
   function _pmoCassaKey(isoDate, campo, ora, playerName) {
     return PMO_CASSA_PAY_PREFIX + _payNatKey(isoDate, campo, ora) + '|' + _payNormName(playerName);
   }
@@ -42947,8 +43063,13 @@ Per confermare scrivi ELIMINA.`);
       voided: false,
       status: 'paid',
       source: PMO_CASSA_SOURCE,
+      // 👛 VOCE 181/2 — CHI è, e non è un ornamento: `_pmoPagRigaSocio` attribuisce una riga
+      // al socio **solo** per `member_local_id` o `id_cliente`, mai per nome. Senza questo, un
+      // incasso col borsellino non si saprebbe da quale borsellino è uscito.
+      member_local_id: opts.memberLocalId || null,
     };
     const rec = { record_type: 'payment', local_key: _pmoCassaKey(_data, opts.campo, opts.ora, opts.playerName), payload, deleted: false };
+    try { _pmoWalletDeltaAggiorna(payload, +1); } catch (e) {}   // il saldo si muove SUBITO, non al prossimo giro
     await pmoSyncCloudRecordsNow([rec], 'registrare un incasso');
     try { if (typeof _incassiState !== 'undefined' && _incassiState) _incassiState.rows = null; } catch (e) {}
     return rec;
@@ -42974,6 +43095,8 @@ Per confermare scrivi ELIMINA.`);
       if (!matchCli && !matchNm) continue;
       const np = Object.assign({}, p, { voided: true, status: 'void', voided_at: new Date().toISOString() });
       toVoid.push({ record_type: 'payment', local_key: r.local_key, payload: np, deleted: false });
+      // 👛 Se erano soldi del borsellino, lo storno glieli RIMETTE — e subito, non al prossimo giro.
+      try { _pmoWalletDeltaAggiorna(p, -1); } catch (e) {}
     }
     if (toVoid.length) await pmoSyncCloudRecordsNow(toVoid, 'stornare (simulazione) incassi');
     try { if (typeof _incassiState !== 'undefined' && _incassiState) _incassiState.rows = null; } catch (e) {}
@@ -43166,6 +43289,19 @@ Per confermare scrivi ELIMINA.`);
       try { svcAddMessage('system', '⚠️ Prenotazione non identificata su Matchpoint (idReserva mancante). Riapri la scheda e riprova.', 'error'); } catch (e) {}
       return { ok: false, message: 'NO_IDRESERVA' };
     }
+    // 👛🚨 VOCE 181/2 — col borsellino non si spende più di quello che c'è. La regola sta in
+    // `_pmoCassaVerdettoBorsellino` (pura, esercitabile); qui si applica e si parla.
+    const _gW = (_cassa && method === 'wallet' && typeof giocatori !== 'undefined' && Array.isArray(giocatori))
+      ? giocatori.find(function (x) { return String(_walletClientId(x) || '') === String(idCliente); }) : null;
+    const _saldoW = _gW ? _walletCents(_gW) : null;
+    const _verdW = _pmoCassaVerdettoBorsellino(_cassa, method, _saldoW, amountCents);
+    if (_verdW) {
+      const _testoW = _verdW === 'SALDO_INSUFFICIENTE'
+        ? ('⚠️ Saldo insufficiente: nel borsellino ci sono ' + _incassiEuro(_saldoW || 0) + '.')
+        : '⚠️ Saldo del borsellino non disponibile: non incasso a indovinare.';
+      try { svcAddMessage('system', _testoW, 'error'); } catch (e) {}
+      return { ok: false, message: _verdW };
+    }
     const okGo = await _pmoConfirmCollect(playerName, methodLabel, amountCents, _cassa);
     if (!okGo) return { ok: false, message: 'CANCELLED' };
     btns.forEach(function (b) { try { b.disabled = true; } catch (e) {} });
@@ -43176,7 +43312,7 @@ Per confermare scrivi ELIMINA.`);
     // Matchpoint si spegne, questa strada non se ne accorge.*
     if (_cassa) {
       try {
-        await _pmoCassaScriviIncasso({ idReserva: idReserva, idCliente: idCliente, idx: opts.idx, playerName: playerName, method: method, amountCents: amountCents, data: opts.data, campo: opts.campo, ora: opts.ora });
+        await _pmoCassaScriviIncasso({ idReserva: idReserva, idCliente: idCliente, idx: opts.idx, playerName: playerName, method: method, amountCents: amountCents, data: opts.data, campo: opts.campo, ora: opts.ora, memberLocalId: _pmoSocioLocalId(idCliente) });
       } catch (e) {
         _setMsg(note, '⚠️ Incasso non registrato: ' + esc(e && e.message ? e.message : String(e)));
         btns.forEach(function (b) { try { b.disabled = false; } catch (e2) {} });
