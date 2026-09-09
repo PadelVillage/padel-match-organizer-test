@@ -8720,7 +8720,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.423';
+    const APP_VERSION = '6.424';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -26062,6 +26062,14 @@ Grazie!`
         // 🚨 E nemmeno un «nato qui» senza numero: una provenienza appiccicata a una casella vuota
         //    dichiarerebbe da dove viene **niente**. Stessa regola del ricordato, stessa ragione.
         natoQui: !ignoto && !_quando && String(origineImporto || '') === 'listino',
+        // 🆕 VOCE 188/B — il QUINTO esito: **deciso in segreteria**. Stessa forma del quarto e
+        // stessa ragione, un passo più in là: il quarto separa «prezzo nostro» da «numero del
+        // circolo», questo separa «prezzo del listino» da «cifra che ha scelto una persona».
+        // ⛔ Senza di lui quel numero uscirebbe **nudo**, e nudo qui vuol dire *«il circolo ha
+        //    confermato»* — è la marca che `_pmoSetCharges` toglie dopo la conferma del worker.
+        //    ⇒ La cifra decisa a mano si travestirebbe da cifra confermata, che è il difetto del
+        //    quarto esito preso dall'altro verso.
+        decisoQui: !ignoto && !_quando && String(origineImporto || '') === 'segreteria',
         lettoAt: ignoto ? null : _quando,
         valore: ignoto ? '' : ((dovutoCents || 0) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         baseCents: ignoto ? null : (dovutoCents || 0),
@@ -26100,7 +26108,7 @@ Grazie!`
      *     cifra. La 151 lo scrisse per il numero vecchio; vale identico per il numero nostro.
      *     📌 *Il posto dove una provenienza sbagliata costa di più è quello dove si chiede «confermi?».*
      *  PURA (il formato dei soldi e l'ora arrivano da fuori). */
-    function _pmoImportoDa(daCents, daLettoAt, euro, quando, daNatoQui) {
+    function _pmoImportoDa(daCents, daLettoAt, euro, quando, daNatoQui, daDecisoQui) {
       if (daCents == null) return '(non letto)';
       const eur = euro(daCents);
       if (daLettoAt) {
@@ -26110,6 +26118,10 @@ Grazie!`
       // ⚖️ Dopo `daLettoAt` e mai prima: è la stessa precedenza della casella, e le due si
       //    smentirebbero a vicenda se qui fosse scritta al contrario.
       if (daNatoQui) return eur + ' (dal listino)';
+      // 🆕 VOCE 188/B — il QUINTO esito, e sta dove costa di più: qui si chiede a una persona di
+      //    confermare del DENARO. Un numero deciso in segreteria stampato nudo si leggerebbe come
+      //    confermato dal circolo — la stessa bugia del ② e del ④, sull'ultimo dato rimasto senza marca.
+      if (daDecisoQui) return eur + ' (deciso in segreteria)';
       return eur;
     }
     /** 🆕⭐⭐ VOCE 180 — IL PREZZO DI UNO SLOT, dal listino del gestionale.
@@ -26122,9 +26134,15 @@ Grazie!`
      *  ⭐ **Il prezzo NON si calcola qui**: si legge da `pmoCalendarioMappa`, che è la risposta di
      *  `pmo_calendario_effettivo` — la stessa funzione che risponde alla creazione e alle due edge
      *  del bot. Qui si sceglie la fascia, non si decide il prezzo.
-     *  ⚖️ **Si guarda l'ora d'INIZIO**, identico a `prezzoDellaFascia` nell'edge: una prenotazione
-     *  che comincia a metà di una fascia non è quella fascia, e indovinarle un prezzo sarebbe
-     *  inventarlo. `null` vuol dire **«non lo sappiamo»**, e chi legge lo deve dire.
+     *  ⚖️ **Si guarda la fascia che CONTIENE l'ora**, identico a `prezzoDellaFascia` nell'edge.
+     *  🔄 QUI C'ERA SCRITTO IL CONTRARIO — *«si guarda l'ora d'INIZIO: una prenotazione che comincia
+     *  a metà di una fascia non è quella fascia»* — ed era la regola vera fino alla **metà A della
+     *  voce 188** (09/09/2026), che l'ha ribaltata su sua parola (*«prende il prezzo della
+     *  fascia»*). Il codice qui sotto era già stato corretto; questo commento no, ed è rimasto a
+     *  dichiarare la regola opposta a quella che la riga esegue.
+     *  📌 *Un commento che sopravvive alla regola che descriveva non è vecchio: **mente**, e mente
+     *     nel punto in cui qualcuno lo legge apposta per non dover leggere il codice.*
+     *  ⇒ `null` vuol dire **«non lo sappiamo»**, e chi legge lo deve dire.
      *  🚨 `null` anche quando il calendario **non è caricato**: un listino assente non è un listino
      *  vuoto, e un prezzo mancante è meglio di uno sbagliato. PURA (la mappa arriva da fuori). */
     function _pmoOraPulita(v) {
@@ -26135,20 +26153,62 @@ Grazie!`
       if (h > 23 || mi > 59) return null;
       return String(h).padStart(2, '0') + ':' + m[2];
     }
+    /* 🚨 IL CICLO STA IN UN POSTO SOLO. Questa funzione **delega** a `_pmoPerchePrezzoAssente` e
+     * ne butta via il motivo: prima del 09/09/2026 le due tenevano due copie dello stesso
+     * attraversamento delle fasce, ed è la forma esatta del guasto che questo progetto ha già
+     * pagato altrove — due copie che oggi coincidono sono un guasto che aspetta il primo cambio.
+     * ⇒ Chi tocca la regola (`< fine` invece di `<=`, il giorno chiuso, la fascia senza prezzo) la
+     *   tocca una volta e la cambia per tutt'e due. */
     function _pmoPrezzoDelloSlot(mappa, isoDate, ora) {
+      return _pmoPerchePrezzoAssente(mappa, isoDate, ora).prezzoCents;
+    }
+
+    /** 🆕⭐⭐ VOCE 188/B — **PERCHÉ** il prezzo non c'è. Cinque risposte, non un `null` solo.
+     *
+     *  🚨⭐⭐ IL DIFETTO CHE CURA, ed è di forma prima che di contenuto: `_pmoPrezzoDelloSlot`
+     *  risponde `null` a **cinque domande diverse** — listino non ancora caricato, giorno chiuso,
+     *  ora illeggibile, fascia che non esiste, fascia che esiste senza prezzo. Chi legge quel
+     *  `null` non può sapere quale delle cinque ha in mano, e le cinque vogliono cose **opposte**:
+     *  due sono *«il prezzo non esiste, chiedilo a una persona»*, le altre tre sono *«non lo so
+     *  ancora, non disturbare nessuno»*.
+     *  📌 *Una funzione che risponde «no» a due domande diverse non risponde a nessuna delle due* —
+     *     è la stessa riga già scritta in `CLAUDE.md` per `pmoIsReadonlyStaff`, e qui costerebbe
+     *     una domanda fatta a chi lavora ogni volta che la rete è lenta.
+     *
+     *  ⚖️ **Perché la distinzione è tutto il lavoro della metà B**: la cura è *«se il prezzo non
+     *  esiste, il gestionale lo CHIEDE»*. Chiederlo quando il listino semplicemente non è ancora
+     *  arrivato vorrebbe dire fermare la segreteria per un'ignoranza che passa da sé in un
+     *  secondo — cioè fare esattamente il danno che lui ha escluso (*«non deve bloccare chi
+     *  lavora»*).
+     *
+     *  I cinque esiti, e solo i primi due fanno nascere una domanda:
+     *  · `fuori-da-ogni-fascia` → ⇒ **CHIEDI**. È il caso della segreteria che prenota al
+     *    telefono fuori dal menù dei soci: 📏 5 righe su 32 su `cudi` al 09/09/2026;
+     *  · `fascia-senza-prezzo`  → ⇒ **CHIEDI**. La fascia c'è, il prezzo non l'ha messo nessuno;
+     *  · `listino-non-caricato` → ⇒ **TACI**: non lo sappiamo ANCORA, e lo sapremo;
+     *  · `giorno-chiuso`        → ⇒ **TACI**: quel giorno non si gioca, non c'è niente da chiedere;
+     *  · `ora-illeggibile`      → ⇒ **TACI**: è un difetto nostro, non una domanda per la segreteria.
+     *  PURA (la mappa arriva da fuori). */
+    function _pmoPerchePrezzoAssente(mappa, isoDate, ora) {
       const cercata = _pmoOraPulita(ora);
-      if (!cercata || !mappa || typeof mappa !== 'object') return null;
+      if (!cercata) return { prezzoCents: null, motivo: 'ora-illeggibile', chiedere: false };
+      if (!mappa || typeof mappa !== 'object') return { prezzoCents: null, motivo: 'listino-non-caricato', chiedere: false };
       const giorno = mappa[String(isoDate || '').trim()];
-      if (!giorno || !Array.isArray(giorno.slots)) return null;
-      // ⛔ Un giorno CHIUSO non ha un prezzo: se il circolo è chiuso quel prezzo non esiste.
-      if (giorno.chiuso) return null;
+      // ⛔ Un giorno che la mappa non conosce NON è un giorno senza fasce: è un giorno che non
+      //    abbiamo caricato (il calendario parte da oggi ⇒ il passato non c'è). Chiedere un prezzo
+      //    per una partita di giugno sarebbe la stessa invenzione a ritroso che la 180 ha escluso.
+      if (!giorno || !Array.isArray(giorno.slots)) return { prezzoCents: null, motivo: 'listino-non-caricato', chiedere: false };
+      if (giorno.chiuso) return { prezzoCents: null, motivo: 'giorno-chiuso', chiedere: false };
       for (let i = 0; i < giorno.slots.length; i++) {
         const f = giorno.slots[i];
         if (!f || !pmoOraDentroLaFascia(_pmoOraPulita(f.start), _pmoOraPulita(f.end), cercata)) continue;
         const pz = f.prezzoCents;
-        return (typeof pz === 'number' && isFinite(pz) && pz >= 0) ? Math.round(pz) : null;
+        if (typeof pz === 'number' && isFinite(pz) && pz >= 0) {
+          return { prezzoCents: Math.round(pz), motivo: 'c-e', chiedere: false };
+        }
+        return { prezzoCents: null, motivo: 'fascia-senza-prezzo', chiedere: true };
       }
-      return null;
+      return { prezzoCents: null, motivo: 'fuori-da-ogni-fascia', chiedere: true };
     }
 
     /** 🆕⭐⭐ VOCE 180 — le QUATTRO REGOLE dell'importo dal listino, eseguite dall'app.
@@ -43519,6 +43579,116 @@ Per confermare scrivi ELIMINA.`);
   // 🚨 Le caselle si mandano UNA PER UNA e in fila, non in parallelo: il worker è a coda unica
   // sulla stessa scheda Matchpoint, e sparargliele insieme non le farebbe arrivare prima —
   // renderebbe solo indistinguibile quale delle quattro è andata storta.
+  /** 🆕⭐⭐ VOCE 188/B — L'IMPORTO A CARICO DECISO DALLA SEGRETERIA, SCRITTO NEL GESTIONALE.
+   *
+   * 🚨⭐⭐ IL FATTO CHE LA RENDE NECESSARIA, misurato il 09/09/2026 sul sorgente **deployato** su
+   * `cudi` (non su git): `matchpoint-charge-write` incontra il recinto `scritturaAlCircoloConsentita`
+   * — cablato sul ref di PROD — e da lì risponde **`503 AMBIENTE_DI_PROVA`**. E a differenza di
+   * `bookings-create · edit · cancel`, quella edge importa **solo** il rifiuto: `esitoNativo` non
+   * ce l'ha, quindi non ha un ramo che scriva da noi. ⇒ Sul gestionale che sta diventando il vero,
+   * **oggi non esiste alcun modo di mettere un importo a mano**: il bottone c'è
+   * (`PMO_CHARGE_WRITE_ENABLED` è `true`) e la strada dietro è chiusa.
+   * ⚖️ Non è un difetto di quella edge: è la 184 vista da un'altra faccia — un pezzo scritto quando
+   * «TEST» voleva dire *laboratorio*, che resta al suo posto mentre quell'ambiente diventa
+   * **produzione**. Là il recinto protegge; qui blocca il lavoro vero.
+   *
+   * 🎯 LA CURA, ed è il verso del distacco già scelto da lui (*«il gestionale di TEST diventa il
+   * vero»*, *«dal gestionale si incassa perché Matchpoint non c'è più»*): quando il gestionale non
+   * è collegato al circolo, l'importo **non si va a riportare** da nessuna parte — si scrive qui,
+   * ed è nostro. Stessa strada che la voce 180 usa già per il prezzo del listino: la copia locale
+   * più `staffCalCloudSyncEdit`, che è il posto da cui la cassa (voce 181) legge.
+   *
+   * ⛔ QUELLO CHE NON FA, e va saputo:
+   *   · **non tocca PROD**: là `pmoGestionaleCollegatoAlCircolo` è vero e si passa dalla strada di
+   *     sempre, worker compreso. I due mondi non si mescolano, e questo ramo non li avvicina;
+   *   · **non scrive `lettoAt`** — è la regola ④ della 180, e qui vale il doppio: questo numero non
+   *     l'ha detto il circolo, l'ha deciso una persona;
+   *   · **non nasce nessun `payment`**: cambiare quanto uno deve non è incassare. È la riga della
+   *     voce 132, e il divieto sui pagamenti (`CLAUDE.md`) non la tocca.
+   *
+   * 🚨 `origineImporto: 'segreteria'` e NON nessun marchio, che era l'altra strada. Su PROD «nessun
+   * marchio» vuol dire *«il circolo ha confermato questa cifra»* (è quello che `_pmoSetCharges` fa
+   * dopo la risposta del worker) ⇒ scrivere un numero deciso qui senza marchio lo farebbe leggere
+   * come confermato dal circolo. È **esattamente** il difetto che il quarto esito della 180 ha
+   * curato, rimesso in piedi dall'altra parte.
+   * 📌 *Una provenienza non è salva finché non arriva agli occhi* — e due provenienze diverse non
+   *    si scrivono nello stesso campo, nemmeno lasciandolo vuoto. */
+  async function _pmoSetChargesNativo(opts) {
+    const changes = Array.isArray(opts.changes) ? opts.changes : [];
+    const st = (typeof staffCalPlayersState !== 'undefined') ? staffCalPlayersState : null;
+    if (!st) return { ok: false, done: 0, failed: changes.length, message: 'NO_SCHEDA' };
+    const iso = String(st.isoDate || '').trim();
+    const campoNum = Number(String(st.campo == null ? '' : st.campo).replace(/\D/g, ''));
+    const ora = String(st.ora || '').trim();
+    const quando = new Date().toISOString();
+    try {
+      const list = (typeof safeLoad === 'function') ? safeLoad('staffBookings', []) : [];
+      if (!Array.isArray(list)) return { ok: false, done: 0, failed: changes.length, message: 'NO_LISTA' };
+      const b = list.find(function (x) {
+        return x && String(x.data).trim() === iso
+          && Number(String(x.campo).replace(/\D/g, '')) === campoNum
+          && String(x.ora).trim() === ora;
+      });
+      // ⛔ Solo le prenotazioni NOSTRE: le occupazioni del sync non hanno `id` e non ci appartengono.
+      if (!b || !b.id || !Array.isArray(b.giocatori)) {
+        return { ok: false, done: 0, failed: changes.length, message: 'RIGA_NON_TROVATA' };
+      }
+      // 🩹 Le righe possono essere STRINGHE (il sync scrive il roster come nomi): si portano alla
+      //    forma a oggetto prima, o l'importo finirebbe addosso a un `String`. Stessa riga della 142.
+      const righe = b.giocatori.map(function (g) {
+        return (typeof g === 'string') ? { nome: g.trim() } : Object.assign({}, g);
+      });
+      let done = 0;
+      for (const c of changes) {
+        const i = righe.findIndex(function (r, idx) {
+          if (c.idx != null && String(r.idx != null ? r.idx : idx) === String(c.idx)) return true;
+          if (r.idCliente && c.idCliente && String(r.idCliente) === String(c.idCliente)) return true;
+          return String(r.nome || '').trim() === String(c.nome || '').trim();
+        });
+        if (i < 0) continue;
+        righe[i].importoCents = c.aCents;
+        // ⚖️ Il pendente segue l'importo SOLO se nessuno ha ancora pagato: su una riga già riscossa
+        //    riportarlo a «tutto da pagare» inventerebbe un debito sopra un incasso vero.
+        const gia = righe[i].pendenteCents;
+        const riscossa = String(righe[i].stato || '') === 'riscosso';
+        if (!riscossa) righe[i].pendenteCents = c.aCents;
+        else if (!(typeof gia === 'number' && isFinite(gia))) righe[i].pendenteCents = 0;
+        righe[i].origineImporto = 'segreteria';
+        righe[i].importoAt = quando;
+        // 🚨 Il numero non l'ha letto il circolo: se un `lettoAt` c'era, descriveva il numero
+        //    VECCHIO e non questo. Una marca che sopravvive al dato che descriveva si riattacca al
+        //    primo numero che passa — è la riga già scritta nel ramo di PROD, qui per la stessa ragione.
+        delete righe[i].lettoAt;
+        done += 1;
+      }
+      if (!done) return { ok: false, done: 0, failed: changes.length, message: 'GIOCATORI_NON_TROVATI' };
+      b.giocatori = righe;
+      if (typeof save === 'function') save('staffBookings', list);
+      try { if (typeof staffCalCloudSyncEdit === 'function') staffCalCloudSyncEdit(iso, campoNum, ora); } catch (e) {}
+      // La scheda aperta mostra subito il numero nuovo, senza aspettare una rilettura.
+      try {
+        if (Array.isArray(st.roster)) {
+          for (const c of changes) {
+            const tgt = st.roster.find(function (x) {
+              return (c.idx != null && String(x.idx) === String(c.idx))
+                || (x.idCliente && c.idCliente && String(x.idCliente) === String(c.idCliente))
+                || String(x.nome || '').trim() === String(c.nome || '').trim();
+            });
+            if (!tgt) continue;
+            tgt.importoCents = c.aCents;
+            if (String(tgt.stato || '') !== 'riscosso') tgt.pendenteCents = c.aCents;
+            tgt.origineImporto = 'segreteria';
+            tgt.importoAt = quando;
+            delete tgt.lettoAt;
+          }
+        }
+      } catch (e) {}
+      return { ok: done === changes.length, done: done, failed: changes.length - done };
+    } catch (e) {
+      return { ok: false, done: 0, failed: changes.length, message: String((e && e.message) || e) };
+    }
+  }
+
   async function _pmoSetCharges(opts) {
     opts = opts || {};
     const esc = (typeof escapeHtml === 'function') ? escapeHtml : function (x) { return String(x == null ? '' : x); };
@@ -43534,21 +43704,51 @@ Per confermare scrivi ELIMINA.`);
       return { ok: false, done: 0, failed: changes.length, message: 'NO_IDRESERVA' };
     }
 
+    /* 🎯⭐⭐ VOCE 188/B — IL BIVIO DEL DISTACCO, e si decide **a runtime** sul ref del gestionale.
+     * ⛔ NON sull'hostname: quello scade il giorno del passaggio (⇒ voce 184), e una guardia che
+     *    scade senza dirlo è peggio di una guardia che non c'è. */
+    let _collegatoAlCircolo = true;
+    try {
+      const _cfg0 = await loadAssessmentSupabaseConfig();
+      _collegatoAlCircolo = (typeof pmoGestionaleCollegatoAlCircolo === 'function')
+        ? pmoGestionaleCollegatoAlCircolo(_cfg0 && _cfg0.supabaseUrl)
+        : true;
+    } catch (e) { _collegatoAlCircolo = true; }
+    // ⚖️ Nel dubbio si resta sulla strada di PROD: sbagliare da quella parte fa **fallire** un
+    //    salvataggio e si vede subito; sbagliare dall'altra scriverebbe in un libro solo nostro
+    //    una cifra che il circolo si aspetta di vedere. È lo stesso verso del dubbio del recinto.
+    const _dove = _collegatoAlCircolo ? ' su Matchpoint' : ' nel gestionale';
+
     // VOCE 149 — il «da» si scrive solo se lo sappiamo: `daCents` è `null` quando l'importo non
     // era stato letto da Matchpoint, e stampare «0,00 →» sarebbe un valore di partenza inventato.
     const _riga = function (c) {
       // VOCE 151 — stessa regola del popup, eseguita e non ricopiata.
-      return esc(c.nome) + ' ' + esc(_pmoImportoDa(c.daCents, c.daLettoAt, _incassiEuro, _pmoQuandoLetto, c.daNatoQui))
+      return esc(c.nome) + ' ' + esc(_pmoImportoDa(c.daCents, c.daLettoAt, _incassiEuro, _pmoQuandoLetto, c.daNatoQui, c.daDecisoQui))
         + ' → ' + _incassiEuro(c.aCents);
     };
-    const note = svcAddMessage('system', '↻ Salvo su Matchpoint ' + (changes.length === 1 ? 'l\'importo' : 'gli importi') + ' a carico… (non chiudere)<br><span style="color:var(--text-muted);font-size:.78rem;">' + changes.map(_riga).join('<br>') + '</span>');
+    const note = svcAddMessage('system', '↻ Salvo' + _dove + ' ' + (changes.length === 1 ? 'l\'importo' : 'gli importi') + ' a carico… (non chiudere)<br><span style="color:var(--text-muted);font-size:.78rem;">' + changes.map(_riga).join('<br>') + '</span>');
     // VOCE 134 — l'esito va anche DENTRO la scheda, che qui resta aperta: è lì che guarda chi ha
     // appena premuto Salva, e il messaggio di chat nasce sotto il bordo.
     const _setMsg = function (html, tipo) {
       try { const last = note && note.querySelector(':scope > div:last-child'); if (last) last.innerHTML = html; } catch (e) {}
       _svcSchedaEsito(html, tipo);
     };
-    _setMsg('↻ Salvo su Matchpoint ' + (changes.length === 1 ? 'l\'importo' : 'gli importi') + ' a carico… (non chiudere)<br><span style="font-size:.78rem;">' + changes.map(_riga).join('<br>') + '</span>', 'wait');
+    _setMsg('↻ Salvo' + _dove + ' ' + (changes.length === 1 ? 'l\'importo' : 'gli importi') + ' a carico… (non chiudere)<br><span style="font-size:.78rem;">' + changes.map(_riga).join('<br>') + '</span>', 'wait');
+
+    /* 🎯 VOCE 188/B — gestionale scollegato dal circolo ⇒ l'importo nasce e resta QUI. */
+    if (!_collegatoAlCircolo) {
+      const esitoN = await _pmoSetChargesNativo({ changes: changes });
+      if (esitoN.ok) {
+        _setMsg('✅ ' + (changes.length === 1 ? 'Importo aggiornato' : 'Importi aggiornati')
+          + ' nel gestionale<br><span style="font-size:.78rem;">' + changes.map(_riga).join('<br>') + '</span>', 'ok');
+      } else {
+        // 🚨 Non si racconta un successo che non c'è stato: il motivo esce con parole sue.
+        _setMsg('⚠️ ' + (esitoN.done ? (esitoN.done + ' su ' + changes.length + ' aggiornati. ') : 'Nessun importo aggiornato. ')
+          + esc(String(esitoN.message || '')), 'ko');
+      }
+      try { if (typeof staffCalRenderPlayersEditor === 'function' && staffCalPlayersState) staffCalRenderPlayersEditor(); } catch (e) {}
+      return esitoN;
+    }
 
     let done = 0;
     const problemi = [];
@@ -45982,6 +46182,55 @@ Per confermare scrivi ELIMINA.`);
     // 🆕 VOCE 180 — si riempie PRIMA di leggere, o la scheda mostrerebbe lo stato vecchio e il
     //    prezzo comparirebbe solo alla riapertura. Idempotente: la seconda volta non scrive niente.
     try { _staffCalRiempiImportiDalListino(isoDate, campoNum, ora); } catch (e) {}
+    /* 🆕⭐⭐ VOCE 188/B — QUANDO IL PREZZO NON ESISTE, IL GESTIONALE LO **CHIEDE**.
+     *
+     * 🗣️ La regola è sua (09/09/2026): la griglia del listino è il **menù dei soci**, non l'orario
+     * del circolo — *«la segreteria su chiamata personale può prenotare un campo»*. ⇒ Una partita
+     * fuori da quelle fasce è **lavoro normale**, non un errore da impedire: 📏 5 righe su 32 su
+     * `cudi` al 09/09. Ma per quelle il listino non ha niente da dire, e fino a oggi la casella
+     * restava vuota **in silenzio** ⇒ la cassa (voce 181) non aveva su cosa addebitare.
+     *
+     * ⛔ **NON BLOCCA, ed è la metà che lui ha messo per iscritto**: la prenotazione è già fatta,
+     * qui non si impedisce niente e non si chiede di rispondere prima di proseguire. Si **dice**
+     * che quel numero manca e dove si scrive. La segreteria è al telefono: un ostacolo qui è
+     * esattamente ciò che ha escluso.
+     * 🚨 E si chiede **solo** quando il prezzo *non esiste* — non quando *non lo sappiamo ancora*:
+     * è per questo che `_pmoPerchePrezzoAssente` distingue cinque motivi invece di rispondere
+     * `null`. Chiedere perché il listino non è ancora arrivato sarebbe disturbare chi lavora per
+     * un'ignoranza che passa da sé.
+     * ⚖️ Si tace anche se **gli importi ci sono già** (qualcuno li ha decisi, o li ha letti il
+     * circolo): la domanda serve dove manca la risposta, non a ogni apertura di scheda. Un
+     * campanello che suona sempre non dice più niente. */
+    try {
+      const _perche = _pmoPerchePrezzoAssente(
+        (typeof pmoCalendarioMappa !== 'undefined' ? pmoCalendarioMappa : null), isoDate, ora);
+      if (_perche.chiedere) {
+        const _l = (typeof safeLoad === 'function') ? safeLoad('staffBookings', []) : [];
+        const _b = (Array.isArray(_l) ? _l : []).find(function (x) {
+          return x && String(x.data).trim() === String(isoDate).trim()
+            && Number(String(x.campo).replace(/\D/g, '')) === campoNum
+            && String(x.ora).trim() === String(ora).trim();
+        });
+        // ⛔ Solo le prenotazioni NOSTRE, e solo se a QUALCUNO manca l'importo.
+        const _righe = (_b && _b.id && Array.isArray(_b.giocatori)) ? _b.giocatori : [];
+        const _senza = _righe.filter(function (g) {
+          const v = (g && typeof g === 'object') ? g.importoCents : undefined;
+          return !(typeof v === 'number' && isFinite(v));
+        }).length;
+        if (_righe.length && _senza) {
+          const _motivo = (_perche.motivo === 'fascia-senza-prezzo')
+            ? 'la fascia di questo orario non ha un prezzo nel listino'
+            : 'questo orario è fuori dalle fasce del listino';
+          try {
+            svcAddMessage('system', '💶 <strong>Quanto paga ogni giocatore?</strong> '
+              + 'Per questa partita ' + _motivo + ', quindi il prezzo non esiste e non posso ricavarlo.'
+              + '<br><span style="font-size:.78rem;">Scrivilo nelle caselle <strong>€</strong> qui sotto e premi <strong>Salva</strong> — '
+              + (_senza === _righe.length ? 'mancano tutti' : ('ne ' + (_senza === 1 ? 'manca 1' : 'mancano ' + _senza)))
+              + '. Puoi anche lasciar perdere adesso: la prenotazione è già registrata.</span>');
+          } catch (e) {}
+        }
+      }
+    } catch (e) {}
     let _localRoster = [];
     try {
       const _list = (typeof safeLoad === 'function') ? safeLoad('staffBookings', []) : [];
@@ -46778,11 +47027,16 @@ Per confermare scrivi ELIMINA.`);
               // ⚖️ Si dice da dove viene, non che sia dubbio: il prezzo è quello del listino del
               //    gestionale, ed è esatto. Quello che NON si può dire è che l'abbia detto il circolo.
               amt.title = 'Importo dal listino del gestionale (prezzo della fascia) — non letto dal circolo';
+            } else if (_cas.decisoQui) {
+              // 🆕 VOCE 188/B — fuori dalle fasce dei soci il listino non ha un prezzo: questa
+              //    cifra l'ha scelta la segreteria, e si dice.
+              amt.title = 'Importo deciso in segreteria — fuori dalle fasce del listino, non letto dal circolo';
             }
             amt.disabled = !_payCollectActive;
             amt.setAttribute('aria-label', 'Importo a carico di ' + p.nome
               + (_cas.ricordato ? ' (letto ' + (_pmoQuandoLetto(_cas.lettoAt) || 'prima') + ', non ancora riletto)' : '')
-              + (_cas.natoQui ? ' (dal listino del gestionale)' : ''));
+              + (_cas.natoQui ? ' (dal listino del gestionale)' : '')
+              + (_cas.decisoQui ? ' (deciso in segreteria)' : ''));
             eur.appendChild(sym); eur.appendChild(amt);
             money.appendChild(eur);
             _payAmtInputs.push(amt);
@@ -46797,6 +47051,8 @@ Per confermare scrivi ELIMINA.`);
               // VOCE 180 — e la stessa cosa per il «da» nato dal listino: il riepilogo che chiede
               // di confermare del denaro non può far passare un prezzo NOSTRO per uno del circolo.
               baseNatoQui: !!_cas.natoQui,
+              // VOCE 188/B — e la stessa cosa per il «da» deciso in segreteria.
+              baseDecisoQui: !!_cas.decisoQui,
               idCliente: (p.idCliente != null ? String(p.idCliente) : ''),
               idx: (p.idx != null ? String(p.idx) : ''),
               nome: p.nome,
@@ -47605,7 +47861,7 @@ Per confermare scrivi ELIMINA.`);
         if (r.idx != null && st.remove[r.idx]) return;
         const c = _pmoEuroToCents(r.input.value);
         if (c == null || !(c >= 0) || c === r.baseCents) return;
-        out.push({ idCliente: r.idCliente, idx: r.idx, nome: r.nome, daCents: r.baseCents, daLettoAt: (r.baseLettoAt || null), daNatoQui: !!r.baseNatoQui, aCents: c });
+        out.push({ idCliente: r.idCliente, idx: r.idx, nome: r.nome, daCents: r.baseCents, daLettoAt: (r.baseLettoAt || null), daNatoQui: !!r.baseNatoQui, daDecisoQui: !!r.baseDecisoQui, aCents: c });
       });
       return out;
     })();
@@ -47637,7 +47893,7 @@ Per confermare scrivi ELIMINA.`);
         // VOCE 151 → VOCE 180 — QUATTRO esiti, non due: la regola sta in `_pmoImportoDa` e qui
         //    la si esegue, così i due punti che la stampano non possono divergere.
         parts.push('Importo ' + c.nome + ': '
-          + _pmoImportoDa(c.daCents, c.daLettoAt, _incassiEuro, _pmoQuandoLetto, c.daNatoQui)
+          + _pmoImportoDa(c.daCents, c.daLettoAt, _incassiEuro, _pmoQuandoLetto, c.daNatoQui, c.daDecisoQui)
           + ' → ' + _incassiEuro(c.aCents));
       });
     }
