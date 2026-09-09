@@ -8720,7 +8720,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.414';
+    const APP_VERSION = '6.415';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -51632,6 +51632,15 @@ Per confermare scrivi ELIMINA.`);
     };
     const mia = _svcAzioneLocale;
     _svcTimerAzione = setTimeout(function () { svcChiudiAzione('ignoto', mia); }, SVC_TETTO_AZIONE_MS);
+    // 🆕 Su una nascita il riquadro si chiude SUBITO, non a cose fatte: altrimenti resterebbe
+    //    aperto e vuoto sopra la griglia — il rettangolo bianco della sua prima segnalazione —
+    //    proprio nel secondo e mezzo in cui lui guarda il calendario.
+    // ⛔ E si RIAPRE se va male (vedi `svcChiudiAzione`): il dettaglio di un rifiuto sta lì
+    //    dentro, e chiuderlo per sempre vorrebbe dire nasconderlo.
+    if (mia.nascita) {
+      try { svcClearLog(); } catch (_e) {}
+      try { svcCloseChat(); } catch (_e) {}
+    }
     svcRidisegnaSemaforo();
     return mia;
   }
@@ -51662,6 +51671,9 @@ Per confermare scrivi ELIMINA.`);
       try { svcScheduleAutoClear(0); } catch (_e) {}
       return;
     }
+    // ⛔ Nascita andata MALE: il riquadro che si era chiuso torna, o il motivo del rifiuto
+    //    resterebbe scritto dentro una finestra che nessuno vede. Il silenzio vale sul successo.
+    if (_svcAzioneLocale.nascita) { try { svcOpenChat(); } catch (_e) {} }
     svcRidisegnaSemaforo();
     const durata = SVC_ESITI[esito].durataMs;
     // 🚨 `0` = non se ne va da sola. Da quando i messaggi di azione non stanno più nella scheda,
@@ -51813,6 +51825,22 @@ Per confermare scrivi ELIMINA.`);
       return;
     }
     const finita = !!(loc && loc.stato !== 'corso');
+    // 🆕⭐⭐ E NON SI ANNUNCIA NEMMENO MENTRE NASCE (09/09/2026, sua seconda parola davanti alla
+    //    versione nuova: *«ci sono ancora i banner e non ci devono essere»*).
+    //    La prima cura toglieva il banner del «fatto» e lasciava quello dell'«in corso» — cioè
+    //    toglieva il secondo dei due e teneva il primo. ⇒ Su una nascita la striscia tace da
+    //    capo a fondo, e a dire che sta succedendo qualcosa è **la cella del calendario**, che
+    //    pulsa azzurra sullo slot per il secondo e mezzo della scrittura e poi diventa la
+    //    partita che lampeggia verde.
+    // ⚖️ Si può fare qui e non altrove perché su una nascita **il posto è noto in partenza**:
+    //    lo slot che si sta occupando. Su un annullo o un incasso non c'è niente da accendere
+    //    che non ci sia già, ed è per questo che quelli la striscia ce l'hanno ancora.
+    if (loc && loc.nascita && !finita) {
+      el.hidden = true;
+      el.textContent = '';
+      svcAccendiCella(loc.dove);   // ⭐ la cella SÌ: senza, il secondo e mezzo sarebbe muto
+      return;
+    }
     // 🩹 VOCE 150 — l'esito è GIÀ scritto dentro la scheda, dieci pixel più su: la striscia
     //    sarebbe il secondo dei «due messaggi uno dopo l'altro» che lui vede in fondo al foglio.
     //    ⛔ Si esce PRIMA di disegnare, non si nasconde dopo: un elemento riempito e poi
