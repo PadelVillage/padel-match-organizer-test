@@ -8720,7 +8720,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.417';
+    const APP_VERSION = '6.418';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -51325,10 +51325,19 @@ Per confermare scrivi ELIMINA.`);
     return !!(loc && loc.sulCalendario && loc.dove && loc.dove.campo && loc.dove.ora);
   }
 
-  /** Quanto dura il lampeggio. ⚖️ Sei secondi, cioè **esattamente** quanto durava il verde della
-   *  striscia che sostituisce (`SVC_ESITI.fatto.durataMs`): il tempo che uno ha per accorgersene
-   *  non è cambiato, è cambiato il posto in cui deve guardare. */
-  const SVC_NASCITA_MS = 6000;
+  /** Quanto dura il lampeggio.
+   *  🔄 **DUE SECONDI dal 09/09/2026, e prima erano sei — sua richiesta**: *«si può far sì che il
+   *  tempo di azione sia al massimo di due secondi? … mi riferisco alla conferma finale quando
+   *  smette di lampeggiare»*.
+   *  ⚖️ Qui c'era scritto che sei secondi erano *«esattamente quanto durava il verde della striscia
+   *  che sostituisce, così il tempo per accorgersene non cambia»* — un ragionamento che **guardava
+   *  la cosa sbagliata**: un banner va letto, e leggere richiede tempo; una cella che si accende
+   *  **dentro** al calendario si vede **mentre** succede, perché l'occhio è già lì. ⇒ Sei secondi
+   *  non erano il tempo per accorgersene: erano il tempo in cui il gesto continuava a **sembrare
+   *  in corso** dopo essere finito.
+   *  📌 *La durata di un segnale si misura su quanto ci vuole a vederlo, non su quanto durava
+   *     quello che ha sostituito.* */
+  const SVC_NASCITA_MS = 2000;
   let _svcNascita = null;        // { dove, fino } — la prenotazione che sta lampeggiando
   let _svcNascitaTimer = null;
 
