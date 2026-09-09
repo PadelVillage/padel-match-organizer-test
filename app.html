@@ -8720,7 +8720,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.420';
+    const APP_VERSION = '6.421';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -48181,8 +48181,12 @@ Per confermare scrivi ELIMINA.`);
     const toOraFine = (typeof _staffCalEndTime === 'function') ? _staffCalEndTime(toOra, st.durata) : toOra;
     const fromDataIt = st.iso.split('-').reverse().join('/');
     const toDataIt = toIso.split('-').reverse().join('/');
+    /* 🏷️ VOCE 190 — qui c'era scritto «Spostare su Matchpoint?». Non è un cerca-e-sostituisci
+       fatto di passaggio: questa frase **nessuno l'aveva mai letta** (lo spostamento non aveva
+       un chiamante), ed è il trascinamento a renderla visibile ⇒ è mia. E la parola non serviva a
+       niente: quello che il riquadro deve dire è DA DOVE e DOVE, e quello resta. */
     const confirmed = confirm(
-      'Spostare su Matchpoint?\n\n' +
+      'Spostare la prenotazione?\n\n' +
       'DA: Campo ' + st.campo + ' \xb7 ' + fromDataIt + ' \xb7 ' + st.ora + '\n' +
       'A:  Campo ' + toCampoNum + ' \xb7 ' + toDataIt + ' \xb7 ' + toOra + '–' + toOraFine +
       (st.nome ? '\n\n(' + st.nome + ')' : ''));
