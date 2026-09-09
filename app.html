@@ -8724,7 +8724,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.426';
+    const APP_VERSION = '6.427';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -52143,7 +52143,28 @@ Per confermare scrivi ELIMINA.`);
    *  in corso** dopo essere finito.
    *  📌 *La durata di un segnale si misura su quanto ci vuole a vederlo, non su quanto durava
    *     quello che ha sostituito.* */
-  const SVC_NASCITA_MS = 2000;
+  /** 🔄⭐⭐ **UN BATTITO SOLO, 1.100 ms — dal 09/09/2026 notte, e la scelta l'ha delegata lui**
+   *  (*«decidi tu per il lampeggio, per me va bene come decidi»*). Prima erano 2.000, e prima
+   *  ancora 6.000.
+   *  ⚖️ **Perché 1.100 e non un numero tondo**: è **esattamente un ciclo** di `svcCellaNata`
+   *  (`1.1s`). A 2.000 ms il lampeggio veniva tagliato a **1,8 cicli**, cioè a metà dissolvenza e
+   *  in un punto che dipendeva dall'animazione, non da una decisione. Un ciclo intero si chiude
+   *  sul **verde pieno**: lo stop sembra voluto invece che un'interruzione.
+   *  📌 *Un segnale che finisce a metà del proprio respiro non dice «finito»: dice «sono stato
+   *     spento».*
+   *  🎯 **E centra il numero che aveva chiesto**: la scrittura sta oggi su una mediana di ~770 ms
+   *  (voce 191) ⇒ 770 + 1.100 ≈ **1,9 s** dalla sua mano alla fine del lampeggio, contro i ~2,8
+   *  di prima e i 7,6-10 di stamattina.
+   *  ⛔ **SCARTATA una durata ADATTIVA** (`2000 − durata della scrittura`), che pure centrava i due
+   *  secondi sempre: accorcerebbe il segnale **proprio quando la scrittura è lenta**, cioè quando
+   *  chi guarda ha più bisogno di capire dov'è finita la partita. ⇒ Il verso sarebbe rovesciato.
+   *  E un gesto che la segreteria ripete tutto il giorno vuole un **ritmo fisso**, che si impara.
+   *  ⚠️ **Non è una garanzia, è una mediana**: la scrittura misurata va da 548 a 1.480 ms ⇒ il
+   *  totale sta fra **1,65 e 2,6 s**. Quello che resta di variabile è la **rete**, non questa riga.
+   *  🚨 Derivato dal ciclo dell'animazione e non scritto a mano due volte: se un domani si cambia
+   *  `svcCellaNata`, questo numero deve seguirla o torna il taglio a metà respiro. */
+  const SVC_NASCITA_CICLO_MS = 1100;   // = la durata di `@keyframes svcCellaNata` nel CSS
+  const SVC_NASCITA_MS = SVC_NASCITA_CICLO_MS;
   let _svcNascita = null;        // { dove, fino } — la prenotazione che sta lampeggiando
   let _svcNascitaTimer = null;
 
