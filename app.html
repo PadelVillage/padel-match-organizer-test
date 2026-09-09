@@ -8720,7 +8720,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.422';
+    const APP_VERSION = '6.423';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -18756,6 +18756,22 @@ Grazie.`
      * ⛔ Un calendario disegnato VUOTO si legge «il circolo è chiuso», che è una bugia e non
      * un'attesa: per questo il ripiego resta.
      */
+    /** 🎯⭐⭐ VOCE 188 — LA FASCIA CHE **CONTIENE** L'ORA, non quella che ci comincia sopra.
+     *  🚨 GEMELLA di `oraDentroLaFascia` in
+     *  `supabase/functions/matchpoint-bookings-create/importo-dal-listino.ts`: le due devono dare
+     *  la stessa risposta, e il banco `limporto-del-giocatore-aggiunto.test.mjs` le esercita sulla
+     *  stessa tabella di casi.
+     *  📏 Il difetto che cura, misurato su `cudi` il 09/09/2026: delle 32 prenotazioni native vive,
+     *  **6** stavano DENTRO una fascia senza cominciare al suo inizio ⇒ restavano **senza prezzo
+     *  mentre il prezzo esisteva**.
+     *  ⛔ L'ora uguale alla FINE di una fascia appartiene alla fascia DOPO: `< fine`, non `<=`.
+     *  PURA. */
+    function pmoOraDentroLaFascia(inizio, fine, ora) {
+      if (!inizio || !ora) return false;
+      if (!fine) return inizio === ora;   // senza fine non è un intervallo: vale il suo inizio
+      return ora >= inizio && ora < fine;
+    }
+
     function getDaySlots(date) {
       if (date instanceof Date && pmoCalendarioMappa) {
         const giorno = pmoCalendarioMappa[pmoDataChiave(date)];
@@ -18780,7 +18796,9 @@ Grazie.`
     // 🚨 null NON è zero: chi lo mostra deve scrivere «da definire», non «0,00 €».
     function pmoPrezzoDellaFascia(date, oraInizio) {
       const slots = getDaySlots(date);
-      const trovata = (slots || []).find((s) => s.start === oraInizio);
+      // 🎯 VOCE 188 — la fascia che CONTIENE l'ora, non quella che ci comincia sopra: vedi
+      //    `oraDentroLaFascia` in `matchpoint-bookings-create/importo-dal-listino.ts`.
+      const trovata = (slots || []).find((s) => s && pmoOraDentroLaFascia(s.start, s.end, oraInizio));
       return trovata ? (trovata.prezzoCents ?? null) : null;
     }
 
@@ -26126,7 +26144,7 @@ Grazie!`
       if (giorno.chiuso) return null;
       for (let i = 0; i < giorno.slots.length; i++) {
         const f = giorno.slots[i];
-        if (!f || _pmoOraPulita(f.start) !== cercata) continue;
+        if (!f || !pmoOraDentroLaFascia(_pmoOraPulita(f.start), _pmoOraPulita(f.end), cercata)) continue;
         const pz = f.prezzoCents;
         return (typeof pz === 'number' && isFinite(pz) && pz >= 0) ? Math.round(pz) : null;
       }
