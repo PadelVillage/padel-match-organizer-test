@@ -8720,7 +8720,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.418';
+    const APP_VERSION = '6.419';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -52088,6 +52088,29 @@ Per confermare scrivi ELIMINA.`);
       const supabaseUrl = cfg && cfg.supabaseUrl;
       const supabaseKey = cfg && cfg.supabaseKey;
       if (!supabaseUrl || !supabaseKey) return;
+      /* 🆕⭐⭐ 09/09/2026 — SUL GESTIONALE NON COLLEGATO AL CIRCOLO NON SI CHIEDE PIÙ NIENTE.
+       *
+       * ⚖️ Questa coda è **la coda del worker**, cioè dei lavori in volo verso Matchpoint: serve a
+       * far vedere i gesti degli ALTRI, quelli che questo browser non ha fatto. Su un gestionale
+       * che Matchpoint non lo chiama, quella coda **non esiste** — e infatti la edge, dopo il
+       * distacco, non ha più una chiave con cui guardarla.
+       * ⇒ Chiederlo ogni 4 secondi non era «un giro a vuoto»: era la funzione **PIÙ CHIAMATA
+       *   dell'intero progetto**, e girava per non dire niente.
+       *
+       * 📏 MISURATO il 09/09 sui log delle edge di `cudi`, finestra 14:00-15:40 (100 minuti):
+       *   `matchpoint-queue-status` **169 chiamate** · mediana **473 ms** · picco **15.487 ms**
+       *   `matchpoint-bookings-create` **17 chiamate** · mediana **1.602 ms** · **minimo 153 ms**
+       * ⇒ Quel minimo è la riga che conta: la creazione **sa** rispondere in 153 ms, quindi la
+       *   mediana a 1,6 s non è lavoro — è **avviamento**, cioè un isolate che va tirato su ogni
+       *   volta perché nel frattempo qualcun altro ha occupato il posto. E chi occupava il posto
+       *   169 volte su 200 era questo polling.
+       * 📌 *Una sonda che non può scoprire niente non costa zero: costa il posto di quella che
+       *    deve rispondere in fretta.*
+       *
+       * ⛔ **Su PROD non cambia NIENTE**, ed è il motivo per cui il cancello guarda il **ref
+       *   Supabase** e non l'hostname: là la coda c'è, il worker gira, e la barra dei gesti altrui
+       *   è l'unica cosa che li racconta. `pmoIsTestHostname` sarebbe scaduto col passaggio. */
+      if (!pmoGestionaleCollegatoAlCircolo(supabaseUrl)) return;
       const accessToken = await pmoGetSupabaseStaffAccessToken();
       if (!accessToken) return;
       const resp = await fetch(supabaseUrl + '/functions/v1/matchpoint-queue-status', {
