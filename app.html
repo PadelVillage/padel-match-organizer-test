@@ -8720,7 +8720,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.421';
+    const APP_VERSION = '6.422';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -44653,6 +44653,29 @@ Per confermare scrivi ELIMINA.`);
       && String(da.ora) === String(a.ora));
   }
 
+  /** 🎯 IL RETTANGOLO DEL BERSAGLIO: dove finirebbe DAVVERO la partita, in pixel. PURA.
+   *
+   *  🩹⭐⭐ CURA UN DIFETTO SEGNALATO DA LUI SUL TELEFONO — *«quando poggio il dito sopra si
+   *  evidenziano anche altre zone del calendario»*. Aveva ragione, e il difetto era mio: la prima
+   *  stesura accendeva **il pezzo intero** della corsia, e un «Libero» è un segmento **lungo
+   *  quanto dura** — sul 25/09 il primo va da 08:00 a 18:00, cioè **dieci ore di banda accesa**
+   *  per una partita da 90 minuti. Sul computer si perdona perché l'etichetta dice l'ora; sul
+   *  telefono, dove lo schermo è la banda, si vede solo quella.
+   *  📌 *Evidenziare il contenitore invece del posto non è impreciso: dice una cosa diversa —
+   *     «puoi lasciarla in tutta questa fascia» invece di «finirebbe qui».*
+   *
+   *  ⇒ Si disegna il rettangolo della **durata vera**, alla mezz'ora scelta. `left` e `width` sono
+   *  in coordinate di finestra, pronti per un `position:fixed`. */
+  function pmoTrascinaRettangoloDelBersaglio(pezzoLeft, minDa, minutiScelti, durataMin, colW) {
+    const w = Number(colW), da = Number(minDa), m = Number(minutiScelti);
+    const dur = Math.max(30, Number(durataMin) || 90);
+    if (!(w > 0) || !Number.isFinite(da) || !Number.isFinite(m)) return null;
+    return {
+      left: Number(pezzoLeft) + ((m - da) / 30) * w,
+      width: (dur / 30) * w,
+    };
+  }
+
   /** Minuti dalla mezzanotte → `HH:MM`. PURA. */
   function pmoTrascinaOraDaMinuti(m) {
     const n = Math.max(0, Number(m) || 0);
@@ -44668,6 +44691,15 @@ Per confermare scrivi ELIMINA.`);
   function pmoTrascinaAttacca(blk, dati, ctx) {
     blk.style.cursor = 'grab';
     blk.style.touchAction = 'none';   // ⇒ lo scorrimento della corsia da qui lo facciamo noi, sotto
+    /* 🩹⭐ E IL DITO NON DEVE SELEZIONARE IL TESTO. Su un telefono la pressione lunga — che è
+       esattamente il gesto scelto qui — è anche quella che il browser usa per **selezionare** e
+       per aprire il suo menù; trascinando, la selezione si **allarga agli altri riquadri** e li
+       colora. È la seconda metà di ciò che lui ha visto, e la prima non l'avrebbe curata: sono
+       due cose diverse che producono lo stesso sintomo. */
+    blk.style.userSelect = 'none';
+    blk.style.webkitUserSelect = 'none';
+    blk.style.webkitTouchCallout = 'none';
+    blk.style.webkitTapHighlightColor = 'transparent';
     blk.title = (blk.title ? blk.title + ' · ' : '') + 'Trascinala per spostarla di campo o di orario';
     pmoTrascinaInit();
     blk.addEventListener('pointerdown', function (ev) {
@@ -44679,7 +44711,7 @@ Per confermare scrivi ELIMINA.`);
         x0: ev.clientX, y0: ev.clientY, t0: Date.now(),
         scroll0: ctx.sc ? ctx.sc.scrollLeft : 0,
         preso: false, scorro: false, timer: null,
-        fantasma: null, mira: null, evidenziato: null, bersaglio: null,
+        fantasma: null, mira: null, mirino: null, bersaglio: null, selPrima: '',
       };
       try { blk.setPointerCapture(ev.pointerId); } catch (_e) {}
       if (_pmoTrascina.tocco) {
@@ -44729,6 +44761,17 @@ Per confermare scrivi ELIMINA.`);
     mira.setAttribute('data-pmo-mira', '1');
     document.body.appendChild(mira);
     t.mira = mira;
+    // 🎯 Il mirino: il rettangolo che mostra DOVE finirebbe la partita, largo quanto dura.
+    const mirino = document.createElement('div');
+    mirino.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;border-radius:6px;display:none;';
+    mirino.setAttribute('data-pmo-mirino', '1');
+    document.body.appendChild(mirino);
+    t.mirino = mirino;
+    // 🩹 Se il dito aveva già cominciato a selezionare prima che la presa scattasse, la selezione
+    //    resta accesa sotto e colora quello che tocca: si spegne qui, una volta.
+    try { const sel = window.getSelection(); if (sel && sel.removeAllRanges) sel.removeAllRanges(); } catch (_e) {}
+    t.selPrima = document.body.style.userSelect;
+    document.body.style.userSelect = 'none';
     try { if (navigator.vibrate) navigator.vibrate(15); } catch (_e) {}
   }
 
@@ -44779,27 +44822,33 @@ Per confermare scrivi ELIMINA.`);
               origIso: t.dati.iso, origCampo: t.dati.campo, origOra: t.dati.ora, origDurMin: t.dati.durata,
             });
           } catch (_e) { occupato = false; }
-          b = { iso: t.ctx.iso, campo: campo, ora: ora, pezzo: pezzo, occupato: occupato };
+          b = { iso: t.ctx.iso, campo: campo, ora: ora, minuti: m, pezzo: pezzo, occupato: occupato };
           b.valido = !occupato;
         }
       }
     }
-    if (t.evidenziato && (!b || t.evidenziato !== b.pezzo)) {
-      t.evidenziato.style.outline = '';
-      t.evidenziato.style.outlineOffset = '';
-      t.evidenziato = null;
-    }
     t.bersaglio = b;
     if (!b) {
       t.mira.style.display = 'none';
+      t.mirino.style.display = 'none';
       return;
     }
-    if (t.evidenziato !== b.pezzo) {
-      b.pezzo.style.outline = '2px solid ' + (b.valido ? '#16a34a' : '#dc2626');
-      b.pezzo.style.outlineOffset = '-2px';
-      t.evidenziato = b.pezzo;
+    /* 🎯 Si accende IL POSTO, non il contenitore: il rettangolo sta alla mezz'ora scelta ed è
+       largo quanto la partita dura. (Prima si accendeva il pezzo intero della corsia — fino a
+       dieci ore di banda per una partita da 90 minuti: ⇒ `pmoTrascinaRettangoloDelBersaglio`.) */
+    const rp = b.pezzo.getBoundingClientRect();
+    const g = pmoTrascinaRettangoloDelBersaglio(rp.left, b.pezzo.dataset.minDa, b.minuti, t.dati.durata, t.ctx.colW);
+    if (g) {
+      const col = b.valido ? '#16a34a' : '#dc2626';
+      t.mirino.style.display = '';
+      t.mirino.style.left = g.left + 'px';
+      t.mirino.style.width = g.width + 'px';
+      t.mirino.style.top = (rp.top + 3) + 'px';
+      t.mirino.style.height = Math.max(10, rp.height - 6) + 'px';
+      t.mirino.style.border = '2px solid ' + col;
+      t.mirino.style.background = b.valido ? 'rgba(22,163,74,.18)' : 'rgba(220,38,38,.18)';
     } else {
-      b.pezzo.style.outline = '2px solid ' + (b.valido ? '#16a34a' : '#dc2626');
+      t.mirino.style.display = 'none';
     }
     const sposta = pmoTrascinaEUnoSpostamento({ iso: t.dati.iso, campo: t.dati.campo, ora: t.dati.ora }, b);
     t.mira.style.display = '';
@@ -44820,7 +44869,8 @@ Per confermare scrivi ELIMINA.`);
     try { t.blk.releasePointerCapture(t.id); } catch (_e) {}
     if (t.fantasma && t.fantasma.parentNode) t.fantasma.parentNode.removeChild(t.fantasma);
     if (t.mira && t.mira.parentNode) t.mira.parentNode.removeChild(t.mira);
-    if (t.evidenziato) { t.evidenziato.style.outline = ''; t.evidenziato.style.outlineOffset = ''; }
+    if (t.mirino && t.mirino.parentNode) t.mirino.parentNode.removeChild(t.mirino);
+    if (t.preso) document.body.style.userSelect = t.selPrima || '';
     try { t.blk.style.opacity = ''; t.blk.style.cursor = 'grab'; } catch (_e) {}
   }
 
