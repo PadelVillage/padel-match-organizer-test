@@ -8720,7 +8720,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.419';
+    const APP_VERSION = '6.420';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -44562,6 +44562,286 @@ Per confermare scrivi ELIMINA.`);
   }
 
   // ── Calendario ORIZZONTALE (campi = corsie, tempo = asse X) — desktop + mobile ──
+  /* ══════════════════════════════════════════════════════════════════════════════════════
+     🖐️⭐⭐ VOCE 192 — SI PRENDE UNA PARTITA E LA SI PORTA DOVE DEVE STARE (09/09/2026)
+
+     🗣️ Sua domanda: «si può fare drag and drop delle prenotazioni? quindi si tiene cliccato su
+        una partita e la si può spostare di orario e di campo». ⇒ «apri la voce sia mouse che dito
+        sul telefono e fai lo sviluppo».
+
+     ⚖️ PERCHÉ È POCO CODICE, e va detto o sembra un lavoro più grande di quello che è: di questo
+        gesto **esisteva già tutto tranne il gesto**.
+        · la SCRITTURA — `staffCalDoMove` chiama `matchpoint-bookings-edit` con `move: {…}`,
+          aggiorna la copia locale, riassegna nel cloud, protegge lo slot d'origine dal sync e
+          non dichiara fallimento su un esito incerto. Era scritta, completa, e **non la chiamava
+          nessuno**: `staffCalStartMove` non aveva un solo bottone in tutta l'app;
+        · il BERSAGLIO — dalla voce 137 ⑤ ogni pezzo della corsia dichiara dove si trova
+          (`data-campo` + `data-min-da`/`data-min-a`), che è esattamente l'indice che serve per
+          sapere dove si è lasciato il dito;
+        · il RACCONTO — la voce 189: un gesto su una prenotazione lo dice **il calendario**, e la
+          striscia tace. Non c'è niente da aggiungere qui perché `svcAzioneDaChiamata` guarda le
+          `fetch`: la cella d'arrivo lampeggia **da sé** (`svcDoveDellArrivo`), chiunque sia a
+          chiamare quella edge.
+
+     🚨⭐⭐ LA RIGA CHE DIVIDE IL MOUSE DAL DITO, ed è l'unica cosa vera da progettare: sul
+        telefono **trascinare e scorrere sono lo stesso gesto**. La corsia scorre in orizzontale, e
+        un dito che parte da una partita e va a destra vuole dire due cose opposte — «portamela là»
+        oppure «fammi vedere le 21:00». ⇒ Le si separa nel TEMPO, non nella direzione: si tiene
+        premuto **350 ms** e allora è una presa; ci si muove prima, e allora è uno scorrimento — e
+        **lo scorrimento lo facciamo noi** (`scrollLeft`), perché il blocco ha `touch-action:none`
+        e il browser non lo farebbe più. Col mouse non c'è niente da separare: nessuno «scorre»
+        tenendo premuto un tasto, quindi bastano **5 px** di movimento.
+        📌 *Due gesti che partono uguali non si distinguono da dove vanno: si distinguono da quanto
+           si aspetta prima di muoversi.*
+
+     ⛔ COSA NON SI PUÒ TRASCINARE, e non è una limitazione inventata: le prenotazioni **arrivate
+        da Matchpoint** (`isMP`). Spostarle vorrebbe dire scrivere sul Matchpoint del circolo, che
+        dal sistema nuovo è chiuso dal recinto (`scritturaAlCircoloConsentita`, cablata sul ref di
+        PROD): il trascinamento fallirebbe **dopo** aver fatto sperare. Restano col loro click.
+     ══════════════════════════════════════════════════════════════════════════════════════ */
+
+  /** Da quanto ci si è mossi e da quanto si tiene premuto: cosa vuole chi ha in mano il dito.
+   *  PURA — non tocca il DOM e non legge nessuno stato. È **la** regola di questa voce, e sta
+   *  qui da sola perché il banco la possa ESEGUIRE invece di rileggerla.
+   *
+   *  ⚖️ I tre numeri stanno DENTRO la funzione, non fuori: un banco che ricevesse le soglie da
+   *  fuori proverebbe i numeri che gli passa il banco, non quelli che usa l'app. */
+  function pmoTrascinaDecidi(tocco, dx, dy, msTenuto) {
+    const PRESA_MOUSE_PX = 5;    // col mouse basta muoversi: nessuno «scorre» tenendo premuto
+    const ATTESA_DITO_MS = 350;  // sul telefono la presa si dichiara col TEMPO
+    const SCORRI_DITO_PX = 10;   // …e prima di quel tempo, muoversi vuol dire scorrere la corsia
+    const dist = Math.sqrt((Number(dx) || 0) * (Number(dx) || 0) + (Number(dy) || 0) * (Number(dy) || 0));
+    if (!tocco) return dist >= PRESA_MOUSE_PX ? 'prendi' : 'niente';
+    if ((Number(msTenuto) || 0) >= ATTESA_DITO_MS) return 'prendi';
+    if (dist >= SCORRI_DITO_PX) return 'scorri';
+    return 'niente';
+  }
+
+  /** Il minuto d'inizio sotto il punto, ancorato alla griglia da mezz'ora. PURA.
+   *
+   *  🚨 Si àncora alla griglia VERA (multipli di 30 dalla mezzanotte) e non all'inizio del pezzo:
+   *  un «Libero» comincia dove finisce la partita di prima, che può essere un orario qualunque
+   *  (una lezione da 60′ iniziata alle 09:20 lascia un buco che comincia alle 10:20). Contando da
+   *  lì si otterrebbero orari che `staffCalSlots()` non conosce — e `_staffCalDestOccupied`, che
+   *  cerca l'ora nell'elenco degli slot, risponderebbe **«libero»** perché non la trova: un «no»
+   *  detto per ignoranza, che è il modo peggiore di dirlo.
+   *
+   *  ⇒ `null` quando il pezzo è troppo stretto per ospitare un inizio valido: è la stessa scelta
+   *  di `svcDoveDelGesto` — mezze coordinate non si restituiscono, si dichiara che non ce ne sono. */
+  function pmoTrascinaMinutiNelPezzo(minDa, minA, offsetX, colW) {
+    const da = Number(minDa), a = Number(minA), w = Number(colW);
+    if (!Number.isFinite(da) || !Number.isFinite(a) || !(w > 0) || a <= da) return null;
+    const sotto = da + (Math.max(0, Number(offsetX) || 0) / w) * 30;
+    const primo = Math.ceil(da / 30) * 30;
+    const ultimo = Math.floor((a - 30) / 30) * 30;
+    if (ultimo < primo) return null;
+    let m = Math.floor(sotto / 30) * 30;
+    if (m < primo) m = primo;
+    if (m > ultimo) m = ultimo;
+    return m;
+  }
+
+  /** Uno spostamento che non sposta non è uno spostamento. PURA.
+   *  ⚖️ Serve perché il gesto più comune di tutti è **prendere e ripensarci**: rilasciare dov'era
+   *  non deve chiedere niente a nessuno, e soprattutto non deve far partire un avviso ai soci
+   *  (uno spostamento è uno dei cinque gesti che li avvisano). */
+  function pmoTrascinaEUnoSpostamento(da, a) {
+    if (!da || !a) return false;
+    if (!a.campo || !a.ora || !a.iso) return false;
+    return !(String(da.iso) === String(a.iso)
+      && Number(da.campo) === Number(a.campo)
+      && String(da.ora) === String(a.ora));
+  }
+
+  /** Minuti dalla mezzanotte → `HH:MM`. PURA. */
+  function pmoTrascinaOraDaMinuti(m) {
+    const n = Math.max(0, Number(m) || 0);
+    return String(Math.floor(n / 60)).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0');
+  }
+
+  /* ── da qui in giù si tocca il DOM: il gesto vero ────────────────────────────────────── */
+
+  let _pmoTrascina = null;          // la presa in corso, o `null`
+  let _pmoTrascinaFinitoA = 0;      // quando è finita l'ultima: serve a non aprire la scheda dopo un trascinamento
+  let _pmoTrascinaInited = false;
+
+  function pmoTrascinaAttacca(blk, dati, ctx) {
+    blk.style.cursor = 'grab';
+    blk.style.touchAction = 'none';   // ⇒ lo scorrimento della corsia da qui lo facciamo noi, sotto
+    blk.title = (blk.title ? blk.title + ' · ' : '') + 'Trascinala per spostarla di campo o di orario';
+    pmoTrascinaInit();
+    blk.addEventListener('pointerdown', function (ev) {
+      if (ev.button != null && ev.button > 0) return;   // solo il tasto principale
+      if (_pmoTrascina) return;
+      _pmoTrascina = {
+        dati: dati, ctx: ctx, blk: blk, id: ev.pointerId,
+        tocco: ev.pointerType !== 'mouse',
+        x0: ev.clientX, y0: ev.clientY, t0: Date.now(),
+        scroll0: ctx.sc ? ctx.sc.scrollLeft : 0,
+        preso: false, scorro: false, timer: null,
+        fantasma: null, mira: null, evidenziato: null, bersaglio: null,
+      };
+      try { blk.setPointerCapture(ev.pointerId); } catch (_e) {}
+      if (_pmoTrascina.tocco) {
+        // Sul telefono la presa può nascere dal TEMPO anche senza un solo pixel di movimento:
+        // senza questo, tenere fermo il dito non prenderebbe mai niente.
+        _pmoTrascina.timer = setTimeout(function () {
+          if (_pmoTrascina && !_pmoTrascina.preso && !_pmoTrascina.scorro) pmoTrascinaPrendi();
+        }, 350);
+      }
+    });
+  }
+
+  function pmoTrascinaInit() {
+    if (_pmoTrascinaInited) return;
+    _pmoTrascinaInited = true;
+    window.addEventListener('pointermove', pmoTrascinaMuovi, { passive: false });
+    window.addEventListener('pointerup', pmoTrascinaLascia);
+    window.addEventListener('pointercancel', function () { pmoTrascinaPulisci(); });
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && _pmoTrascina) { pmoTrascinaPulisci(); }
+    });
+  }
+
+  function pmoTrascinaPrendi() {
+    const t = _pmoTrascina;
+    if (!t || t.preso) return;
+    t.preso = true;
+    if (t.timer) { clearTimeout(t.timer); t.timer = null; }
+    const r = t.blk.getBoundingClientRect();
+    const f = t.blk.cloneNode(true);
+    f.style.position = 'fixed';
+    f.style.left = r.left + 'px'; f.style.top = r.top + 'px';
+    f.style.width = r.width + 'px'; f.style.height = r.height + 'px';
+    f.style.bottom = 'auto'; f.style.margin = '0';
+    f.style.pointerEvents = 'none';   // 🚨 o `elementFromPoint` troverebbe SEMPRE il fantasma
+    f.style.zIndex = '10000';
+    f.style.opacity = '.92';
+    f.style.boxShadow = '0 10px 24px rgba(15,23,42,.35)';
+    f.setAttribute('data-pmo-fantasma', '1');
+    document.body.appendChild(f);
+    t.fantasma = f;
+    t.dxF = r.left - t.x0; t.dyF = r.top - t.y0;
+    t.blk.style.opacity = '.3';
+    t.blk.style.cursor = 'grabbing';
+    const mira = document.createElement('div');
+    mira.style.cssText = 'position:fixed;z-index:10001;pointer-events:none;font:800 12px/1.2 system-ui,-apple-system,sans-serif;padding:5px 9px;border-radius:7px;color:#fff;background:#16a34a;box-shadow:0 3px 10px rgba(0,0,0,.28);white-space:nowrap;';
+    mira.setAttribute('data-pmo-mira', '1');
+    document.body.appendChild(mira);
+    t.mira = mira;
+    try { if (navigator.vibrate) navigator.vibrate(15); } catch (_e) {}
+  }
+
+  function pmoTrascinaMuovi(ev) {
+    const t = _pmoTrascina;
+    if (!t || ev.pointerId !== t.id) return;
+    const dx = ev.clientX - t.x0, dy = ev.clientY - t.y0;
+    if (!t.preso) {
+      if (t.scorro) { if (t.ctx.sc) t.ctx.sc.scrollLeft = t.scroll0 - dx; return; }
+      const scelta = pmoTrascinaDecidi(t.tocco, dx, dy, Date.now() - t.t0);
+      if (scelta === 'scorri') {
+        // Il blocco ha `touch-action:none`: se non scorressimo noi, la corsia sarebbe bloccata
+        // proprio dove ci sono le partite — cioè dove il dito si appoggia più spesso.
+        t.scorro = true;
+        if (t.timer) { clearTimeout(t.timer); t.timer = null; }
+        if (t.ctx.sc) t.ctx.sc.scrollLeft = t.scroll0 - dx;
+        return;
+      }
+      if (scelta !== 'prendi') return;
+      pmoTrascinaPrendi();
+    }
+    if (ev.cancelable) ev.preventDefault();
+    t.fantasma.style.left = (ev.clientX + t.dxF) + 'px';
+    t.fantasma.style.top = (ev.clientY + t.dyF) + 'px';
+    pmoTrascinaMira(ev.clientX, ev.clientY);
+  }
+
+  /** Dove si andrebbe a finire, se si lasciasse adesso. Aggiorna l'evidenza e l'etichetta. */
+  function pmoTrascinaMira(x, y) {
+    const t = _pmoTrascina;
+    if (!t || !t.preso) return;
+    const sotto = document.elementFromPoint(x, y);
+    const pezzo = sotto && sotto.closest ? sotto.closest('[data-campo][data-min-da]') : null;
+    let b = null;
+    if (pezzo) {
+      const suSeStesso = (pezzo === t.blk);
+      // Si può lasciare sul VUOTO, o sulla partita stessa: il secondo caso è quello che permette
+      // lo scarto corto (10:00 → 10:30), dove la destinazione si sovrappone a dove si è adesso.
+      if (suSeStesso || pezzo.dataset.libero === '1') {
+        const r = pezzo.getBoundingClientRect();
+        const m = pmoTrascinaMinutiNelPezzo(pezzo.dataset.minDa, pezzo.dataset.minA, x - r.left, t.ctx.colW);
+        if (m != null) {
+          const ora = pmoTrascinaOraDaMinuti(m);
+          const campo = Number(pezzo.dataset.campo) || 0;
+          let occupato = false;
+          try {
+            occupato = _staffCalDestOccupied(t.ctx.iso, campo, ora, t.dati.durata, {
+              origIso: t.dati.iso, origCampo: t.dati.campo, origOra: t.dati.ora, origDurMin: t.dati.durata,
+            });
+          } catch (_e) { occupato = false; }
+          b = { iso: t.ctx.iso, campo: campo, ora: ora, pezzo: pezzo, occupato: occupato };
+          b.valido = !occupato;
+        }
+      }
+    }
+    if (t.evidenziato && (!b || t.evidenziato !== b.pezzo)) {
+      t.evidenziato.style.outline = '';
+      t.evidenziato.style.outlineOffset = '';
+      t.evidenziato = null;
+    }
+    t.bersaglio = b;
+    if (!b) {
+      t.mira.style.display = 'none';
+      return;
+    }
+    if (t.evidenziato !== b.pezzo) {
+      b.pezzo.style.outline = '2px solid ' + (b.valido ? '#16a34a' : '#dc2626');
+      b.pezzo.style.outlineOffset = '-2px';
+      t.evidenziato = b.pezzo;
+    } else {
+      b.pezzo.style.outline = '2px solid ' + (b.valido ? '#16a34a' : '#dc2626');
+    }
+    const sposta = pmoTrascinaEUnoSpostamento({ iso: t.dati.iso, campo: t.dati.campo, ora: t.dati.ora }, b);
+    t.mira.style.display = '';
+    t.mira.style.background = b.valido ? (sposta ? '#16a34a' : '#64748b') : '#dc2626';
+    t.mira.textContent = (b.valido ? (sposta ? '' : '↩︎ ') : '⛔ ')
+      + 'C' + b.campo + ' · ' + b.ora + '–' + _staffCalEndTime(b.ora, t.dati.durata)
+      + (b.valido ? (sposta ? '' : ' (dov\'era)') : ' occupato');
+    t.mira.style.left = Math.min(window.innerWidth - t.mira.offsetWidth - 8, x + 14) + 'px';
+    t.mira.style.top = Math.max(8, y - 34) + 'px';
+  }
+
+  function pmoTrascinaPulisci() {
+    const t = _pmoTrascina;
+    _pmoTrascina = null;
+    if (!t) return;
+    if (t.timer) { clearTimeout(t.timer); t.timer = null; }
+    if (t.preso) _pmoTrascinaFinitoA = Date.now();
+    try { t.blk.releasePointerCapture(t.id); } catch (_e) {}
+    if (t.fantasma && t.fantasma.parentNode) t.fantasma.parentNode.removeChild(t.fantasma);
+    if (t.mira && t.mira.parentNode) t.mira.parentNode.removeChild(t.mira);
+    if (t.evidenziato) { t.evidenziato.style.outline = ''; t.evidenziato.style.outlineOffset = ''; }
+    try { t.blk.style.opacity = ''; t.blk.style.cursor = 'grab'; } catch (_e) {}
+  }
+
+  function pmoTrascinaLascia(ev) {
+    const t = _pmoTrascina;
+    if (!t || (ev && ev.pointerId !== t.id)) return;
+    const preso = t.preso, b = t.bersaglio, dati = t.dati;
+    pmoTrascinaPulisci();
+    if (!preso || !b || !b.valido) return;
+    if (!pmoTrascinaEUnoSpostamento({ iso: dati.iso, campo: dati.campo, ora: dati.ora }, b)) return;
+    // ⚖️ Si passa dallo STESSO stato che usa lo spostamento a due clic, e dalla stessa funzione:
+    //    il trascinamento è un modo di CHIEDERE lo spostamento, non un secondo modo di farlo.
+    //    La conferma DA/A la chiede `staffCalDoMove`, ed è l'unica cosa che sta fra un dito che
+    //    scivola e un avviso che parte verso quattro persone.
+    staffCalMoveState = {
+      iso: dati.iso, campo: dati.campo, ora: dati.ora,
+      nome: dati.nome || '', durata: Number(dati.durata) || 90, tipo: dati.tipo || 'partita',
+    };
+    staffCalDoMove(b.iso, b.campo, b.ora);
+  }
+
   function _staffCalBuildHorizontal(isoDate, isDesktop) {
     const FIELD_COLORS = ['#f87171', '#fbbf24', '#34d399', '#818cf8'];
     const START = 480, END = STAFF_CAL_END_H * 60, SLOT = 30, N = (END - START) / SLOT;
@@ -44692,6 +44972,7 @@ Per confermare scrivi ELIMINA.`);
         const left = ((gs - START) / 30) * COLW;
         const w = ((ge - gs) / 30) * COLW - 3;
         const seg = _coord(document.createElement('div'), c, gs, ge);
+        seg.dataset.libero = '1';   // 🖐️ VOCE 192 — il solo posto dove si può LASCIARE una partita
         seg.style.cssText = 'position:absolute;top:4px;bottom:4px;left:' + left + 'px;width:' + w + 'px;border-radius:6px;background:' + (_oltre114 ? '#f1f5f9;color:#64748b' : '#dcfce7;color:#166534') + ';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;cursor:pointer;';
         if (w >= 44) seg.textContent = _oltre114 ? 'non lo so' : 'Libero';
         (function (iso, cc, gStart, gEnd) {
@@ -44784,9 +45065,18 @@ Per confermare scrivi ELIMINA.`);
         }
         (function (iso, cc, oo, nm, du, tp, mp) {
           blk.addEventListener('click', function () {
+            /* 🖐️ VOCE 192 — un trascinamento finisce con un `click` sul blocco di partenza, e senza
+               questa riga aprirebbe la SCHEDA della partita appena spostata, sopra la conferma. */
+            if (Date.now() - _pmoTrascinaFinitoA < 500) return;
             if (mp) staffCalPromoteAndEdit(iso, cc, oo, nm, du, tp);
             else staffCalEditPlayers(iso, cc, oo, nm, du, tp);
           });
+          /* 🖐️⭐ VOCE 192 — solo ciò che è NOSTRO si trascina. Una prenotazione arrivata da
+             Matchpoint (`mp`) spostata da qui vorrebbe scrivere sul Matchpoint del circolo, che dal
+             sistema nuovo è chiuso dal recinto: fallirebbe DOPO aver fatto sperare. */
+          if (!mp) pmoTrascinaAttacca(blk, {
+            iso: iso, campo: cc, ora: oo, nome: nm, durata: Number(du) || 90, tipo: tp,
+          }, { sc: sc, colW: COLW, iso: iso });
           // Le prenotazioni Matchpoint portano il tipo in `b.tipo` (non in `b.tipoReale`, riempito solo
           // per gli staff_booking): senza il fallback una LEZIONE MP arriva all'editor come 'partita' e
           // il selettore Maestro non compare. Stesso fallback già usato qui sopra per label/istruttore.
@@ -45810,7 +46100,7 @@ Per confermare scrivi ELIMINA.`);
             _setNote('Lettura da Matchpoint non riuscita: uso i giocatori salvati in locale.');
           }
         } catch (err) {
-          clearInterval(_timer);
+          if (_timer) clearInterval(_timer);
           // Errore/timeout: esci dal "caricamento" e mostra i giocatori salvati in locale (fallback).
           try { const _st = staffCalPlayersState; if (_st && _st === _stOpen && (_st.rosterLoading || _st.rosterRefreshing)) { _st.rosterLoading = false; _st.rosterRefreshing = false; staffCalRenderPlayersEditor(); } } catch (e) {}
           _setNote((err && err.name === 'AbortError')
@@ -47898,13 +48188,18 @@ Per confermare scrivi ELIMINA.`);
       (st.nome ? '\n\n(' + st.nome + ')' : ''));
     if (!confirmed) return; // resta in modalità: può scegliere un altro slot
 
-    const inProgress = svcAddMessage('system', '⏳ Spostamento in corso su Matchpoint…');
-    let _sec = 0;
-    const _timer = setInterval(function() {
-      _sec += 1;
-      const last = inProgress.querySelector(':scope > div:last-child');
-      if (last) last.innerHTML = '⏳ Spostamento in corso su Matchpoint… (' + _sec + 's)';
-    }, 1000);
+    /* 🔇⭐ VOCE 189 applicata alla CLASSE e non al caso — «un gesto su una prenotazione lo
+       racconta il CALENDARIO, non un banner». Qui c'erano due strisce scritte a mano: l'«in corso»
+       col contatore dei secondi e il «spostata» finale. ⇒ Tolte tutt'e due: mentre la scrittura è
+       in volo la cella di partenza **pulsa azzurra** e a cose fatte lampeggia quella d'**arrivo**
+       (`svcDoveDellArrivo`), e non serve fare niente perché succeda — `svcAzioneDaChiamata` guarda
+       le `fetch`, quindi vale per chiunque chiami questa edge.
+       ⛔ RESTANO a parlare il rifiuto e il dubbio, qui sotto: sono gli unici due che chiedono a
+          qualcuno di rifare qualcosa, e per quelli il calendario non ha niente da mostrare.
+       ⚖️ Si toglie qui e non nel solo trascinamento perché la regola parla del GESTO, non di chi
+          lo chiede: curare il caso invece della classe è il difetto che il 09/09 mi ha fatto
+          ripetere tre volte la stessa cura. */
+    const _timer = null;
 
     const from = { iso: st.iso, campo: st.campo, ora: st.ora, nome: st.nome };
     staffCalCancelMove(true);
@@ -47939,7 +48234,7 @@ Per confermare scrivi ELIMINA.`);
       let data = null;
       try { data = respText ? JSON.parse(respText) : null; } catch { data = respText; }
       clearTimeout(_to);
-      clearInterval(_timer);
+      if (_timer) clearInterval(_timer);
 
       if (response.ok && data?.ok !== false) {
         // Aggiorna la copia locale: sposta il record staffBookings da → a.
@@ -47954,11 +48249,7 @@ Per confermare scrivi ELIMINA.`);
         _staffCalAddSuppressed(from.iso, from.campo, from.ora);
         _staffCalClearSuppressed(toIso, toCampoNum, toOra);
         try { staffCalCloudReassignAndSyncMove(from.iso, from.campo, from.ora, toIso, toCampoNum, toOra, toOraFine); } catch (e) { console.warn('staff move cloud sync:', e); }
-        svcAddMessage('system',
-          '↔ <strong>Prenotazione spostata</strong>: Campo ' + from.campo + ' \xb7 ' + fromDataIt + ' \xb7 ' + from.ora +
-          '  →  Campo ' + toCampoNum + ' \xb7 ' + toDataIt + ' \xb7 ' + toOra + '–' + toOraFine +
-          (from.nome ? '<br>👥 ' + from.nome : ''),
-          'ok');
+        // 🔇 VOCE 189 — il «fatto» non si annuncia: lo dice la cella d'arrivo che lampeggia.
         renderStaffCalendar();
         svcResetToNeutral(); svcAutoCloseIfMobile();
         svcScheduleAutoClear(); // spostamento confermato dal worker → pulizia chat
@@ -47971,7 +48262,7 @@ Per confermare scrivi ELIMINA.`);
         svcAddMessage('system', '❌ Spostamento non riuscito: ' + _staffCalFriendlyOpError(msg));
       }
     } catch (err) {
-      clearInterval(_timer);
+      if (_timer) clearInterval(_timer);
       if (err && err.name === 'AbortError') {
         // Timeout duro (>200s): NON dichiarare fallimento, lo spostamento potrebbe essere passato.
         svcAddMessage('system', '⌛ <strong>Operazione troppo lenta</strong> (oltre 200s): il worker Matchpoint non ha risposto in tempo.<br>⚠️ Lo spostamento <strong>potrebbe essere stato applicato lo stesso</strong>: <strong>ricarica il calendario e controlla</strong> prima di rifarlo (rischi un doppione).', 'error');
