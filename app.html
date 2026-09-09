@@ -8720,7 +8720,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.413';
+    const APP_VERSION = '6.414';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -48372,7 +48372,7 @@ Per confermare scrivi ELIMINA.`);
     if (submit.ok === false || submit.error) return null;
     if (submit.nativa !== true) return null;             // ⛔ la sola risposta che è già un esito
     const w = (submit.worker && typeof submit.worker === 'object') ? submit.worker : null;
-    return { status: 'done', message: submit.message || '', idReserva: (w && w.idReserva) ? String(w.idReserva) : null };
+    return { status: 'done', nativa: true, message: submit.message || '', idReserva: (w && w.idReserva) ? String(w.idReserva) : null };
   }
 
   const _STAFF_CAL_POLL = { maxMs: 180000, stepMs: 1500, lateMaxMs: 360000, lateStepMs: 10000 };
@@ -48412,7 +48412,7 @@ Per confermare scrivi ELIMINA.`);
         // ⚠️ Non deve poter far fallire una prenotazione RIUSCITA: qualunque cosa vada
         //    storta qui resta un guaio di anagrafica, non della prenotazione.
         try { pmoAssorbiIdInterniMatchpoint(data, 'creazione prenotazione'); } catch (e) { console.warn('[id-interno] ' + (e && e.message ? e.message : e)); }
-        return { status: 'done', message: data.message, idReserva: (data.worker_result && data.worker_result.idReserva) ? String(data.worker_result.idReserva) : null };
+        return { status: 'done', nativa: data.nativa === true, message: data.message, idReserva: (data.worker_result && data.worker_result.idReserva) ? String(data.worker_result.idReserva) : null };
       }
       if (data.status === 'error') return { status: 'error', error: data.error || data.message };
       // ⭐⭐ VOCE 23 — il TERZO esito, scritto dalla edge quando il gestionale non le ha risposto.
@@ -48885,8 +48885,16 @@ Per confermare scrivi ELIMINA.`);
             // nel catch qui sotto → contata tra le "fallite", con l'operatore spinto a rifarla e
             // a creare un doppione VERO su Matchpoint. Stesso inganno chiuso dalla v6.109 sulle
             // prenotazioni singole; questo percorso, quello ricorrente, era rimasto fuori.
+            // 🆕 09/09/2026 — la TERZA strada, e aveva lo stesso difetto delle altre due PIÙ uno:
+            //    qui `staffCalSubmitSingle` va senza `async`, quindi sul sistema nuovo riceve
+            //    l'esito nativo — dove l'`idReserva` sta in `worker`, non in cima. Leggendolo in
+            //    cima usciva `null`, e la copia in pagina nasceva orfana del suo riferimento.
+            //    ⇒ Stessa funzione delle altre due, non una terza lettura scritta a mano.
+            const _nat = staffCalEsitoImmediato(_createRes);
             try {
-              staffCalSaveLocal(singleParsed, _sbId, (_createRes && _createRes.idReserva) ? String(_createRes.idReserva) : null);
+              staffCalSaveLocal(singleParsed, _sbId,
+                (_nat && _nat.idReserva) || ((_createRes && _createRes.idReserva) ? String(_createRes.idReserva) : null),
+                { giaScrittaDalGestionale: !!_nat });
             } catch (e) {
               localKo++; _staffCalLastLocalSaveError = e;
               console.warn('STAFF_CAL_RICORRENZA_COPIA_LOCALE', dates[i], e);
@@ -48995,7 +49003,7 @@ Per confermare scrivi ELIMINA.`);
         // staffCalSaveLocal era NUDA: se il salvataggio locale falliva l'errore finiva nel catch
         // esterno e si annunciava «NON salvata su Matchpoint» — falso, su Matchpoint c'era eccome.
         let _localOk = true;
-        try { staffCalSaveLocal(parsed, _sbId, (result && result.idReserva) || null); } catch (e) { _localOk = false; _staffCalLastLocalSaveError = e; console.warn('staffCalSaveLocal:', e); }
+        try { staffCalSaveLocal(parsed, _sbId, (result && result.idReserva) || null, { giaScrittaDalGestionale: !!(result && result.nativa) }); } catch (e) { _localOk = false; _staffCalLastLocalSaveError = e; console.warn('staffCalSaveLocal:', e); }
         try { _staffCalCreateSettle(_optimKey, true); } catch (e) {}
         try { staffCalRtBroadcastResolved(parsed, true); } catch (e) {}
         if (parsed.data === isoDate) renderStaffCalendar();
@@ -49143,7 +49151,21 @@ Per confermare scrivi ELIMINA.`);
     } catch (e) { console.warn('persist idReserva cloud push:', e); }
   }
 
-  function staffCalSaveLocal(parsed, sbId, idReserva) {
+  /** 🆕⭐⭐ `opts.giaScrittaDalGestionale` — TROVATO IL 09/09/2026 PROVANDO LA CURA, e senza la
+   *  prova non si sarebbe visto: sul sistema nuovo la riga la scrive già la edge, **con lo stesso
+   *  `local_key`** (l'`sbId` che l'app le ha passato) e con dentro cose che l'app non ha —
+   *  `nata_nel_gestionale`, `descrizione`, `worker_result`, `created_by_*`. La spinta qui sotto
+   *  fa un upsert di un payload a **chiavi fisse**: passandoci sopra le cancella tutte.
+   *  📏 Misurato su `cudi`: due prenotazioni nate dopo la cura avevano `nata_nel_gestionale` a
+   *  `null`, e `matchpoint-bookings-cancel` le rifiutava con `409 NIENTE_DA_ANNULLARE` —
+   *  `righeNativeDaSpegnere` cerca **esattamente quel marchio**. ⇒ **Nate e non più annullabili.**
+   *  ⚖️ Il difetto c'era già, ma dormiva: sulla strada di Matchpoint l'annullo va a Matchpoint e
+   *  del marchio non gli importa. Sul sistema nuovo quel marchio è **l'unico manico**.
+   *  🔨 La cura è non riscrivere, non riscrivere meglio: la copia in pagina si fa lo stesso
+   *  (serve a mostrarla subito), si salta **solo** la spinta ridondante. Così restano anche
+   *  `descrizione` e `worker_result`, che rimetterli a mano vorrebbe dire inventarli.
+   *  📌 *Una copia che «aggiorna» un record più ricco del proprio non lo aggiorna: lo pota.* */
+  function staffCalSaveLocal(parsed, sbId, idReserva, opts) {
     const existing = (typeof safeLoad === 'function') ? safeLoad('staffBookings', []) : [];
     // SOVRASCRITTURA SLOT: se esiste già una prenotazione locale sullo stesso slot
     // (stessa data+campo+ora) la rimuoviamo dal locale e la marchiamo deleted sul
@@ -49195,6 +49217,9 @@ Per confermare scrivi ELIMINA.`);
           });
         });
         // 2) la nuova prenotazione (con istruttore e giocatori)
+        // ⛔ …se non l'ha già scritta il gestionale: in quel caso la sua riga è più ricca della
+        //    nostra e ha lo STESSO `local_key` ⇒ spingere qui vorrebbe dire potarla.
+        if (opts && opts.giaScrittaDalGestionale) { records.length && pmoSyncCloudRecordsNow(records, 'sincronizzare la prenotazione staff sul cloud').catch(function(e){ console.warn('staff_booking cloud push:', e); }); if (_localErr) throw _localErr; return true; }
         records.push({
           record_type: 'staff_booking',
           local_key: entry.id,
@@ -50951,7 +50976,7 @@ Per confermare scrivi ELIMINA.`);
         // qui, dichiarando comunque "✅ Salvata": su Matchpoint è vero, in casa no. Ora l'esito guida
         // il messaggio — l'operatore deve sapere che la copia locale NON c'è, o rifà la prenotazione.
         let _localOk = true;
-        try { staffCalSaveLocal(parsed, _sbId, result.idReserva || null); } catch (e) { _localOk = false; _staffCalLastLocalSaveError = e; console.warn('staffCalSaveLocal:', e); }
+        try { staffCalSaveLocal(parsed, _sbId, result.idReserva || null, { giaScrittaDalGestionale: !!(result && result.nativa) }); } catch (e) { _localOk = false; _staffCalLastLocalSaveError = e; console.warn('staffCalSaveLocal:', e); }
         try { staffCalRtBroadcastResolved(parsed, true); } catch (e) {}
         try { renderStaffCalendar(); } catch (e) {}
         try { _staffCalCreateSettle(_optimKey, true); } catch (e) {}
@@ -55822,7 +55847,7 @@ Per confermare scrivi ELIMINA.`);
           // Stesso trattamento del percorso manuale: se la copia locale non entra, non si dichiara
           // "✅ Salvata" e basta — su Matchpoint c'è, ma qui no, e va detto. v6.109.
           let _localOk = true;
-          try { staffCalSaveLocal(parsed, _sbId, result.idReserva || null); } catch (e) { _localOk = false; _staffCalLastLocalSaveError = e; console.warn('staffCalSaveLocal:', e); }
+          try { staffCalSaveLocal(parsed, _sbId, result.idReserva || null, { giaScrittaDalGestionale: !!(result && result.nativa) }); } catch (e) { _localOk = false; _staffCalLastLocalSaveError = e; console.warn('staffCalSaveLocal:', e); }
           try { staffCalRtBroadcastResolved(parsed, true); } catch (e) {}
           try { renderStaffCalendar(); } catch (e) {}
           try { _staffCalCreateSettle(_optimKey, true); } catch (e) {}
