@@ -8699,7 +8699,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.409';
+    const APP_VERSION = '6.410';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -42856,7 +42856,8 @@ Per confermare scrivi ELIMINA.`);
   }
 
   // ── Pagamenti SIMULAZIONE (SOLO TEST) — helper cloud ────────────────────────
-  // Il cobro/storno simulato scrive/aggiorna un record `payment` nel cloud di TEST con la
+  // 💰 VOCE 181 — non è più una simulazione: è LA CASSA. Il cobro/storno scrive un record
+  // `payment` nel gestionale con la
   // STESSA forma che produce matchpoint-payments-sync (vedi _incassiFetch/renderIncassi:
   // method/amount_cents/data/id_cliente/player_name/voided), così la sezione Incassi lo
   // legge dal percorso genuino. Taggato source:'pmo_simulate' (distinguibile e pulibile):
@@ -42938,7 +42939,7 @@ Per confermare scrivi ELIMINA.`);
       data: _data,
       // Giorno/campo/ora della PRENOTAZIONE: è la chiave naturale con cui scheda e chip
       // agganciano il pagamento (vedi _payNatKey). Il sync reale le porta da Giorno/Spazio/Ora
-      // del report 11.13: senza queste il simulato non sarebbe collaudabile allo stesso modo.
+      // del report 11.13: sono la chiave con cui scheda e chip ritrovano il pagamento.
       booking_data: _data,
       campo: (opts.campo != null ? String(opts.campo) : ''),
       ora: (opts.ora != null ? String(opts.ora) : ''),
@@ -42952,7 +42953,7 @@ Per confermare scrivi ELIMINA.`);
     try { if (typeof _incassiState !== 'undefined' && _incassiState) _incassiState.rows = null; } catch (e) {}
     return rec;
   }
-  // Storno simulato: marca voided i record `payment` simulati che combaciano (prenotazione +
+  // Storno della cassa nostra: marca voided le righe `payment` che combaciano (prenotazione +
   // giocatore per id_cliente o nome). L'aggregazione di Incassi salta i voided → spariscono.
   async function _pmoCassaStorna(idReserva, idCliente, playerName) {
     if (typeof pmoStaffRpcPaged !== 'function') return 0;
@@ -43534,10 +43535,10 @@ Per confermare scrivi ELIMINA.`);
         }
       } catch (e) {}
       try { _staffCalPaidIndexRemove(_payNatKey(opts.data, opts.campo, opts.ora), playerName); } catch (e) {}
-      _setMsg(note, n > 0 ? ('🧪 Simulato storno — ' + esc(playerName)) : ('🧪 Nessun incasso simulato da stornare per ' + esc(playerName)));
+      _setMsg(note, n > 0 ? ('↩︎ Storno registrato — ' + esc(playerName)) : ('ℹ️ Nessun incasso da stornare per ' + esc(playerName)));
       try { if (typeof staffCalRenderPlayersEditor === 'function' && staffCalPlayersState) staffCalRenderPlayersEditor(); } catch (e) {}
       try { renderStaffCalendar(); } catch (e) {}
-      return { ok: true, simulated: true, voided: n };
+      return { ok: true, nativa: true, voided: n };
     }
     try {
       const cfg = await loadAssessmentSupabaseConfig();
