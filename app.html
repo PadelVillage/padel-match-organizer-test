@@ -8724,7 +8724,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.425';
+    const APP_VERSION = '6.426';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -8894,6 +8894,68 @@ body.assessment-public-mode .assessment-public-only-card {
     function pmoSuCircoloEsterno() {
       const n = pmoNomeCircoloEsterno();
       return n ? ' su ' + n : '';
+    }
+
+    /* 🏷️⭐⭐ VOCE 190, SECONDA MANO — LE FRASI CHE NON SI ACCORCIANO: SI RISCRIVONO.
+     *
+     * ⚖️ Le prime nove frasi curate erano tutte della forma *«…su Matchpoint»* ⇒ bastava togliere
+     * il complemento e la frase restava vera (*«Operazione confermata»*). Queste **no**: hanno il
+     * circolo come **soggetto** (*«Matchpoint ha rifiutato»*) o descrivono un **gesto** che senza
+     * di lui non esiste (*«sto guardando su Matchpoint»* — guardando **dove**?).
+     * ⇒ Togliere la parola qui lascerebbe una frase **monca o falsa**, non una più generica. Sono
+     *   coppie intere, e stanno qui per non essere ricopiate a mano in quindici punti.
+     * 📌 *Una parola sbagliata si toglie; una frase costruita attorno a quella parola si riscrive.*
+     *
+     * 🚨⭐⭐ E VA DETTO COSA QUESTE RIGHE **NON** FANNO, o si scambiano per una cura che non sono:
+     * appartengono al percorso dell'**esito ignoto** — `staffCalAskMatchpoint`, cioè la macchina
+     * che quando non sa **va a guardare sul circolo**. Sul gestionale nuovo quella domanda **non ha
+     * più un destinatario**, ed è esattamente la **voce 187**. ⇒ Qui si sistemano le **parole** che
+     * quella macchina pronuncia se scatta; la macchina resta da **sostituire**, non da ribattezzare.
+     * 📌 *Rinominare un meccanismo che va rifatto lo rende più difficile da riconoscere, non più
+     *    corretto: la cura si dichiara per quello che è.* */
+
+    /** *«❌ Matchpoint ha rifiutato: …»* → senza circolo il soggetto sparisce: *«❌ Rifiutata: …»*. */
+    function pmoFraseRifiutata() {
+      const n = pmoNomeCircoloEsterno();
+      return n ? ('❌ ' + n + ' ha rifiutato: ') : '❌ Rifiutata: ';
+    }
+
+    /** *«sto guardando su Matchpoint»* → senza circolo non c'è un posto dove guardare: si CONTROLLA. */
+    function pmoFraseNonHoLaConferma(tentativo) {
+      const n = pmoNomeCircoloEsterno();
+      if (tentativo && tentativo > 1) {
+        return n
+          ? ('⌛ Non ho ancora la conferma — continuo a guardare su ' + n + ' (' + tentativo + '° tentativo)…')
+          : ('⌛ Non ho ancora la conferma — continuo a controllare (' + tentativo + '° tentativo)…');
+      }
+      return n ? ('⌛ Non ho la conferma — sto guardando su ' + n + '…') : '⌛ Non ho la conferma — sto controllando…';
+    }
+
+    /** *«Matchpoint è lento»* → senza circolo il lento è il gestionale stesso, e non si accusa nessuno. */
+    function pmoFraseLento() {
+      const n = pmoNomeCircoloEsterno();
+      return n ? ('⌛ ' + n + ' è lento: aspetto ancora la conferma…')
+               : '⌛ Ci sto mettendo più del previsto: aspetto ancora la conferma…';
+    }
+
+    /** Il motivo di ripiego quando non torna niente. ⛔ Senza circolo non si nomina un colpevole. */
+    function pmoFraseNessunaRisposta() {
+      const n = pmoNomeCircoloEsterno();
+      return n ? (n + ' non ha risposto in tempo') : 'nessuna risposta in tempo';
+    }
+
+    /** *«Matchpoint è lento adesso (coda del worker)»* → senza circolo non c'è nessuna coda, e
+     *  **«worker» è un nome interno**: chi lavora non deve sentirlo nominare in nessuno dei due casi. */
+    function pmoFraseLentoAdesso() {
+      const n = pmoNomeCircoloEsterno();
+      return n ? ('⌛ <strong>' + n + ' è lento adesso</strong>')
+               : '⌛ <strong>Sta prendendo più del previsto</strong>';
+    }
+
+    /** *«non riesco a raggiungere Matchpoint per verificare»* → *«non riesco a verificare»*. */
+    function pmoFraseNonVerificabile() {
+      const n = pmoNomeCircoloEsterno();
+      return n ? ('non riesco a raggiungere ' + n + ' per verificare') : 'non riesco a verificare';
     }
 
     /** 🏷️ VOCE 190 — le frasi SCRITTE NELL'HTML si ridicono quando si sa, invece di indovinare.
@@ -48217,12 +48279,12 @@ Per confermare scrivi ELIMINA.`);
           renderStaffCalendar();
           return;
         }
-        _setEditSyncNote('⌛ Non ho la conferma — sto guardando su Matchpoint…', '#b54708');
+        _setEditSyncNote(pmoFraseNonHoLaConferma(1), '#b54708');
         const look = await staffCalAskMatchpoint({ campoNum: _curCampo, data: _curIso, ora: _curOra, nome: '', giocatori: addArr }, _staffE, _urlE, _keyE);
         _spegniPuntino();
         if (look.verdict === 'si') {
           _applicaModifiche(null);
-          _setEditSyncNote('✅ Operazione confermata — l\'ho verificata su Matchpoint', '#067647', '✅ <strong>Prenotazione aggiornata</strong>');
+          _setEditSyncNote('✅ Operazione confermata — l\'ho verificata' + pmoSuCircoloEsterno(), '#067647', '✅ <strong>Prenotazione aggiornata</strong>');
           _aiExecSettle(true, null);
           return;
         }
@@ -48270,7 +48332,7 @@ Per confermare scrivi ELIMINA.`);
           } catch (eLazy) {
             // Non è partito niente verso la prenotazione: la modifica non era stata applicata.
             _spegniPuntino();
-            _setEditSyncNote('❌ Matchpoint ha rifiutato: ' + _staffCalFriendlyOpError(eLazy), '#d92d20', '❌ <strong>Modifica non eseguita</strong>');
+            _setEditSyncNote(pmoFraseRifiutata() + _staffCalFriendlyOpError(eLazy), '#d92d20', '❌ <strong>Modifica non eseguita</strong>');
             svcAddMessage('system', '❌ Modifica non riuscita (' + destTxt + '): ' + _staffCalFriendlyOpError(eLazy) + '<br><span style="color:var(--text-muted);font-size:.78rem;">La prenotazione è <strong>rimasta com\'era</strong>.</span>', 'error');
             try { _staffCalPendingEdits.delete(pendKey); } catch (e) {}
             _aiExecSettle(false, (eLazy && eLazy.message) ? eLazy.message : String(eLazy));
@@ -48332,13 +48394,13 @@ Per confermare scrivi ELIMINA.`);
           }
         } else if (_staffCalIsTimeoutClass((data && (data.message || data.error)) || '', response.status)) {
           // TIMEOUT edge (worker in coda): esito INCERTO ⇒ si va a guardare, non si conclude.
-          await _verifica((data && (data.message || data.error)) || 'Matchpoint non ha risposto in tempo');
+          await _verifica((data && (data.message || data.error)) || pmoFraseNessunaRisposta());
         } else {
           // Rifiuto vero: esito NOTO. Non c'è niente da riportare indietro — la prenotazione non
           // era stata toccata — ma va detto, se no sembra che la modifica sia andata a buon fine.
           const msg = (data && (data.message || data.error)) || ('HTTP ' + response.status);
           _spegniPuntino();
-          _setEditSyncNote('❌ Matchpoint ha rifiutato: ' + _staffCalFriendlyOpError(msg), '#d92d20', '❌ <strong>Modifica non eseguita</strong>');
+          _setEditSyncNote(pmoFraseRifiutata() + _staffCalFriendlyOpError(msg), '#d92d20', '❌ <strong>Modifica non eseguita</strong>');
           svcAddMessage('system', '❌ Modifica non riuscita (' + destTxt + '): ' + _staffCalFriendlyOpError(msg) + '<br><span style="color:var(--text-muted);font-size:.78rem;">La prenotazione è <strong>rimasta com\'era</strong>.</span>', 'error');
           _aiExecSettle(false, String(msg || 'errore'));
           renderStaffCalendar();
@@ -48709,7 +48771,7 @@ Per confermare scrivi ELIMINA.`);
       } else if (_staffCalIsTimeoutClass((data && (data.message || data.error)) || '', response.status)) {
         // TIMEOUT edge (worker in coda): esito INCERTO, lo spostamento può essere passato lo stesso.
         // NON dichiarare fallimento (era il messaggio falso "non riuscito" su operazione riuscita).
-        svcAddMessage('system', '⌛ <strong>Matchpoint è lento adesso</strong> (coda del worker): lo spostamento <strong>potrebbe essere passato lo stesso</strong>. Non ho revertito niente — <strong>ricarica con «Aggiorna prenotazioni» e controlla</strong> prima di rifarlo (rischi un doppione).', 'error');
+        svcAddMessage('system', pmoFraseLentoAdesso() + ': lo spostamento <strong>potrebbe essere passato lo stesso</strong>. Non ho revertito niente — <strong>ricarica con «Aggiorna prenotazioni» e controlla</strong> prima di rifarlo (rischi un doppione).', 'error');
       } else {
         const msg = ((data && (data.message || data.error)) || ('errore HTTP ' + response.status)) + '';
         svcAddMessage('system', '❌ Spostamento non riuscito: ' + _staffCalFriendlyOpError(msg));
@@ -48718,7 +48780,7 @@ Per confermare scrivi ELIMINA.`);
       if (_timer) clearInterval(_timer);
       if (err && err.name === 'AbortError') {
         // Timeout duro (>200s): NON dichiarare fallimento, lo spostamento potrebbe essere passato.
-        svcAddMessage('system', '⌛ <strong>Operazione troppo lenta</strong> (oltre 200s): il worker Matchpoint non ha risposto in tempo.<br>⚠️ Lo spostamento <strong>potrebbe essere stato applicato lo stesso</strong>: <strong>ricarica il calendario e controlla</strong> prima di rifarlo (rischi un doppione).', 'error');
+        svcAddMessage('system', '⌛ <strong>Operazione troppo lenta</strong> (oltre 200s): ' + pmoFraseNessunaRisposta() + '.<br>⚠️ Lo spostamento <strong>potrebbe essere stato applicato lo stesso</strong>: <strong>ricarica il calendario e controlla</strong> prima di rifarlo (rischi un doppione).', 'error');
       } else {
         svcAddMessage('system', '❌ Errore durante lo spostamento: ' + _staffCalFriendlyOpError(err?.message || err || 'sconosciuto'));
       }
@@ -49740,7 +49802,7 @@ Per confermare scrivi ELIMINA.`);
         try { _staffCalCreateSettle(_optimKey, false); } catch (e) {}
         try { staffCalRtBroadcastResolved(parsed, false); } catch (e) {}
         try { if (parsed.data === isoDate) renderStaffCalendar(); } catch (e) {}
-        staffCalSetStatus(`❌ ${parsed.campo} · ${parsed.ora}–${parsed.oraFine}: NON eseguita su Matchpoint (${why}). Sul calendario non è stata scritta niente: lo slot è rimasto libero.`, 'error');
+        staffCalSetStatus(`❌ ${parsed.campo} · ${parsed.ora}–${parsed.oraFine}: NON eseguita${pmoSuCircoloEsterno()} (${why}). Sul calendario non è stata scritta niente: lo slot è rimasto libero.`, 'error');
       };
       const _okStatus = function (result, viaLettura) {
         // ⭐ È QUI che la prenotazione entra nel calendario, e solo qui: Matchpoint ha detto sì.
@@ -49752,7 +49814,7 @@ Per confermare scrivi ELIMINA.`);
         try { staffCalRtBroadcastResolved(parsed, true); } catch (e) {}
         if (parsed.data === isoDate) renderStaffCalendar();
         if (_localOk) staffCalSetStatus(`✅ Operazione confermata${pmoSuCircoloEsterno()}${viaLettura ? ' (verificata guardando' + pmoSuCircoloEsterno() + ')' : ''}: ${parsed.campo} · ${parsed.ora}–${parsed.oraFine} · ${parsed.nome}`, 'done');
-        else staffCalSetStatus(`⚠️ ${parsed.campo} · ${parsed.ora}–${parsed.oraFine}: su Matchpoint è CONFERMATA, ma questa pagina non è riuscita a tenerne copia (${_staffCalLocalSaveWhy()}). Non rifarla: ricarica la pagina.`, 'pending');
+        else staffCalSetStatus(`⚠️ ${parsed.campo} · ${parsed.ora}–${parsed.oraFine}:${pmoSuCircoloEsterno()} è CONFERMATA, ma questa pagina non è riuscita a tenerne copia (${_staffCalLocalSaveWhy()}). Non rifarla: ricarica la pagina.`, 'pending');
       };
       // ⭐⭐ ESITO IGNOTO: non si indovina, si va a GUARDARE su Matchpoint (regola sua).
       const _uncertainStatus = async function (why) {
@@ -49762,8 +49824,8 @@ Per confermare scrivi ELIMINA.`);
           {
             annuncia: function (n) {
               staffCalSetStatus(n === 1
-                ? `⌛ Non ho la conferma — sto guardando su Matchpoint…`
-                : `⌛ Non ho ancora la conferma — continuo a guardare su Matchpoint (${n}° tentativo)…`, 'pending');
+                ? pmoFraseNonHoLaConferma(1)
+                : pmoFraseNonHoLaConferma(n), 'pending');
             },
           });
         if (look.verdict === 'si') { await pmoChiudiLavoroIgnoto(_jobIgnoto, 'si', staff, supabaseUrl, supabaseKey, look.tentativi); return _okStatus({}, true); }
@@ -49771,7 +49833,7 @@ Per confermare scrivi ELIMINA.`);
         try { _staffCalCreateSettle(_optimKey, true); } catch (e) {}
         // ⭐⭐ NON SI SCARICA LA DOMANDA SULL'OPERATORE: la si DEPOSITA e la si riprende da soli.
         try { pmoVerificheSegna(_sbId, parsed, why, _jobIgnoto); } catch (e) {}
-        staffCalSetStatus(`⏳ ${parsed.campo} · ${parsed.ora}–${parsed.oraFine}: dopo ${look.tentativi} tentativi non riesco a raggiungere Matchpoint per verificare (${look.why}). Sul calendario non ho scritto niente e lo slot resta libero. La verifica resta APERTA: la riprendo da solo a ogni apertura, finché non è un sì o un no. ⛔ Non rifarla nel frattempo: rischi un doppione.`, 'pending');
+        staffCalSetStatus(`⏳ ${parsed.campo} · ${parsed.ora}–${parsed.oraFine}: dopo ${look.tentativi} tentativi ${pmoFraseNonVerificabile()} (${look.why}). Sul calendario non ho scritto niente e lo slot resta libero. La verifica resta APERTA: la riprendo da solo a ogni apertura, finché non è un sì o un no. ⛔ Non rifarla nel frattempo: rischi un doppione.`, 'pending');
       };
       try {
         const submit = await staffCalSubmitSingle(parsed, staff, supabaseUrl, supabaseKey, { async: true, sbId: _sbId, onSent: function () { _reqSent = true; } });
@@ -49787,7 +49849,7 @@ Per confermare scrivi ELIMINA.`);
           await _uncertainStatus(result.error || 'il gestionale non ha risposto');
         } else {
           // Il lavoro ha un NUMERO: scaduta la prima attesa si continua a CHIEDERE, non si conclude.
-          staffCalSetStatus(`⌛ Matchpoint è lento: aspetto ancora la conferma…`, 'pending');
+          staffCalSetStatus(pmoFraseLento(), 'pending');
           const late = await staffCalPollJob(jobId, staff, supabaseUrl, supabaseKey, function () {}, { maxMs: _STAFF_CAL_POLL.lateMaxMs, stepMs: _STAFF_CAL_POLL.lateStepMs });
           if (late.status === 'done') _okStatus(late);
           else if (late.status === 'error') _failStatus(late.error || 'errore sconosciuto');
@@ -50190,7 +50252,7 @@ Per confermare scrivi ELIMINA.`);
       // ROVESCIATA rispetto alla prenotazione, ed è la parte da leggere piano: se su Matchpoint
       // la prenotazione NON c'è più, vuol dire che l'annullamento È passato. Se c'è ancora, no.
       const _verifica = async function (perche) {
-        _setSync('⌛ Non ho la conferma — sto guardando su Matchpoint…', '#b54708');
+        _setSync(pmoFraseNonHoLaConferma(1), '#b54708');
         const look = await staffCalAskMatchpoint(_lookParsed, _staffC, _urlC, _keyC);
         if (look.verdict === 'no') {
           await _applicaAnnullo();
@@ -50241,12 +50303,12 @@ Per confermare scrivi ELIMINA.`);
           _setSync('🧹 Su Matchpoint non c\'era più — tolta dal calendario', '#067647', '✅ <strong>Prenotazione annullata</strong>');
         } else if (_staffCalIsTimeoutClass(_msgTxt, response.status)) {
           // TIMEOUT edge (worker in coda): esito INCERTO ⇒ si va a guardare, non si conclude.
-          await _verifica(_msgTxt || 'Matchpoint non ha risposto in tempo');
+          await _verifica(_msgTxt || pmoFraseNessunaRisposta());
         } else {
           // Rifiuto vero: esito NOTO. Non c'è niente da ripristinare — la prenotazione non se
           // n'era mai andata dal calendario — ma va detto, se no sembra che sia stata annullata.
           const msg = _msgTxt || ('errore HTTP ' + response.status);
-          _setSync('❌ Matchpoint ha rifiutato: ' + _staffCalFriendlyOpError(msg), '#d92d20', '❌ <strong>Annullamento non eseguito</strong>');
+          _setSync(pmoFraseRifiutata() + _staffCalFriendlyOpError(msg), '#d92d20', '❌ <strong>Annullamento non eseguito</strong>');
           svcAddMessage('system', '❌ <strong>Annullamento non riuscito</strong>: ' + _staffCalFriendlyOpError(msg) + '<br><span style="color:var(--text-muted);font-size:.78rem;">La prenotazione è <strong>rimasta</strong> sul calendario, perché su Matchpoint c\'è ancora.</span>');
         }
       } catch (err) {
@@ -51711,7 +51773,7 @@ Per confermare scrivi ELIMINA.`);
         try { _staffCalCreateSettle(_optimKey, false); } catch (e) {}
         try { staffCalRtBroadcastResolved(parsed, false); } catch (e) {}
         try { renderStaffCalendar(); } catch (e) {}
-        _setSyncNote('❌ Matchpoint ha rifiutato: ' + _staffCalFriendlyOpError(why), '#d92d20', '❌ <strong>Operazione NON eseguita</strong>');
+        _setSyncNote(pmoFraseRifiutata() + _staffCalFriendlyOpError(why), '#d92d20', '❌ <strong>Operazione NON eseguita</strong>');
         svcAddMessage('system', '❌ <strong>Campo ' + campo + ' \xb7 ' + ora + ': non prenotata</strong> (' + _staffCalFriendlyOpError(why) + '). Sul calendario non è stata scritta niente: <strong>lo slot è rimasto libero</strong>, puoi riprovare.');
       };
       const _okMsg = function (result, viaLettura) {
@@ -51724,7 +51786,7 @@ Per confermare scrivi ELIMINA.`);
         try { staffCalRtBroadcastResolved(parsed, true); } catch (e) {}
         try { renderStaffCalendar(); } catch (e) {}
         try { _staffCalCreateSettle(_optimKey, true); } catch (e) {}
-        if (_localOk) _setSyncNote(viaLettura ? '✅ Operazione confermata — l\'ho verificata su Matchpoint' : '✅ Operazione confermata' + pmoSuCircoloEsterno(), '#067647', '✅ <strong>Prenotazione confermata</strong>');
+        if (_localOk) _setSyncNote(viaLettura ? '✅ Operazione confermata — l\'ho verificata' + pmoSuCircoloEsterno() : '✅ Operazione confermata' + pmoSuCircoloEsterno(), '#067647', '✅ <strong>Prenotazione confermata</strong>');
         else {
           _setSyncNote('⚠️ Su Matchpoint sì, in questa pagina no', '#b54708', '⚠️ <strong>Confermata su Matchpoint</strong>');
           svcAddMessage('system', '⚠️ <strong>Campo ' + campo + ' \xb7 ' + ora + ': su Matchpoint è salvata</strong>, ma questa pagina non è riuscita a tenerne copia (' + _staffCalLocalSaveWhy() + '). <strong>Non rifarla</strong>: ricarica la pagina e la vedrai comparire.');
@@ -51746,7 +51808,7 @@ Per confermare scrivi ELIMINA.`);
           {
             annuncia: function (n) {
               _setSyncNote(n === 1
-                ? '⌛ Non ho la conferma — sto guardando su Matchpoint…'
+                ? pmoFraseNonHoLaConferma(1)
                 : '⌛ Non ho ancora la conferma — continuo a guardare (' + n + '° tentativo)…', '#b54708');
             },
           });
@@ -51761,7 +51823,7 @@ Per confermare scrivi ELIMINA.`);
         // ⭐⭐ La domanda non si scarica sull'operatore: si deposita e la si riprende da soli.
         try { pmoVerificheSegna(_sbId, parsed, why, _jobIgnoto); } catch (e) {}
         _setSyncNote('⏳ Verifica in corso', '#b54708', '⏳ <strong>Verifica aperta</strong>');
-        svcAddMessage('system', '⏳ <strong>Campo ' + campo + ' \xb7 ' + ora + '</strong>: dopo ' + look.tentativi + ' tentativi non riesco a raggiungere Matchpoint per verificare (' + _staffCalFriendlyOpError(why) + ' — ' + look.why + ').<br>⚠️ <strong>Sul calendario non ho scritto niente e lo slot resta libero.</strong> La verifica resta <strong>APERTA</strong>: la riprendo da solo a ogni apertura, finché non è un sì o un no. <strong>⛔ Non rifarla nel frattempo</strong>: rischi un doppione.');
+        svcAddMessage('system', '⏳ <strong>Campo ' + campo + ' \xb7 ' + ora + '</strong>: dopo ' + look.tentativi + ' tentativi ' + pmoFraseNonVerificabile() + ' (' + _staffCalFriendlyOpError(why) + ' — ' + look.why + ').<br>⚠️ <strong>Sul calendario non ho scritto niente e lo slot resta libero.</strong> La verifica resta <strong>APERTA</strong>: la riprendo da solo a ogni apertura, finché non è un sì o un no. <strong>⛔ Non rifarla nel frattempo</strong>: rischi un doppione.');
         try { window.PMOAi && PMOAi.logManual && PMOAi.logManual('prenotazione', tipoEngine || 'partita', 'failed', { via: 'slot calendario', azione: 'crea', campo: campo, data: parsed.data, ora: ora, reason: 'esito-ignoto' }); } catch (e) {}
       };
       try {
@@ -51785,7 +51847,7 @@ Per confermare scrivi ELIMINA.`);
         } else {
           // ⭐⭐ Scaduti i 3 minuti NON si tira a indovinare: il lavoro ha un numero, e l'esito è
           // una DOMANDA. Si continua a chiedere, più piano e più a lungo, e si decide sul FATTO.
-          _setSyncNote('⌛ Matchpoint è lento: aspetto ancora la conferma…', '#b54708');
+          _setSyncNote(pmoFraseLento(), '#b54708');
           const late = await staffCalPollJob(jobId, staff, supabaseUrl, supabaseKey, function () {}, { maxMs: _STAFF_CAL_POLL.lateMaxMs, stepMs: _STAFF_CAL_POLL.lateStepMs });
           if (late.status === 'done') _okMsg(late);
           else if (late.status === 'error') {
@@ -56697,7 +56759,7 @@ Per confermare scrivi ELIMINA.`);
           try { _staffCalCreateSettle(_optimKey, false); } catch (e) {}
           try { staffCalRtBroadcastResolved(parsed, false); } catch (e) {}
           try { renderStaffCalendar(); } catch (e) {}
-          _setSyncNote('❌ Matchpoint ha rifiutato: ' + _escapeHtml(_staffCalFriendlyOpError(why)), '#d92d20', '❌ <strong>Non eseguita</strong> — ');
+          _setSyncNote(pmoFraseRifiutata() + _escapeHtml(_staffCalFriendlyOpError(why)), '#d92d20', '❌ <strong>Non eseguita</strong> — ');
           _say('❌ <strong>Campo ' + parsed.campoNum + ' · ' + dl + ' · ' + parsed.ora + ': non prenotata</strong> (' + _escapeHtml(_staffCalFriendlyOpError(why)) + '). Sul calendario non ho scritto niente: <strong>lo slot è rimasto libero</strong>, puoi riprovare.');
         };
         const _okMsg = function (result, viaLettura) {
@@ -56708,7 +56770,7 @@ Per confermare scrivi ELIMINA.`);
           try { staffCalRtBroadcastResolved(parsed, true); } catch (e) {}
           try { renderStaffCalendar(); } catch (e) {}
           try { _staffCalCreateSettle(_optimKey, true); } catch (e) {}
-          if (_localOk) _setSyncNote(viaLettura ? '✅ Operazione confermata — verificata su Matchpoint' : '✅ Operazione confermata' + pmoSuCircoloEsterno(), '#067647', '✅ <strong>Fatto!</strong> ');
+          if (_localOk) _setSyncNote(viaLettura ? '✅ Operazione confermata — verificata' + pmoSuCircoloEsterno() : '✅ Operazione confermata' + pmoSuCircoloEsterno(), '#067647', '✅ <strong>Fatto!</strong> ');
           else {
             _setSyncNote('⚠️ Su Matchpoint sì, in questa pagina no', '#b54708', '⚠️ <strong>Confermata su Matchpoint</strong> — ');
             _say('⚠️ <strong>Campo ' + parsed.campoNum + ' · ' + dl + ' · ' + parsed.ora + ': su Matchpoint è salvata</strong>, ma questa pagina non è riuscita a tenerne copia (' + _escapeHtml(_staffCalLocalSaveWhy()) + '). <strong>Non rifarla</strong>: ricarica la pagina e la vedrai comparire.');
@@ -56725,7 +56787,7 @@ Per confermare scrivi ELIMINA.`);
             {
               annuncia: function (n) {
                 _setSyncNote(n === 1
-                  ? '⌛ Non ho la conferma — sto guardando su Matchpoint…'
+                  ? pmoFraseNonHoLaConferma(1)
                   : '⌛ Non ho ancora la conferma — continuo a guardare (' + n + '° tentativo)…', '#b54708');
               },
             });
@@ -56738,7 +56800,7 @@ Per confermare scrivi ELIMINA.`);
           // ⭐⭐ La domanda non si scarica sull'operatore: si deposita e la si riprende da soli.
           try { pmoVerificheSegna(_sbId, parsed, why, _jobIgnoto); } catch (e) {}
           _setSyncNote('⏳ Verifica in corso', '#b54708', '⏳ <strong>Verifica aperta</strong> — ');
-          _say('⏳ <strong>Campo ' + parsed.campoNum + ' · ' + dl + ' · ' + parsed.ora + '</strong>: dopo ' + look.tentativi + ' tentativi non riesco a raggiungere Matchpoint per verificare (' + _escapeHtml(_staffCalFriendlyOpError(why)) + ' — ' + _escapeHtml(look.why) + ').<br>⚠️ <strong>Sul calendario non ho scritto niente e lo slot resta libero.</strong> La verifica resta <strong>APERTA</strong>: la riprendo da solo a ogni apertura, finché non è un sì o un no. <strong>⛔ Non rifarla nel frattempo</strong>: rischi un doppione.');
+          _say('⏳ <strong>Campo ' + parsed.campoNum + ' · ' + dl + ' · ' + parsed.ora + '</strong>: dopo ' + look.tentativi + ' tentativi ' + pmoFraseNonVerificabile() + ' (' + _escapeHtml(_staffCalFriendlyOpError(why)) + ' — ' + _escapeHtml(look.why) + ').<br>⚠️ <strong>Sul calendario non ho scritto niente e lo slot resta libero.</strong> La verifica resta <strong>APERTA</strong>: la riprendo da solo a ogni apertura, finché non è un sì o un no. <strong>⛔ Non rifarla nel frattempo</strong>: rischi un doppione.');
           try { _aiTurnExecEnd(_aiCreateRef, false, { via: 'assistente', azione: 'crea', reason: 'esito-ignoto' }); } catch (e) {}
         };
         try {
@@ -56766,7 +56828,7 @@ Per confermare scrivi ELIMINA.`);
           } else {
             // ⭐⭐ Scaduti i 3 minuti NON si tira a indovinare: il lavoro ha un numero, e l'esito è
             // una DOMANDA. Si continua a chiedere, più piano e più a lungo, e si decide sul FATTO.
-            _setSyncNote('⌛ Matchpoint è lento: aspetto ancora la conferma…', '#b54708');
+            _setSyncNote(pmoFraseLento(), '#b54708');
             const late = await staffCalPollJob(jobId, staff, supabaseUrl, supabaseKey, function () {}, { maxMs: _STAFF_CAL_POLL.lateMaxMs, stepMs: _STAFF_CAL_POLL.lateStepMs });
             if (late.status === 'done') _okMsg(late);
             else if (late.status === 'error') {
