@@ -8699,7 +8699,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.408';
+    const APP_VERSION = '6.409';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -8823,6 +8823,56 @@ body.assessment-public-mode .assessment-public-only-card {
         return !!m && m[1].toLowerCase() === PMO_PROD_SUPABASE_PROJECT_REF;
       } catch (e) { return false; }
     }
+    /* 💰⭐⭐ VOCE 181 — LA CASSA È NOSTRA QUANDO IL GESTIONALE NON PARLA COL CIRCOLO.
+     *
+     * 🗣️ Sue parole (08/09/2026): *«dal gestionale si incassa, perché Matchpoint non c'è più»* e
+     * *«si incassa solo su test, su PROD mai»*. ⇒ Sono la stessa regola vista da due parti, e
+     * l'invariante che le tiene insieme è uno solo: **nessun soldo passa da Matchpoint per mano
+     * nostra**. Su PROD *incassare* e *incassare da Matchpoint* sono lo stesso gesto ⇒ di lì mai;
+     * sul sistema nuovo Matchpoint non c'è ⇒ non c'è nessun tramite da attraversare.
+     *
+     * 🚨⭐⭐ E GUARDA IL **REF SUPABASE**, NON L'HOSTNAME — è la stessa scelta della voce 180, e
+     * qui pesa ancora di più. `PMO_IS_TEST_ENV` risponde a un'altra domanda — *«sto su un
+     * indirizzo che comincia per test.»* — e il passaggio (voce 184) la farà **scadere**: il
+     * giorno in cui il gestionale nuovo è servito da un altro indirizzo, una cassa appesa a
+     * quella risposta si **spegnerebbe da sola**, e il circolo smetterebbe di incassare senza che
+     * nessun errore compaia da nessuna parte.
+     * 📌 *Un ambiente si riconosce da CON CHI parla, non da come si chiama.*
+     * ⇒ Questa riga sta deliberatamente FUORI dalla lista delle simulazioni da smontare prima del
+     *   passaggio: non è una finzione da togliere, è il verso giusto in cui la cassa deve girare.
+     *
+     * ⛔ FALLISCE CHIUSA, e il verso conta: se l'indirizzo non lo sappiamo ancora, **non** si
+     * dichiara la cassa nostra. Chi non sa con chi sta parlando non incassa — al massimo i
+     * bottoni restano spenti per un istante, che è un difetto visibile; il contrario sarebbe
+     * registrare denaro credendo di essere altrove. */
+    /* 🚨⭐⭐ LA TRAPPOLA DELLA NEGAZIONE, trovata dal banco il 09/09 e non da un ragionamento —
+     * **UN CANCELLO CHE FALLISCE CHIUSO NON RESTA CHIUSO SE LO SI NEGA.**
+     * La prima versione di `pmoCassaNativa` era `!pmoGestionaleCollegatoAlCircolo(url)`, e sembra
+     * ovvia. Ma quel cancello fallisce chiuso **per la SUA domanda** — *«nel dubbio non chiamo il
+     * circolo»* — e torna `false` anche su un url **storpiato**. Negandolo, quel `false` diventa
+     * un `true` che vuol dire *«la cassa è nostra»* ⇒ con una configurazione illeggibile l'app
+     * avrebbe **registrato denaro** convinta di stare sul sistema nuovo.
+     * 📌 *Il fallimento sicuro di una domanda è il fallimento pericoloso della domanda opposta:
+     *    «nel dubbio non chiamo» e «nel dubbio incasso» sono la stessa riga letta al contrario.*
+     * ⇒ Perciò questa non nega niente: chiede un **fatto positivo** — che l'indirizzo sia un ref
+     *   Supabase leggibile, e che quel ref non sia quello di PROD. Nel dubbio, `false`. */
+    function pmoRefSupabaseDellUrl(supabaseUrl) {
+      try {
+        const host = new URL(String(supabaseUrl || '')).hostname || '';
+        const m = host.match(/^([a-z0-9-]+)\.supabase\.co$/i);
+        return m ? m[1].toLowerCase() : '';
+      } catch (e) { return ''; }
+    }
+    function pmoCassaNativaPer(supabaseUrl) {
+      const ref = pmoRefSupabaseDellUrl(supabaseUrl);
+      return !!ref && ref !== PMO_PROD_SUPABASE_PROJECT_REF;
+    }
+    function pmoCassaNativa() {
+      try {
+        const memoria = pmoConfigMemoria && pmoConfigMemoria.valore;
+        return pmoCassaNativaPer(memoria && memoria.supabaseUrl);
+      } catch (e) { return false; }
+    }
     function pmoDetectRuntimeEnv() {
       try {
         const params = new URLSearchParams(window.location.search || '');
@@ -8843,7 +8893,16 @@ body.assessment-public-mode .assessment-public-only-card {
     // Matchpoint (vedi memoria "Matchpoint = economia principale unica"). Impossibile in
     // PROD perché gated PMO_IS_TEST_ENV. Precedenza sull'harness edge (__pmoPayHarness): la
     // simulazione NON si attiva quando il test pilota il percorso edge reale (mockato).
-    const PMO_PAYMENTS_SIMULATE = PMO_IS_TEST_ENV;
+    /* 🔻💰 VOCE 181 — `PMO_PAYMENTS_SIMULATE` NON ESISTE PIÙ, ed è una cancellazione voluta.
+     * Valeva `PMO_IS_TEST_ENV`, cioè *«sto su un indirizzo che comincia per test.»* ⇒ era una
+     * delle quattro simulazioni che il passaggio (voce 184) deve smontare, e con una data di
+     * scadenza addosso: il giorno in cui il gestionale nuovo cambia indirizzo, sarebbe diventata
+     * falsa e la cassa si sarebbe spenta **in silenzio**.
+     * ⇒ Al suo posto c'è `pmoCassaNativa()`, che guarda il **ref Supabase** — cioè con chi si sta
+     *   parlando — e che il cambio d'indirizzo non tocca. La cassa non è più una finta accesa
+     *   dall'ambiente: è la cassa, e si accende dove Matchpoint non c'è.
+     * 📌 *Una costante viva che nessuno usa è la trappola peggiore di questo progetto: si legge
+     *    come «il caso è previsto» quando invece non è più possibile.* */
     // ── LA SIMULAZIONE NEL BROWSER NON C'È PIÙ (08/09/2026) ──────────────────────
     // 🗣️ Parole sue: *«le scritture sono simulate verso Matchpoint, ma devono essere proprio
     // chiuse, non simulate, così siamo tranquilli che in futuro non ci sia dialogo fra Matchpoint
@@ -26201,7 +26260,7 @@ Grazie!`
           <div><label style="${lblCss}">Dal giorno</label><input type="date" id="incassiFrom" value="${st.from}" max="${st.to}" onchange="_incassiSetFrom(this.value)"></div>
           <div><label style="${lblCss}">Al giorno</label><input type="date" id="incassiTo" value="${st.to}" min="${st.from}" onchange="_incassiSetTo(this.value)"></div>
           <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-end;">
-            ${PMO_PAYMENTS_SIMULATE ? `<button type="button" class="btn-secondary small-btn" onclick="pmoIncassiCleanSim(this)" title="Cancella dal cloud TEST tutti gli incassi simulati (source pmo_simulate)" style="color:#5b3d00;background:#fdf0cf;border-color:#e6b84a;font-weight:700;">🧹 Pulisci simulazioni</button>` : ''}
+            ${pmoCassaNativa() ? `<button type="button" class="btn-secondary small-btn" onclick="pmoIncassiCleanSim(this)" title="Cancella le righe rimaste dall'era della simulazione (source pmo_simulate). NON tocca la cassa del gestionale." style="color:#5b3d00;background:#fdf0cf;border-color:#e6b84a;font-weight:700;">🧹 Pulisci simulazioni</button>` : ''}
             <button type="button" class="btn-primary small-btn" onclick="pmoPaymentsSyncAll(this)" title="Legge da Matchpoint i pagamenti delle prenotazioni nell'intervallo selezionato (report 11.13)">⟳ Sincronizza da Matchpoint</button>
           </div>
         </div>`;
@@ -27035,7 +27094,7 @@ Grazie!`
 
     // Pulisce dal cloud TEST tutti gli incassi SIMULATI (source pmo_simulate). Solo TEST.
     async function pmoIncassiCleanSim(btn) {
-      if (!PMO_PAYMENTS_SIMULATE) return;
+      if (!pmoCassaNativa()) return;
       if (typeof _pmoSimCleanupPayments !== 'function') { alert('Pulizia simulazioni non disponibile.'); return; }
       if (!confirm('Cancellare tutti gli incassi SIMULATI dal cloud di TEST?\nNon tocca Matchpoint né i pagamenti reali.')) return;
       const orig = btn ? btn.innerHTML : '';
@@ -42846,14 +42905,29 @@ Per confermare scrivi ELIMINA.`);
       return recs.length;
     } catch (e) { return 0; }
   }
-  // local_key con prefisso dedicato (niente collisione col sync reale). Mai in PROD.
-  const PMO_SIM_PAY_PREFIX = 'pmo_sim_pay|';
-  function _pmoSimPayKey(idReserva, idx, playerName) {
-    const t = (typeof Date !== 'undefined' && Date.now) ? Date.now() : 0;
-    const nm = String(playerName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 24);
-    return PMO_SIM_PAY_PREFIX + String(idReserva || '') + '|' + String(idx == null ? '' : idx) + '|' + nm + '|' + t;
+  /* 💰 VOCE 181 — LA SORGENTE DI UNA RIGA DI CASSA NOSTRA.
+   * 🚨⭐⭐ NON si riusa `pmo_simulate`, e non è una questione di nomi: il bottone
+   * «🧹 Pulisci simulazioni» cancella **tutto** ciò che porta quel tag. Riusandolo, il primo
+   * clic su quel bottone cancellerebbe **denaro vero** — e lo farebbe in silenzio, perché
+   * cancellare righe è esattamente il suo mestiere.
+   * 📌 *Un tag che qualcuno ha il permesso di cancellare in blocco non è un'etichetta: è una
+   *    lista della spesa per una funzione che cancella.* */
+  const PMO_CASSA_SOURCE = 'pmo_cassa';
+  const PMO_CASSA_SOURCE_VECCHIA = 'pmo_simulate';   // righe dell'era della simulazione: si stornano, non si scrivono più
+  const PMO_CASSA_PAY_PREFIX = 'paycassa|';
+  /* 🔑⭐⭐ LA CHIAVE È DETERMINISTICA, ed è la cura del difetto che questa voce si portava scritto
+   * addosso: la vecchia `_pmoSimPayKey` metteva `Date.now()` nella chiave ⇒ **due clic = due
+   * incassi**, e nessuno dei due sapeva dell'altro.
+   * 📌 *Una chiave che contiene l'istante non è una chiave: è un contatore.*
+   * ⇒ Stessa forma già in servizio per gli omaggi (`_pmoGiftKey`), e per la stessa ragione:
+   *   riaprire una scheda e ripremere non deve raddoppiare niente.
+   * ⚖️ E il caso «pago, storno, ripago» resta giusto **per costruzione**: la seconda scrittura
+   *   ricade sulla stessa chiave e riporta la riga a `paid`, invece di lasciarne due che
+   *   raccontano storie diverse dello stesso incasso. */
+  function _pmoCassaKey(isoDate, campo, ora, playerName) {
+    return PMO_CASSA_PAY_PREFIX + _payNatKey(isoDate, campo, ora) + '|' + _payNormName(playerName);
   }
-  async function _pmoSimWritePayment(opts) {
+  async function _pmoCassaScriviIncasso(opts) {
     const _data = opts.data || (typeof _incassiToday === 'function' ? _incassiToday() : '');
     const payload = {
       id_reserva: String(opts.idReserva || ''),
@@ -42870,17 +42944,17 @@ Per confermare scrivi ELIMINA.`);
       ora: (opts.ora != null ? String(opts.ora) : ''),
       recorded_at: new Date().toISOString(),
       voided: false,
-      source: 'pmo_simulate',
-      simulated: true,
+      status: 'paid',
+      source: PMO_CASSA_SOURCE,
     };
-    const rec = { record_type: 'payment', local_key: _pmoSimPayKey(opts.idReserva, opts.idx, opts.playerName), payload, deleted: false };
-    await pmoSyncCloudRecordsNow([rec], 'simulare un incasso');
+    const rec = { record_type: 'payment', local_key: _pmoCassaKey(_data, opts.campo, opts.ora, opts.playerName), payload, deleted: false };
+    await pmoSyncCloudRecordsNow([rec], 'registrare un incasso');
     try { if (typeof _incassiState !== 'undefined' && _incassiState) _incassiState.rows = null; } catch (e) {}
     return rec;
   }
   // Storno simulato: marca voided i record `payment` simulati che combaciano (prenotazione +
   // giocatore per id_cliente o nome). L'aggregazione di Incassi salta i voided → spariscono.
-  async function _pmoSimVoidPayments(idReserva, idCliente, playerName) {
+  async function _pmoCassaStorna(idReserva, idCliente, playerName) {
     if (typeof pmoStaffRpcPaged !== 'function') return 0;
     const rows = await pmoStaffRpcPaged('pmo_get_records_admin', { p_record_types: ['payment'], p_since: null }, 'cloud_sync', 'stornare (simulazione) un incasso');
     const idR = String(idReserva || ''); const idC = String(idCliente || ''); const nm = String(playerName || '').toLowerCase().trim();
@@ -42888,7 +42962,11 @@ Per confermare scrivi ELIMINA.`);
     for (const r of (rows || [])) {
       if (!r || r.deleted || !r.payload) continue;
       const p = r.payload;
-      if (p.source !== 'pmo_simulate' || p.voided || p.status === 'void') continue;
+      // 🚨 Due sorgenti, e la seconda è storia: `pmo_simulate` sono le righe dell'era in cui
+      // questa cassa era una finta. Si **stornano** ancora — chi le vede in Incassi deve poterle
+      // togliere — ma non se ne scrivono più. Le righe `matchpoint` NON si toccano da qui: quelle
+      // le annulla il loro libro, e questo non è il loro libro.
+      if ((p.source !== PMO_CASSA_SOURCE && p.source !== PMO_CASSA_SOURCE_VECCHIA) || p.voided || p.status === 'void') continue;
       if (String(p.id_reserva || '') !== idR) continue;
       const matchCli = !!(idC && p.id_cliente && String(p.id_cliente) === idC);
       const matchNm = !!(nm && String(p.player_name || '').toLowerCase().trim() === nm);
@@ -42907,7 +42985,11 @@ Per confermare scrivi ELIMINA.`);
     const rows = await pmoStaffRpcPaged('pmo_get_records_admin', { p_record_types: ['payment'], p_since: null }, 'cloud_sync', 'pulire gli incassi simulati');
     const dead = [];
     for (const r of (rows || [])) {
-      if (!r || !r.payload || r.payload.source !== 'pmo_simulate') continue;
+      // ⛔⛔ SOLO le righe dell'era della simulazione. La cassa vera (`pmo_cassa`) NON si
+      // cancella in blocco da un bottone: si **storna** una riga per volta, che lascia la
+      // traccia. 📌 *Cancellare e stornare non sono lo stesso gesto: il primo fa sparire che
+      // sia successo, il secondo dice che è stato disfatto.*
+      if (!r || !r.payload || r.payload.source !== PMO_CASSA_SOURCE_VECCHIA) continue;
       dead.push({ record_type: 'payment', local_key: r.local_key, payload: Object.assign({}, r.payload, { deleted: true }), deleted: true });
     }
     if (dead.length) await pmoSyncCloudRecordsNow(dead, 'pulire gli incassi simulati');
@@ -42927,10 +43009,10 @@ Per confermare scrivi ELIMINA.`);
       if (_harness || _simAuto) { resolve(true); return; }
       const esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return String(s == null ? '' : s); };
       const msg = svcAddMessage('system', simulate
-        ? '🧪 <strong>SIMULAZIONE</strong> — Incassare <strong>' + _incassiEuro(amountCents) + '</strong> da <strong>' + esc(name) + '</strong> in <strong>' + esc(methodLabel) + '</strong>?<br><span style="color:var(--text-muted);font-size:.78rem;">Non tocca Matchpoint: registra il pagamento solo nella sezione Incassi (cloud TEST).</span>'
+        ? '💰 <strong>CASSA DEL GESTIONALE</strong> — Incassare <strong>' + _incassiEuro(amountCents) + '</strong> da <strong>' + esc(name) + '</strong> in <strong>' + esc(methodLabel) + '</strong>?<br><span style="color:var(--text-muted);font-size:.78rem;">L\'incasso resta nel gestionale (sezione Incassi) e si può stornare. Il Matchpoint del circolo non viene chiamato.</span>'
         : '💶 Incassare <strong>' + _incassiEuro(amountCents) + '</strong> da <strong>' + esc(name) + '</strong> in <strong>' + esc(methodLabel) + '</strong>?<br><span style="color:var(--text-muted);font-size:.78rem;">Operazione reale su Matchpoint: crea un cobro, non annullabile dall’app.</span>');
       let _done = false;
-      const btns = svcMakeStepButtons([simulate ? '🧪 Sì, simula incasso' : '✅ Sì, incassa'],
+      const btns = svcMakeStepButtons(['✅ Sì, incassa'],
         function () { if (_done) return; _done = true; resolve(true); },
         function () { if (_done) return; _done = true; resolve(false); });
       try { msg.appendChild(btns); } catch (e) {}
@@ -43040,8 +43122,21 @@ Per confermare scrivi ELIMINA.`);
   async function _pmoCollectPayment(opts) {
     opts = opts || {};
     const _harness = PMO_IS_TEST_ENV && typeof window !== 'undefined' && window.__pmoPayHarness === true;
-    // SIMULAZIONE (solo TEST): attiva quando NON si sta pilotando il percorso edge reale.
-    const _simulate = PMO_PAYMENTS_SIMULATE && !_harness;
+    /* 💰 VOCE 181 — la cassa è NOSTRA quando il gestionale non parla col circolo, e la domanda
+     * si fa alla configurazione **autorevole**, non alla memoria: qui si sta per registrare del
+     * denaro, e una risposta letta da una copia scaduta è esattamente il caso in cui non si
+     * vuole indovinare. La versione sincrona (`pmoCassaNativa`) serve a disegnare i bottoni;
+     * questa serve a premerli. ⛔ Fallisce chiusa: se non si sa con chi si parla, non si incassa
+     * da qui — si prosegue sulla strada vecchia, che su PROD è quella giusta. */
+    let _cassa = false;
+    if (!_harness) {
+      try {
+        const _cfgCassa = await loadAssessmentSupabaseConfig();
+        // ⛔ NON `!pmoGestionaleCollegatoAlCircolo(...)`: quella negazione trasforma il fallimento
+        // sicuro di quel cancello nel fallimento pericoloso di questo. Vedi `pmoCassaNativaPer`.
+        _cassa = pmoCassaNativaPer(_cfgCassa && _cfgCassa.supabaseUrl);
+      } catch (e) { _cassa = false; }
+    }
     const esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return String(s == null ? '' : s); };
     // 🆕 VOCE 134 — l'esito ANCHE dentro la scheda della partita, sopra la barra dei bottoni:
     // i bottoni stanno lì, e su una scheda alta il messaggio di chat nasce fuori dal bordo
@@ -43050,8 +43145,8 @@ Per confermare scrivi ELIMINA.`);
       try { const last = n && n.querySelector(':scope > div:last-child'); if (last) last.innerHTML = html; } catch (e) {}
       _svcSchedaEsito(html, tipo);
     };
-    // Gate di sicurezza: con write OFF, fuori harness e fuori simulazione non si incassa MAI.
-    if (!PMO_PAYMENTS_COLLECT_ENABLED && !PMO_PAYMENTS_WRITE_ENABLED && !_harness && !_simulate) {
+    // Gate di sicurezza: con write OFF, fuori harness e fuori cassa nativa non si incassa MAI.
+    if (!PMO_PAYMENTS_COLLECT_ENABLED && !PMO_PAYMENTS_WRITE_ENABLED && !_harness && !_cassa) {
       try { svcAddMessage('system', 'ℹ️ Incasso non attivo: la scrittura pagamenti (Fase 2b) non è abilitata.'); } catch (e) {}
       return { ok: false, message: 'WRITE_DISABLED' };
     }
@@ -43070,17 +43165,19 @@ Per confermare scrivi ELIMINA.`);
       try { svcAddMessage('system', '⚠️ Prenotazione non identificata su Matchpoint (idReserva mancante). Riapri la scheda e riprova.', 'error'); } catch (e) {}
       return { ok: false, message: 'NO_IDRESERVA' };
     }
-    const okGo = await _pmoConfirmCollect(playerName, methodLabel, amountCents, _simulate);
+    const okGo = await _pmoConfirmCollect(playerName, methodLabel, amountCents, _cassa);
     if (!okGo) return { ok: false, message: 'CANCELLED' };
     btns.forEach(function (b) { try { b.disabled = true; } catch (e) {} });
-    const note = svcAddMessage('system', (_simulate ? '🧪 Simulazione incasso ' : '↻ Incasso ') + esc(methodLabel) + ' di ' + _incassiEuro(amountCents) + ' per ' + esc(playerName) + '… (non chiudere)');
-    // ── Ramo SIMULAZIONE (solo TEST): niente edge/worker/Matchpoint. Scrive il record
-    // `payment` nel cloud TEST e aggiorna lo stato locale + chip come nel ramo reale.
-    if (_simulate) {
+    const note = svcAddMessage('system', (_cassa ? '💶 Incasso ' : '↻ Incasso ') + esc(methodLabel) + ' di ' + _incassiEuro(amountCents) + ' per ' + esc(playerName) + '… (non chiudere)');
+    // ── 💰 Ramo CASSA NATIVA: l'incasso nasce e muore da noi. Niente edge, niente worker,
+    // niente Matchpoint — e non «perché ci siamo trattenuti»: **per costruzione**, non c'è una
+    // riga che ci vada. 📌 *La prova che la regola è la stessa e non un'altra: il giorno in cui
+    // Matchpoint si spegne, questa strada non se ne accorge.*
+    if (_cassa) {
       try {
-        await _pmoSimWritePayment({ idReserva: idReserva, idCliente: idCliente, idx: opts.idx, playerName: playerName, method: method, amountCents: amountCents, data: opts.data, campo: opts.campo, ora: opts.ora });
+        await _pmoCassaScriviIncasso({ idReserva: idReserva, idCliente: idCliente, idx: opts.idx, playerName: playerName, method: method, amountCents: amountCents, data: opts.data, campo: opts.campo, ora: opts.ora });
       } catch (e) {
-        _setMsg(note, '⚠️ Simulazione incasso non riuscita: ' + esc(e && e.message ? e.message : String(e)));
+        _setMsg(note, '⚠️ Incasso non registrato: ' + esc(e && e.message ? e.message : String(e)));
         btns.forEach(function (b) { try { b.disabled = false; } catch (e2) {} });
         return { ok: false, message: (e && e.message) ? e.message : String(e) };
       }
@@ -43096,10 +43193,10 @@ Per confermare scrivi ELIMINA.`);
         }
       } catch (e) {}
       try { _staffCalPaidIndexAdd(_payNatKey(opts.data, opts.campo, opts.ora), playerName, method, amountCents); } catch (e) {}
-      _setMsg(note, '🧪 Simulato incasso ' + esc(methodLabel) + ' ' + _incassiEuro(amountCents) + ' — ' + esc(playerName) + ' (visibile in Incassi)');
+      _setMsg(note, '💶 Incassato ' + esc(methodLabel) + ' ' + _incassiEuro(amountCents) + ' — ' + esc(playerName) + ' (in Incassi)');
       try { if (typeof staffCalRenderPlayersEditor === 'function' && staffCalPlayersState) staffCalRenderPlayersEditor(); } catch (e) {}
       try { renderStaffCalendar(); } catch (e) {}
-      return { ok: true, simulated: true };
+      return { ok: true, nativa: true };
     }
     try {
       const cfg = await loadAssessmentSupabaseConfig();
@@ -43361,7 +43458,7 @@ Per confermare scrivi ELIMINA.`);
       if (_harness || _simAuto) { resolve(true); return; }
       const esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return String(s == null ? '' : s); };
       const imp = (amountCents != null && amountCents > 0) ? (' di <strong>' + _incassiEuro(amountCents) + '</strong>') : '';
-      const msg = svcAddMessage('system', (simulate ? '🧪 <strong>SIMULAZIONE</strong> — Stornare il pagamento' : '↩︎ Stornare il pagamento') + imp + ' di <strong>' + esc(name) + '</strong>?<br><span style="color:var(--text-muted);font-size:.78rem;">' + (simulate ? 'Non tocca Matchpoint: rimuove il pagamento dalla sezione Incassi (cloud TEST).' : 'Annulla il cobro su Matchpoint (operazione reale).') + '</span>');
+      const msg = svcAddMessage('system', '↩︎ Stornare il pagamento' + imp + ' di <strong>' + esc(name) + '</strong>?<br><span style="color:var(--text-muted);font-size:.78rem;">' + (simulate ? 'Toglie l\'incasso dalla cassa del gestionale (resta la traccia che è stato disfatto). Il Matchpoint del circolo non viene chiamato.' : 'Annulla il cobro su Matchpoint (operazione reale).') + '</span>');
       let _done = false;
       const btns = svcMakeStepButtons(['↩︎ Sì, storna'],
         function () { if (_done) return; _done = true; resolve(true); },
@@ -43372,7 +43469,21 @@ Per confermare scrivi ELIMINA.`);
   async function _pmoVoidPayment(opts) {
     opts = opts || {};
     const _harness = PMO_IS_TEST_ENV && typeof window !== 'undefined' && window.__pmoPayHarness === true;
-    const _simulate = PMO_PAYMENTS_SIMULATE && !_harness;
+    /* 💰 VOCE 181 — la cassa è NOSTRA quando il gestionale non parla col circolo, e la domanda
+     * si fa alla configurazione **autorevole**, non alla memoria: qui si sta per registrare del
+     * denaro, e una risposta letta da una copia scaduta è esattamente il caso in cui non si
+     * vuole indovinare. La versione sincrona (`pmoCassaNativa`) serve a disegnare i bottoni;
+     * questa serve a premerli. ⛔ Fallisce chiusa: se non si sa con chi si parla, non si incassa
+     * da qui — si prosegue sulla strada vecchia, che su PROD è quella giusta. */
+    let _cassa = false;
+    if (!_harness) {
+      try {
+        const _cfgCassa = await loadAssessmentSupabaseConfig();
+        // ⛔ NON `!pmoGestionaleCollegatoAlCircolo(...)`: quella negazione trasforma il fallimento
+        // sicuro di quel cancello nel fallimento pericoloso di questo. Vedi `pmoCassaNativaPer`.
+        _cassa = pmoCassaNativaPer(_cfgCassa && _cfgCassa.supabaseUrl);
+      } catch (e) { _cassa = false; }
+    }
     const esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return String(s == null ? '' : s); };
     // 🆕 VOCE 134 — l'esito ANCHE dentro la scheda della partita, sopra la barra dei bottoni:
     // i bottoni stanno lì, e su una scheda alta il messaggio di chat nasce fuori dal bordo
@@ -43382,7 +43493,7 @@ Per confermare scrivi ELIMINA.`);
       _svcSchedaEsito(html, tipo);
     };
     // 🔀 Lo storno ha il SUO flag: acceso su sua richiesta, mentre l'incasso resta spento.
-    if (!PMO_PAYMENTS_VOID_ENABLED && !_harness && !_simulate) {
+    if (!PMO_PAYMENTS_VOID_ENABLED && !_harness && !_cassa) {
       try { svcAddMessage('system', 'ℹ️ Storno non attivo: la scrittura pagamenti (Fase 2b) non è abilitata.'); } catch (e) {}
       return { ok: false, message: 'WRITE_DISABLED' };
     }
@@ -43395,18 +43506,19 @@ Per confermare scrivi ELIMINA.`);
       try { svcAddMessage('system', '⚠️ Prenotazione non identificata su Matchpoint (idReserva mancante). Riapri la scheda e riprova.', 'error'); } catch (e) {}
       return { ok: false, message: 'NO_IDRESERVA' };
     }
-    const okGo = await _pmoConfirmVoid(playerName, importoCents, _simulate);
+    const okGo = await _pmoConfirmVoid(playerName, importoCents, _cassa);
     if (!okGo) return { ok: false, message: 'CANCELLED' };
     btns.forEach(function (b) { try { b.disabled = true; } catch (e) {} });
-    const note = svcAddMessage('system', (_simulate ? '🧪 Simulazione storno ' : '↻ Storno ') + 'del pagamento di ' + esc(playerName) + '… (non chiudere)');
-    // ── Ramo SIMULAZIONE (solo TEST): marca voided i record `payment` simulati → spariscono
-    // da Incassi; il giocatore torna "da pagare". Niente edge/worker/Matchpoint.
-    if (_simulate) {
+    const note = svcAddMessage('system', (_cassa ? '↩︎ Storno ' : '↻ Storno ') + 'del pagamento di ' + esc(playerName) + '… (non chiudere)');
+    // ── 💰 Ramo CASSA NATIVA: marca `voided` le righe di cassa nostre → spariscono da Incassi
+    // e il giocatore torna «da pagare». Niente edge, niente worker, niente Matchpoint.
+    // ⚖️ Si **storna**, non si cancella: la riga resta e dice che è stata disfatta.
+    if (_cassa) {
       let n = 0;
       try {
-        n = await _pmoSimVoidPayments(idReserva, idCliente, playerName);
+        n = await _pmoCassaStorna(idReserva, idCliente, playerName);
       } catch (e) {
-        _setMsg(note, '⚠️ Simulazione storno non riuscita: ' + esc(e && e.message ? e.message : String(e)));
+        _setMsg(note, '⚠️ Storno non riuscito: ' + esc(e && e.message ? e.message : String(e)));
         btns.forEach(function (b) { try { b.disabled = false; } catch (e2) {} });
         return { ok: false, message: (e && e.message) ? e.message : String(e) };
       }
@@ -45807,15 +45919,18 @@ Per confermare scrivi ELIMINA.`);
          poteva restare spento mentre lo storno era acceso dappertutto.
          📌 *Un gesto deve avere UN interruttore: due gesti con un interruttore solo non si sanno
          separare, ma un gesto solo con due interruttori non si sa accendere.* */
+      // 💰 VOCE 181 — dove la cassa è nostra, incasso e storno sono ACCESI: non c'è nessun
+      // interruttore da aspettare, perché non c'è nessun sistema di terzi da proteggere.
+      const _cassaNativaUi = pmoCassaNativa();
       const _payCollectActive = PMO_PAYMENTS_COLLECT_ENABLED
         || PMO_PAYMENTS_WRITE_ENABLED
-        || PMO_PAYMENTS_SIMULATE
+        || _cassaNativaUi
         || (PMO_IS_TEST_ENV && typeof window !== 'undefined' && window.__pmoPayHarness === true);
       const _payVoidActive = PMO_PAYMENTS_VOID_ENABLED
         || PMO_PAYMENTS_WRITE_ENABLED
-        || PMO_PAYMENTS_SIMULATE
+        || _cassaNativaUi
         || (PMO_IS_TEST_ENV && typeof window !== 'undefined' && window.__pmoPayHarness === true);
-      const _paySimUi = PMO_PAYMENTS_SIMULATE && !PMO_PAYMENTS_WRITE_ENABLED;
+      const _paySimUi = _cassaNativaUi && !PMO_PAYMENTS_WRITE_ENABLED;
       let _anyUnknown = false;
       const _payAmtInputs = []; // campi "€ a carico" → totale live
       // 🆕 VOCE 132 — le stesse caselle, ma con accanto DA DOVE partivano e CHI sono: senza la
@@ -45832,12 +45947,17 @@ Per confermare scrivi ELIMINA.`);
       if (_payShow && _paySimUi) {
         const simNote = document.createElement('div');
         simNote.style.cssText = 'font-size:.74rem;color:#92600a;background:#fff7e6;border:1px solid #f5d98a;border-radius:8px;padding:6px 8px;margin-bottom:8px;';
-        // 🔄 08/09/2026 — qui c'era scritto «Simulazione — appaiono nella sezione Incassi», e non
-        // è più vero: la chiamata arriva all'edge, che fuori dalla produzione **rifiuta**. Nessun
-        // incasso viene registrato da nessuna parte. 📌 *Una nota che promette un effetto che non
-        // avviene manda a cercare il difetto dove non c'è.*
-        simNote.innerHTML = '⛔ <strong>Da qui non si incassa</strong> — il gestionale rifiuta l\'incasso: '
-          + 'il Matchpoint del circolo non viene chiamato e in Incassi non compare niente.';
+        // 🔄🚨 09/09/2026 (voce 181) — QUESTA NOTA È STATA RIBALTATA DUE VOLTE, e vale la pena
+        // sapere perché. Diceva «Simulazione — appaiono in Incassi»; l'08/09 è diventata «da qui
+        // non si incassa», sul presupposto che la chiamata arrivasse all'edge e venisse rifiutata.
+        // ⚠️ Quel presupposto era **sbagliato già allora**: il ramo simulato tornava PRIMA di
+        // chiamare qualunque edge, e il record `payment` lo scriveva davvero. ⇒ La nota negava un
+        // effetto che avveniva — la stessa malattia della versione prima, nel verso opposto.
+        // 📌 *Una nota sulla UI è un'affermazione sul codice: si controlla leggendo il ramo che
+        //    descrive, non ricordando cosa si era deciso di fare.*
+        // ⇒ Adesso dice il vero, e il vero è cambiato: la cassa è NOSTRA.
+        simNote.innerHTML = '💰 <strong>Cassa del gestionale</strong> — l\'incasso resta qui: '
+          + 'compare in <strong>Incassi</strong> e si può stornare. Il Matchpoint del circolo non viene chiamato.';
         playersSec.appendChild(simNote);
       }
       // ORGANIZZATORE: calcolato UNA volta per scheda (non per riga). Vale solo per le Partite,
@@ -46342,7 +46462,7 @@ Per confermare scrivi ELIMINA.`);
         const payHint = document.createElement('div');
         payHint.style.cssText = 'font-size:11px;color:var(--text-muted);margin-top:8px;';
         payHint.textContent = _paySimUi
-          ? 'Imposta il costo per ogni giocatore. ⛔ L\'incasso da qui viene rifiutato: il gestionale non registra pagamenti in questo ambiente.'
+          ? 'Imposta il costo per ogni giocatore: con «Cash/Card/Wallet» l\'incasso viene registrato nella cassa del gestionale (e si può stornare).'
           : (_anyUnknown
               ? 'Lo stato dei pagamenti si aggiorna da Matchpoint appena la lista giocatori è letta.'
               : (_payCollectActive
