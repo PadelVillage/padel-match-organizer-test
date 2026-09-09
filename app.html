@@ -7329,7 +7329,11 @@ body.assessment-public-mode .assessment-public-only-card {
             <div class="admin-panel-head">
               <div>
                 <h3>Calendario campi staff</h3>
-                <p>Visualizza e prenota slot su Matchpoint direttamente dall'app.</p>
+                <!-- 🏷️ VOCE 190 — la frase scritta qui è quella GENERICA, vera in tutti e due i
+                     mondi: sul gestionale nuovo la prenotazione è nativa e il circolo esterno non
+                     viene chiamato. `pmoRidiciLeFrasiDelCircolo()` ci rimette il nome SOLO se
+                     scopre che quel circolo c'è davvero (⇒ PROD). -->
+                <p data-frase-col-circolo="Visualizza e prenota slot su Matchpoint direttamente dall'app.">Visualizza e prenota gli slot dei campi direttamente dall'app.</p>
                 <span id="staffCalCloudStatus" style="font-size:11px;color:#999;margin-top:2px;display:none;">aggiorno…</span>
                 <span id="staffCalSessionWarning" onclick="staffLogout()" title="Esci e rientra" style="display:none;cursor:pointer;font-size:12px;font-weight:600;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:4px 10px;margin-top:4px;">⚠️ Sessione scaduta — tocca qui per uscire e rientrare (il calendario potrebbe mostrare dati non aggiornati)</span>
               </div>
@@ -8368,7 +8372,7 @@ body.assessment-public-mode .assessment-public-only-card {
                 </button>
                 <div class="matchpoint-data-accordion-panel" id="matchpointUpdatesAccordionPanel">
                   <div class="matchpoint-data-grid">
-                    <article class="matchpoint-data-box clients" id="anchor-matchpoint-clienti">
+                    <article class="matchpoint-data-box clients" id="anchor-matchpoint-clienti" hidden data-solo-col-circolo="import clienti da Matchpoint">
                       <h3><span class="matchpoint-data-step">2</span> Clienti Matchpoint</h3>
                       <p class="matchpoint-data-copy">Aggiorna anagrafica, telefono e dati base dal cloud senza sovrascrivere i dati operativi curati nell'app.</p>
                       <div class="matchpoint-history-metrics matchpoint-clients-metrics" aria-live="polite">
@@ -8397,7 +8401,7 @@ body.assessment-public-mode .assessment-public-only-card {
                       </div>
                     </article>
 
-                    <article class="matchpoint-data-box bookings" id="anchor-matchpoint-prenotazioni">
+                    <article class="matchpoint-data-box bookings" id="anchor-matchpoint-prenotazioni" hidden data-solo-col-circolo="import prenotazioni future da Matchpoint">
                       <h3><span class="matchpoint-data-step">3</span> Prenotazioni future Matchpoint</h3>
                       <p class="matchpoint-data-copy">Fotografia occupazioni prossimi 30 giorni.</p>
                       <div class="matchpoint-history-metrics matchpoint-bookings-metrics" aria-live="polite">
@@ -8413,7 +8417,7 @@ body.assessment-public-mode .assessment-public-only-card {
                       </div>
                     </article>
 
-                    <article class="matchpoint-data-box history" id="anchor-matchpoint-storico">
+                    <article class="matchpoint-data-box history" id="anchor-matchpoint-storico" hidden data-solo-col-circolo="import storico da Matchpoint">
                       <h3><span class="matchpoint-data-step">4</span> Storico Matchpoint</h3>
                       <p class="matchpoint-data-copy">Analisi prenotazioni degli ultimi 12 mesi.</p>
                       <div class="matchpoint-history-metrics" aria-live="polite">
@@ -8720,7 +8724,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.424';
+    const APP_VERSION = '6.425';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -8843,6 +8847,107 @@ body.assessment-public-mode .assessment-public-only-card {
         const m = host.match(/^([a-z0-9-]+)\.supabase\.co$/i);
         return !!m && m[1].toLowerCase() === PMO_PROD_SUPABASE_PROJECT_REF;
       } catch (e) { return false; }
+    }
+
+    /** 🏷️⭐⭐ VOCE 190 — SI NOMINA IL CIRCOLO ESTERNO SOLO DOVE ESISTE DAVVERO.
+     *
+     * 🗣️ Nasce da una sua domanda, fatta due volte: *«Ma Matchpoint non c'è più un cavolo, perché
+     * vedo scritto ancora Matchpoint?»* ⇒ Sul gestionale nuovo la scrittura è **nativa** e il
+     * circolo esterno non viene chiamato: frasi come *«prenota slot su Matchpoint»* o *«Operazione
+     * confermata su Matchpoint»* sono **già false oggi**, e il giorno del distacco lo diranno anche
+     * a chi non sa che Matchpoint sia mai esistito.
+     * 📌 *Un nome interno sbagliato costa una ricerca; un nome sbagliato SULLO SCHERMO costa la
+     *    fiducia in quello che lo schermo dice.*
+     *
+     * 🚨⭐⭐ TRE STATI, NON DUE, e il terzo è quello che rende la cura possibile: la configurazione
+     * arriva **in modo asincrono** (`PADEL_CONFIG` via `loadExternalScriptOnce`) ⇒ al primo disegno
+     * della pagina **il ref non si conosce ancora**. Una funzione a due stati qui direbbe una delle
+     * due frasi tirando a indovinare, e la sbaglierebbe per costruzione metà delle volte.
+     *   · `true`  → il gestionale parla col circolo (PROD) ⇒ nominarlo è vero e utile;
+     *   · `false` → non ci parla (il sistema nuovo) ⇒ nominarlo è **falso**;
+     *   · `null`  → **non lo sappiamo ancora**.
+     *
+     * ⚖️ **IL VERSO DEL DUBBIO È OPPOSTO A QUELLO DELLE SCRITTURE, ed è deliberato.** Sul denaro nel
+     * dubbio si resta su PROD, perché sbagliare di là **fallisce** e si vede. Qui no: la frase
+     * generica (*«Operazione confermata»*) è **vera in tutti e due i mondi** — su PROD è solo meno
+     * precisa, sul sistema nuovo è l'unica vera. ⇒ Nel dubbio si tace il nome.
+     * 📌 *Quando una delle due frasi è vera ovunque e l'altra solo in un posto, il dubbio ha una
+     *    risposta giusta e non è una moneta.*
+     *
+     * ⛔ E si guarda il **ref Supabase**, mai l'hostname: quello scade col passaggio (⇒ voce 184),
+     * e una guardia che scade senza dirlo è peggio di una guardia che non c'è. PURA (legge la
+     * memoria della configurazione, non la rilegge dalla rete). */
+    function pmoCircoloEsternoCollegato() {
+      try {
+        const url = pmoConfigMemoria && pmoConfigMemoria.valore && pmoConfigMemoria.valore.supabaseUrl;
+        if (!url) return null;   // 🚨 non «no»: NON LO SAPPIAMO ANCORA
+        return pmoGestionaleCollegatoAlCircolo(url);
+      } catch (e) { return null; }
+    }
+
+    /** Il nome del circolo esterno da mettere in una frase — `''` quando non c'è o non si sa. */
+    function pmoNomeCircoloEsterno() {
+      return pmoCircoloEsternoCollegato() === true ? 'Matchpoint' : '';
+    }
+
+    /** `' su Matchpoint'` oppure `''`. Da concatenare, così la frase generica resta grammaticale. */
+    function pmoSuCircoloEsterno() {
+      const n = pmoNomeCircoloEsterno();
+      return n ? ' su ' + n : '';
+    }
+
+    /** 🏷️ VOCE 190 — le frasi SCRITTE NELL'HTML si ridicono quando si sa, invece di indovinare.
+     *
+     * ⚖️ Un testo statico è già sullo schermo prima che la configurazione arrivi ⇒ non può
+     * chiedere. La cura è scrivere nell'HTML la frase **generica** (vera in tutti e due i mondi) e
+     * ridirla **soltanto** se si scopre che il circolo c'è davvero. Così la prima pittura non
+     * mente mai, e la seconda aggiunge una precisione invece di correggere una bugia.
+     * 🚨 Idempotente: si può chiamare a ogni disegno del calendario senza fare danno. */
+    function pmoRidiciLeFrasiDelCircolo() {
+      try {
+        if (pmoCircoloEsternoCollegato() !== true) return;   // generico: è già quello scritto
+        const nodi = document.querySelectorAll('[data-frase-col-circolo]');
+        for (let i = 0; i < nodi.length; i++) {
+          const t = nodi[i].getAttribute('data-frase-col-circolo');
+          if (t && nodi[i].textContent !== t) nodi[i].textContent = t;
+        }
+      } catch (e) {}
+    }
+
+    /** 🏷️⭐⭐ VOCE 190 — I BLOCCHI CHE ESISTONO SOLO PERCHÉ ESISTE IL CIRCOLO ESTERNO.
+     *
+     * 🗣️ **Sua decisione del 09/09/2026**, messo davanti alle tre strade: i pannelli di **import
+     * Excel da Matchpoint** (Clienti · Prenotazioni future · Storico) sul gestionale nuovo
+     * **«spariscono del tutto»**. ⇒ Matchpoint non produrrà più quegli export: sono tre bottoni
+     * senza sorgente.
+     *
+     * 🚨⭐⭐ **IL PERIMETRO NON È IL PANNELLO, ed è la misura che si è ripagata da sola.** Il
+     * riflesso era nascondere `#pmoAdminMatchpointDataPanel` — che si chiama *«Dati Matchpoint»* e
+     * sembra tutto suo. 📏 Guardandoci dentro, ci vivono anche: il **listino**
+     * (`pmo_fasce_prenotabili`, la griglia **nostra** — sua richiesta esplicita, voce 176),
+     * l'import dei **contatti Google**, il **backup dati** e il **parser**. Nasconderlo intero gli
+     * avrebbe portato via proprio lo strumento con cui decide gli slot prenotabili.
+     * 📌 *Un contenitore che porta il nome di una cosa non contiene solo quella cosa: il perimetro
+     *    si misura guardandoci dentro, non leggendo l'etichetta.*
+     *
+     * ⚖️ **Si nasconde a runtime, non si cancella il codice** — è la regola che la scheda della 190
+     * detta per tutto il mucchio ①: su PROD quei pannelli sono **veri e servono**. E i blocchi
+     * nascono `hidden` **nell'HTML**, comparendo solo se si scopre che il circolo c'è: così sul
+     * gestionale nuovo non si vedono **mai**, nemmeno per l'istante in cui la configurazione non è
+     * ancora arrivata. 🚨 Idempotente. */
+    function pmoNascondiIBlocchiDelCircolo() {
+      try {
+        const collegato = pmoCircoloEsternoCollegato();
+        if (collegato !== true) return;   // `false` o `null` ⇒ restano nascosti com'erano nati
+        const nodi = document.querySelectorAll('[data-solo-col-circolo]');
+        for (let i = 0; i < nodi.length; i++) nodi[i].hidden = false;
+      } catch (e) {}
+    }
+
+    /** Le due cose insieme, da chiamare quando la configurazione diventa nota. */
+    function pmoAdattaLaPaginaAlCircolo() {
+      pmoRidiciLeFrasiDelCircolo();
+      pmoNascondiIBlocchiDelCircolo();
     }
     /* 💰⭐⭐ VOCE 181 — LA CASSA È NOSTRA QUANDO IL GESTIONALE NON PARLA COL CIRCOLO.
      *
@@ -13504,6 +13609,19 @@ Grazie.`
     function renderMatchpointSecretaryPanel() {
       const panel = document.getElementById('matchpointSecretaryPanel');
       if (!panel) return;
+      /* 🏷️⭐⭐ VOCE 190 — L'ASSILLO CHE NON SI SPEGNE DA SÉ, e non è una parola sbagliata.
+       * Questo riquadro conta i giorni dall'ultimo import da Matchpoint e sale di tono da solo:
+       * *«fermo da 2 giorni»*, poi *«non aggiornati da 3 o più giorni. Rischi di lavorare su soci
+       * o prenotazioni non aggiornati»*. ⇒ Sul gestionale nuovo quell'import **non si farà mai
+       * più** (sua decisione del 09/09: i tre pannelli spariscono) ⇒ il contatore salirebbe
+       * **per sempre**, rimproverando ogni giorno un aggiornamento che non deve più succedere.
+       * 📌 *Un allarme che non può più essere spento da chi lo legge non lo mette in guardia: gli
+       *    insegna a non guardarlo* — ed è la stessa ragione per cui in questo progetto le guardie
+       *    si rendono pazienti invece di lasciarle urlare a vuoto.
+       * ⚖️ Si spegne il **riquadro**, non la funzione che calcola: gli altri due lettori
+       * (`…SecretaryPrompt`, `…ChecklistText`) preparano un testo **solo se qualcuno lo chiede**,
+       * e chi lo chiede sa cosa sta chiedendo. Qui invece nessuno ha chiesto niente. */
+      if (pmoCircoloEsternoCollegato() !== true) { panel.style.display = 'none'; return; }
       const age = getMatchpointImportAgeInfo();
       const levelClass = age.level === 'ok' ? 'success' : (age.level === 'soft' ? 'info' : (age.level === 'warn' ? 'warning' : 'danger'));
       panel.style.display = 'block';
@@ -30004,6 +30122,10 @@ Per confermare scrivi ELIMINA.`);
       const promessa = pmoLeggiSupabaseConfig(cfgUrl)
         .then(valore => {
           pmoConfigMemoria = { url: cfgUrl, valore, scadenza: Date.now() + PMO_CONFIG_TTL_MS };
+          // 🏷️ VOCE 190 — è QUI che si scopre se il circolo esterno c'è: prima non lo sapeva
+          //    nessuno, e le frasi/blocchi che dipendono da quella risposta stavano al loro
+          //    valore prudente. Agganciarlo altrove vorrebbe dire aspettare il prossimo disegno.
+          try { pmoAdattaLaPaginaAlCircolo(); } catch (e) {}
           return valore;
         })
         .catch(err => {
@@ -44219,6 +44341,9 @@ Per confermare scrivi ELIMINA.`);
   function renderStaffCalendar() {
     const isoDate = (document.getElementById('staffCalDate') || {}).value || staffCalTodayIso();
     try { _staffCalMaybeRefreshPaidIndex(); } catch (e) {}
+    // 🏷️ VOCE 190 — la configurazione arriva dopo il primo disegno: qui si rimette il nome del
+    //    circolo nelle frasi che lo prevedono, ma solo se quel circolo c'è. Idempotente e muta.
+    try { pmoAdattaLaPaginaAlCircolo(); } catch (e) {}
     // Nome del giorno accanto alla data (desktop): es. "Giovedì".
     const _wd = document.getElementById('staffCalDateWeekday');
     if (_wd) { const _GG = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato']; const _dd = new Date(isoDate + 'T12:00:00'); _wd.textContent = isNaN(_dd.getTime()) ? '' : _GG[_dd.getDay()]; }
@@ -48056,7 +48181,7 @@ Per confermare scrivi ELIMINA.`);
     const _descrTxt = op.descrChanged ? ('<br>🔧 Descrizione: ' + (op.descrizione || '(vuota)')) : '';
     const _istrTxt = op.istruttoreChanged ? ('<br>🎓 Maestro: ' + (op.istruttore || '')) : '';
     const _syncNote = '<span class="mp-sync-note" style="display:block;color:#1570ef;font-size:13px;font-weight:700"></span>';
-    const _editMsgEl = svcAddMessage('system', '<span class="mp-sync-head">⏳ <strong>Sto elaborando la richiesta su Matchpoint</strong></span> \xb7 modifica: ' + destTxt + _playersTxt + _istrTxt + _descrTxt + _noteTxt + _syncNote);
+    const _editMsgEl = svcAddMessage('system', '<span class="mp-sync-head">⏳ <strong>Sto elaborando la richiesta' + pmoSuCircoloEsterno() + '</strong></span> \xb7 modifica: ' + destTxt + _playersTxt + _istrTxt + _descrTxt + _noteTxt + _syncNote);
     const _setEditSyncNote = function (html, color, head) {
       try {
         const n = _editMsgEl && _editMsgEl.querySelector('.mp-sync-note');
@@ -48202,7 +48327,7 @@ Per confermare scrivi ELIMINA.`);
             // dubbio: registrarla come fallita direbbe una cosa falsa a chi rilegge.
             _aiExecSettle(true, 'aggiunta-non-confermata');
           } else {
-            _setEditSyncNote('✅ Operazione confermata su Matchpoint', '#067647', '✅ <strong>Prenotazione aggiornata</strong>');
+            _setEditSyncNote('✅ Operazione confermata' + pmoSuCircoloEsterno(), '#067647', '✅ <strong>Prenotazione aggiornata</strong>');
             _aiExecSettle(true, null);
           }
         } else if (_staffCalIsTimeoutClass((data && (data.message || data.error)) || '', response.status)) {
@@ -49601,7 +49726,7 @@ Per confermare scrivi ELIMINA.`);
     try { staffCalRtBroadcastPending(parsed); } catch (e) {}
     const _sbId = _staffCalNewSbId();
     // La riga di stato è UNA sola e si sovrascrive: parte in attesa e finisce verde o rossa.
-    staffCalSetStatus(`⏳ Sto elaborando la richiesta su Matchpoint — ${tipoLabel.toLowerCase()}: ${parsed.campo} · ${parsed.ora}–${parsed.oraFine} · ${parsed.nome}`, 'pending');
+    staffCalSetStatus(`⏳ Sto elaborando la richiesta${pmoSuCircoloEsterno()} — ${tipoLabel.toLowerCase()}: ${parsed.campo} · ${parsed.ora}–${parsed.oraFine} · ${parsed.nome}`, 'pending');
     if (input) { input.value = ''; staffCalAutoResize(input); }
     if (sendBtn) sendBtn.disabled = false;
     // ── Propagazione su Matchpoint in BACKGROUND (non blocca lo staff) ──
@@ -49626,7 +49751,7 @@ Per confermare scrivi ELIMINA.`);
         try { _staffCalCreateSettle(_optimKey, true); } catch (e) {}
         try { staffCalRtBroadcastResolved(parsed, true); } catch (e) {}
         if (parsed.data === isoDate) renderStaffCalendar();
-        if (_localOk) staffCalSetStatus(`✅ Operazione confermata su Matchpoint${viaLettura ? ' (verificata guardando su Matchpoint)' : ''}: ${parsed.campo} · ${parsed.ora}–${parsed.oraFine} · ${parsed.nome}`, 'done');
+        if (_localOk) staffCalSetStatus(`✅ Operazione confermata${pmoSuCircoloEsterno()}${viaLettura ? ' (verificata guardando' + pmoSuCircoloEsterno() + ')' : ''}: ${parsed.campo} · ${parsed.ora}–${parsed.oraFine} · ${parsed.nome}`, 'done');
         else staffCalSetStatus(`⚠️ ${parsed.campo} · ${parsed.ora}–${parsed.oraFine}: su Matchpoint è CONFERMATA, ma questa pagina non è riuscita a tenerne copia (${_staffCalLocalSaveWhy()}). Non rifarla: ricarica la pagina.`, 'pending');
       };
       // ⭐⭐ ESITO IGNOTO: non si indovina, si va a GUARDARE su Matchpoint (regola sua).
@@ -50030,7 +50155,7 @@ Per confermare scrivi ELIMINA.`);
     svcResetToNeutral();
     const _syncNote = '<span class="mp-sync-note" style="display:block;color:#1570ef;font-size:13px;font-weight:700"></span>';
     const _msgEl = svcAddMessage('system',
-      '<span class="mp-sync-head">⏳ <strong>Sto elaborando la richiesta su Matchpoint</strong></span> \xb7 annullamento: Campo ' + campo + ' \xb7 ' + dataIt + ' \xb7 ' + ora +
+      '<span class="mp-sync-head">⏳ <strong>Sto elaborando la richiesta' + pmoSuCircoloEsterno() + '</strong></span> \xb7 annullamento: Campo ' + campo + ' \xb7 ' + dataIt + ' \xb7 ' + ora +
       (nome ? '<br>👥 ' + nome : '') + _syncNote);
     const _setSync = function (html, color, head) {
       try {
@@ -50108,7 +50233,7 @@ Per confermare scrivi ELIMINA.`);
           // ⭐ È QUI che la prenotazione esce dal calendario, e solo qui: Matchpoint ha detto sì.
           await _applicaAnnullo();
           try { window.PMOAi && PMOAi.logManual && PMOAi.logManual('prenotazione', 'annulla', 'confirmed', { via: 'calendario', campo: campo, data: isoDate, ora: ora }); } catch (e) {}
-          _setSync('✅ Operazione confermata su Matchpoint', '#067647', '✅ <strong>Prenotazione annullata</strong>');
+          _setSync('✅ Operazione confermata' + pmoSuCircoloEsterno(), '#067647', '✅ <strong>Prenotazione annullata</strong>');
         } else if (notFoundOnMatchpoint) {
           // Su Matchpoint non c'era più (card fantasma): toglierla dal calendario è giusto, ed è
           // la stessa cosa che dice la verifica quando risponde 'no'.
@@ -51545,7 +51670,7 @@ Per confermare scrivi ELIMINA.`);
     try { staffCalRtBroadcastPending(parsed); } catch (e) {}
     const _sbId = _staffCalNewSbId();
     const _syncNote = '<span class="mp-sync-note" style="display:block;color:#1570ef;font-size:13px;font-weight:700"></span>';
-    const _headWait = '<span class="mp-sync-head">⏳ <strong>Sto elaborando la richiesta su Matchpoint</strong></span>';
+    const _headWait = '<span class="mp-sync-head">⏳ <strong>Sto elaborando la richiesta' + pmoSuCircoloEsterno() + '</strong></span>';
     let _msgEl;
     if (tipoEngine === 'lezione') {
       const allievi = (players && players.length) ? nomeStr : '—';
@@ -51599,7 +51724,7 @@ Per confermare scrivi ELIMINA.`);
         try { staffCalRtBroadcastResolved(parsed, true); } catch (e) {}
         try { renderStaffCalendar(); } catch (e) {}
         try { _staffCalCreateSettle(_optimKey, true); } catch (e) {}
-        if (_localOk) _setSyncNote(viaLettura ? '✅ Operazione confermata — l\'ho verificata su Matchpoint' : '✅ Operazione confermata su Matchpoint', '#067647', '✅ <strong>Prenotazione confermata</strong>');
+        if (_localOk) _setSyncNote(viaLettura ? '✅ Operazione confermata — l\'ho verificata su Matchpoint' : '✅ Operazione confermata' + pmoSuCircoloEsterno(), '#067647', '✅ <strong>Prenotazione confermata</strong>');
         else {
           _setSyncNote('⚠️ Su Matchpoint sì, in questa pagina no', '#b54708', '⚠️ <strong>Confermata su Matchpoint</strong>');
           svcAddMessage('system', '⚠️ <strong>Campo ' + campo + ' \xb7 ' + ora + ': su Matchpoint è salvata</strong>, ma questa pagina non è riuscita a tenerne copia (' + _staffCalLocalSaveWhy() + '). <strong>Non rifarla</strong>: ricarica la pagina e la vedrai comparire.');
@@ -56583,7 +56708,7 @@ Per confermare scrivi ELIMINA.`);
           try { staffCalRtBroadcastResolved(parsed, true); } catch (e) {}
           try { renderStaffCalendar(); } catch (e) {}
           try { _staffCalCreateSettle(_optimKey, true); } catch (e) {}
-          if (_localOk) _setSyncNote(viaLettura ? '✅ Operazione confermata — verificata su Matchpoint' : '✅ Operazione confermata su Matchpoint', '#067647', '✅ <strong>Fatto!</strong> ');
+          if (_localOk) _setSyncNote(viaLettura ? '✅ Operazione confermata — verificata su Matchpoint' : '✅ Operazione confermata' + pmoSuCircoloEsterno(), '#067647', '✅ <strong>Fatto!</strong> ');
           else {
             _setSyncNote('⚠️ Su Matchpoint sì, in questa pagina no', '#b54708', '⚠️ <strong>Confermata su Matchpoint</strong> — ');
             _say('⚠️ <strong>Campo ' + parsed.campoNum + ' · ' + dl + ' · ' + parsed.ora + ': su Matchpoint è salvata</strong>, ma questa pagina non è riuscita a tenerne copia (' + _escapeHtml(_staffCalLocalSaveWhy()) + '). <strong>Non rifarla</strong>: ricarica la pagina e la vedrai comparire.');
