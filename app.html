@@ -8720,7 +8720,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.415';
+    const APP_VERSION = '6.417';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -51311,6 +51311,20 @@ Per confermare scrivi ELIMINA.`);
        si fidasse di trovarla già lì lampeggerebbe su una cella che non esiste ancora.
      ══════════════════════════════════════════════════════════════════════════════════════ */
 
+  /** 🆕⭐⭐ QUANDO LA STRISCIA TACE, e la condizione ha DUE metà che vanno tutt'e due.
+   *
+   *  ① il gesto **si vede sul calendario** (`sulCalendario`): una prenotazione che nasce o che
+   *     sparisce. Un incasso, un cambio importo, un cliente nuovo — no: là il calendario non
+   *     cambia di un pixel, e togliere la striscia vorrebbe dire togliere l'unica notizia.
+   *  ② 🚨 **si sa DOVE**: senza coordinate complete non c'è nessuna cella che possa raccontare
+   *     il gesto, e il silenzio diventa il silenzio e basta. ⇒ Se il «dove» manca, la striscia
+   *     parla come ha sempre fatto. È la stessa regola di `svcAccendiCella`, applicata a monte:
+   *     *si tace solo quando qualcos'altro sta parlando al posto tuo.*
+   *  PURA. */
+  function svcTaceSulCalendario(loc) {
+    return !!(loc && loc.sulCalendario && loc.dove && loc.dove.campo && loc.dove.ora);
+  }
+
   /** Quanto dura il lampeggio. ⚖️ Sei secondi, cioè **esattamente** quanto durava il verde della
    *  striscia che sostituisce (`SVC_ESITI.fatto.durataMs`): il tempo che uno ha per accorgersene
    *  non è cambiato, è cambiato il posto in cui deve guardare. */
@@ -51429,12 +51443,19 @@ Per confermare scrivi ELIMINA.`);
    *  questa voce): lo protegge `test/la-barra-e-il-posto-unico.test.mjs`, che confronta questa
    *  mappa con le edge che l'app chiama DAVVERO e fallisce quando ne compare una non classificata. */
   const SVC_AZIONI_DELLAPP = {
-    // 🆕 `nascita: true` — l'unica azione il cui SUCCESSO non si scrive: si vede sul calendario,
-    //    che lampeggia (richiesta sua del 09/09/2026 — vedi `svcLampeggiaNascita`). Il rifiuto e
-    //    il dubbio restano nella striscia come tutti gli altri.
-    'matchpoint-bookings-create': { corso: '➕ Prenoto il campo', soggetto: 'Prenotazione', participio: 'creata', nascita: true },
-    'matchpoint-bookings-edit':   { corso: '✏️ Modifico la prenotazione', soggetto: 'Prenotazione', participio: 'modificata' },
-    'matchpoint-bookings-cancel': { corso: '🗑️ Annullo la prenotazione', soggetto: 'Prenotazione', participio: 'annullata' },
+    // 🆕⭐⭐ `sulCalendario` — le azioni il cui SUCCESSO non si scrive, perché si VEDE. Richiesta
+    //    sua del 09/09/2026, detta due volte: *«non ci devono essere più gli avvisi, basta che mi
+    //    fai vedere subito la prenotazione sul calendario»* e poi *«c'è ancora il banner quando
+    //    cancella una prenotazione»*.
+    // ⚖️ E sono DUE forme diverse, non una: quando una partita NASCE la cella si accende e
+    //    lampeggia; quando SPARISCE non c'è niente da accendere — è la partita che non c'è più a
+    //    dirlo, e il posto che occupava torna a fondersi nel blocco «Libero» di tutta la giornata.
+    //    Farlo lampeggiare vorrebbe dire far battere otto ore di calendario per una partita tolta:
+    //    peggio del banner che si sta togliendo.
+    // ⛔ Il rifiuto e il dubbio restano nella striscia per tutt'e due, come per tutti gli altri.
+    'matchpoint-bookings-create': { corso: '➕ Prenoto il campo', soggetto: 'Prenotazione', participio: 'creata', sulCalendario: 'nascita' },
+    'matchpoint-bookings-edit':   { corso: '✏️ Modifico la prenotazione', soggetto: 'Prenotazione', participio: 'modificata', sulCalendario: 'modifica' },
+    'matchpoint-bookings-cancel': { corso: '🗑️ Annullo la prenotazione', soggetto: 'Prenotazione', participio: 'annullata', sulCalendario: 'sparizione' },
     'matchpoint-payment-write':   { corso: '💶 Registro l\'incasso', soggetto: 'Incasso', participio: 'registrato' },
     'matchpoint-payment-void':    { corso: '↩️ Storno l\'incasso', soggetto: 'Incasso', participio: 'stornato' },
     'matchpoint-charge-write':    { corso: '💶 Cambio l\'importo', soggetto: 'Importo', participio: 'cambiato' },
@@ -51557,7 +51578,15 @@ Per confermare scrivi ELIMINA.`);
     if (b.read === true) return null;          // 🚨 trappola ①: aprire una scheda non è modificarla
     if (b.soloRicerca === true) return null;   // 🚨 trappola ②: cercare un telefono non crea nessuno
     const forme = (nome === 'matchpoint-bookings-edit' && svcAffinaEdit(b)) || base;
-    return { corso: forme.corso, soggetto: forme.soggetto, participio: forme.participio, nascita: !!forme.nascita, dove: svcDoveDelGesto(b) };
+    // 🚨 `sulCalendario` si legge da `base` e MAI da `forme`: `svcAffinaEdit` costruisce oggetti
+    //    nuovi (la nota, i giocatori, lo spostamento…) che di questo campo non sanno niente, e
+    //    leggendolo di lì ogni modifica tornerebbe a parlare — cinque gesti su cinque.
+    return {
+      corso: forme.corso, soggetto: forme.soggetto, participio: forme.participio,
+      sulCalendario: base.sulCalendario || null,
+      dove: svcDoveDelGesto(b),
+      arrivo: svcDoveDellArrivo(b),
+    };
   }
 
   /** Le coordinate per la cella, SOLO se complete — stessa regola di `dovePulito` nella edge, e
@@ -51569,6 +51598,23 @@ Per confermare scrivi ELIMINA.`);
     const ora = String((b && b.ora) != null ? b.ora : '').trim();
     if (!campo || !/^\d{4}-\d{2}-\d{2}$/.test(data) || !/^\d{1,2}:\d{2}$/.test(ora)) return null;
     return { campo: campo, data: data, ora: ora };
+  }
+
+  /** 🆕 DOVE SI VA A FINIRE, che su uno spostamento non è dove si era.
+   *  ⚖️ `svcDoveDelGesto` legge le coordinate di **partenza** — quelle che identificano la
+   *  prenotazione da toccare — e su tutto il resto vanno benissimo. Ma su un `move` la partita
+   *  dopo il gesto **sta da un'altra parte**, e far battere la cella di partenza vorrebbe dire
+   *  indicare uno slot che nel frattempo è tornato libero: l'occhio va dove non è successo
+   *  niente. ⇒ Il posto che si accende è quello **di arrivo**, come per gli avvisi ai soci
+   *  (regola del 23/08: *«le coordinate del fatto sono quelle di arrivo, perché è lì che si va
+   *  a giocare»*). PURA. */
+  function svcDoveDellArrivo(b) {
+    const m = (b && b.move && typeof b.move === 'object') ? b.move : null;
+    if (m) {
+      const d = svcDoveDelGesto({ campo: m.campo, data: m.data, ora: m.oraInizio });
+      if (d) return d;
+    }
+    return svcDoveDelGesto(b);
   }
 
   /** Com'è finita, detta a chi fa segreteria. `null` = non è finita (un lavoro asincrono è
@@ -51626,7 +51672,8 @@ Per confermare scrivi ELIMINA.`);
       //    no*, ed è la metà per cui la riga 1 si disegna in due pezzi separati.
       chi: '',
       dove: descrizione.dove || null,
-      nascita: !!descrizione.nascita,
+      sulCalendario: descrizione.sulCalendario || null,
+      arrivo: descrizione.arrivo || null,
       stato: 'corso',
       ts: Date.now(),
     };
@@ -51637,7 +51684,7 @@ Per confermare scrivi ELIMINA.`);
     //    proprio nel secondo e mezzo in cui lui guarda il calendario.
     // ⛔ E si RIAPRE se va male (vedi `svcChiudiAzione`): il dettaglio di un rifiuto sta lì
     //    dentro, e chiuderlo per sempre vorrebbe dire nasconderlo.
-    if (mia.nascita) {
+    if (svcTaceSulCalendario(mia)) {
       try { svcClearLog(); } catch (_e) {}
       try { svcCloseChat(); } catch (_e) {}
     }
@@ -51661,11 +51708,17 @@ Per confermare scrivi ELIMINA.`);
     // ⛔ SOLO sul `fatto`: `rifiutato` e `ignoto` proseguono per la strada di sempre, perché su
     //    quelli il calendario non ha niente da mostrare — lo slot è rimasto libero, identico a
     //    com'era prima del gesto, e un rifiuto muto lo si scambia per un successo.
-    if (esito === 'fatto' && _svcAzioneLocale.nascita) {
-      const dove = _svcAzioneLocale.dove;
+    if (esito === 'fatto' && svcTaceSulCalendario(_svcAzioneLocale)) {
+      const dove = _svcAzioneLocale.arrivo || _svcAzioneLocale.dove;
+      const forma = _svcAzioneLocale.sulCalendario;
       _svcAzioneLocale = null;
       svcRidisegnaSemaforo();                                    // spegne striscia e cella «in corso»
-      try { svcLampeggiaNascita(dove); } catch (_e) {}
+      // ⚖️ Lampeggia ciò che dopo il gesto C'È: una partita nata, una spostata, una a cui è
+      //    cambiato qualcosa. ⛔ Su una SPARIZIONE no: lo slot torna a fondersi nel blocco
+      //    «Libero» di tutta la giornata, e farlo battere vorrebbe dire far lampeggiare otto ore
+      //    di calendario per una partita tolta — peggio del banner che si sta togliendo. Lì a
+      //    dirlo è la partita che non c'è più, ed è inconfondibile.
+      if (forma !== 'sparizione') { try { svcLampeggiaNascita(dove); } catch (_e) {} }
       // La stessa chiusura che sarebbe arrivata da sé quattro secondi dopo (`svcScheduleAutoClear`),
       // guardia dei flow compresa: qui è solo ANTICIPATA, non è un comportamento nuovo.
       try { svcScheduleAutoClear(0); } catch (_e) {}
@@ -51673,7 +51726,7 @@ Per confermare scrivi ELIMINA.`);
     }
     // ⛔ Nascita andata MALE: il riquadro che si era chiuso torna, o il motivo del rifiuto
     //    resterebbe scritto dentro una finestra che nessuno vede. Il silenzio vale sul successo.
-    if (_svcAzioneLocale.nascita) { try { svcOpenChat(); } catch (_e) {} }
+    if (svcTaceSulCalendario(_svcAzioneLocale)) { try { svcOpenChat(); } catch (_e) {} }
     svcRidisegnaSemaforo();
     const durata = SVC_ESITI[esito].durataMs;
     // 🚨 `0` = non se ne va da sola. Da quando i messaggi di azione non stanno più nella scheda,
@@ -51835,7 +51888,7 @@ Per confermare scrivi ELIMINA.`);
     // ⚖️ Si può fare qui e non altrove perché su una nascita **il posto è noto in partenza**:
     //    lo slot che si sta occupando. Su un annullo o un incasso non c'è niente da accendere
     //    che non ci sia già, ed è per questo che quelli la striscia ce l'hanno ancora.
-    if (loc && loc.nascita && !finita) {
+    if (svcTaceSulCalendario(loc) && !finita) {
       el.hidden = true;
       el.textContent = '';
       svcAccendiCella(loc.dove);   // ⭐ la cella SÌ: senza, il secondo e mezzo sarebbe muto
