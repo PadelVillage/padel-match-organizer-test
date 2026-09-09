@@ -8720,7 +8720,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.412';
+    const APP_VERSION = '6.413';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -48347,6 +48347,34 @@ Per confermare scrivi ELIMINA.`);
   // Tempi delle due attese del lavoro asincrono. Raccolti qui invece che sparsi come numeri
   // perché la rete di regressione deve poter provare il ramo «continua a chiedere» senza
   // aspettare 3 minuti veri: è lo STESSO codice, con l'orologio più corto (hook setPollTimings).
+  /** 🆕⭐⭐ LA RISPOSTA È GIÀ L'ESITO, o è un lavoro da seguire? (09/09/2026)
+   *
+   *  📏 IL FATTO, misurato sulla pagina viva del sistema nuovo prima di scrivere una riga:
+   *  l'app chiede `async: true`, ma sulla **scrittura nativa** la edge non apre nessun lavoro —
+   *  risponde subito `{ ok:true, nativa:true, message:"Partita registrata: …" }` e **senza
+   *  `jobId`**. Chi cercava solo il numero del lavoro tirava *«Avvio non riuscito (nessun codice
+   *  lavoro)»* su una prenotazione **già scritta**, e da lì finiva nel giro dell'esito ignoto: tre
+   *  minuti a domandare a un Matchpoint che non c'è più.
+   *  🚨 La conseguenza si vedeva, ed è quella che lui ha segnalato: la partita **non compariva sul
+   *  calendario** — né subito né dopo — perché `_okMsg` (che salva la copia locale e ridisegna)
+   *  non veniva mai raggiunto. Compariva solo ricaricando la pagina. ⇒ L'unica cosa che diceva
+   *  «è andata» era il banner verde, cioè proprio quello che lui vuole togliere.
+   *  📌 *Un ramo nuovo che risponde meglio del previsto rompe chi aspettava la risposta vecchia, e
+   *     lo rompe nel modo peggiore: riuscendo.*
+   *
+   *  ⛔ FALLISCE CHIUSA, e la riga che conta è `nativa`: **solo** la scrittura nata nel gestionale
+   *  risponde con un esito compiuto. Un `ok` senza `jobId` e senza `nativa` resta l'errore che era
+   *  prima — perché lì il numero del lavoro manca davvero, e dichiararlo «fatto» sarebbe la bugia
+   *  che questo progetto insegue da luglio. PURA. */
+  function staffCalEsitoImmediato(submit) {
+    if (!submit || typeof submit !== 'object') return null;
+    if (submit.jobId) return null;                       // c'è un lavoro: la verità sta nel poll
+    if (submit.ok === false || submit.error) return null;
+    if (submit.nativa !== true) return null;             // ⛔ la sola risposta che è già un esito
+    const w = (submit.worker && typeof submit.worker === 'object') ? submit.worker : null;
+    return { status: 'done', message: submit.message || '', idReserva: (w && w.idReserva) ? String(w.idReserva) : null };
+  }
+
   const _STAFF_CAL_POLL = { maxMs: 180000, stepMs: 1500, lateMaxMs: 360000, lateStepMs: 10000 };
   // ⭐⭐ QUANTO SI INSISTE A GUARDARE quando l'esito resta ignoto (15/08/2026, voce 23).
   // 3 minuti perché il sync delle prenotazioni gira ogni 2: dentro quella finestra la verità di
@@ -50969,6 +50997,11 @@ Per confermare scrivi ELIMINA.`);
       };
       try {
         const submit = await staffCalSubmitSingle(parsed, staff, supabaseUrl, supabaseKey, { async: true, sbId: _sbId, onSent: function () { _reqSent = true; } });
+        // 🆕 La scrittura NATIVA non apre nessun lavoro: risponde gia' com'e' finita. Senza questa
+        //    riga la prenotazione era scritta e il calendario non la mostrava (vedi
+        //    `staffCalEsitoImmediato`).
+        const subito = staffCalEsitoImmediato(submit);
+        if (subito) { _okMsg(subito); return; }
         const jobId = submit && submit.jobId;
         if (!jobId) throw new Error('Avvio non riuscito (nessun codice lavoro).');
         _jobIgnoto = jobId;
@@ -55832,6 +55865,11 @@ Per confermare scrivi ELIMINA.`);
           const cfg = await loadAssessmentSupabaseConfig();
           supabaseUrl = cfg && cfg.supabaseUrl; supabaseKey = cfg && cfg.supabaseKey;
           const submit = await staffCalSubmitSingle(parsed, staff, supabaseUrl, supabaseKey, { async: true, sbId: _sbId, onSent: function () { _reqSent = true; } });
+          // 🆕 Gemello ESATTO della strada dello slot, e non una copia della sua idea: la stessa
+          //    funzione. Il 15/08 un rimedio scritto su una sola delle due strade e' costato la
+          //    voce 31 — qui la regola sta in un posto solo e le due la chiamano.
+          const subito = staffCalEsitoImmediato(submit);
+          if (subito) { _okMsg(subito); return; }
           const jobId = submit && submit.jobId;
           if (!jobId) throw new Error('Avvio non riuscito (nessun codice lavoro).');
           _jobIgnoto = jobId;
