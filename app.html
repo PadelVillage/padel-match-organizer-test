@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.441';
+    const APP_VERSION = '6.442';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -41705,6 +41705,81 @@ Per confermare scrivi ELIMINA.`);
   // STAFF CALENDAR (v5.585) — Prenotazioni staff su Matchpoint
   // ============================================================
 
+  // ╔════════════════════════════════════════════════════════════════════════════════╗
+  // ║ 🏆 I TIPI DI PRENOTAZIONE — la fonte unica (voce 207)                          ║
+  // ╚════════════════════════════════════════════════════════════════════════════════╝
+  //
+  // 🗣️ Due sue parole del 10/09/2026, e insieme dicono una cosa precisa:
+  //    · *«Il torneo è un modo di chiamare una prenotazione.»*
+  //    · *«Anche lo stage È un tipo di prenotazione come la LEZIONE solo con un nome diverso.»*
+  //
+  // ⚖️⭐⭐ DUE COSE CHE SI CONFONDEVANO IN UNA PAROLA, e separarle è tutto il lavoro:
+  //    · `engine`  = il MACCHINARIO — chi chiede il maestro, chi tiene i giocatori. Sono TRE, e
+  //                  non se ne aggiungono: `partita` · `lezione` · `manutenzione`;
+  //    · `tipo`    = il NOME, cioè ciò che resta SCRITTO nella prenotazione e che il socio legge.
+  //
+  // 🚨 Se i due coincidessero, uno stage sarebbe indistinguibile da una lezione — e al socio
+  //    arriverebbe «Lezione con Gianluca» per uno STAGE. Con `engine: 'lezione'` lo stage eredita
+  //    il macchinario (il maestro, il roster, il Salva che rifiuta senza maestro — voce 201); con
+  //    `tipo: 'stage'` si chiama col suo nome. 📌 *Il macchinario si eredita, il nome no.*
+  //
+  // 🚨⭐⭐ E IL VERO PERICOLO DI QUESTA VOCE NON SONO LE DUE RIGHE NUOVE: sono i posti che
+  //    ENUMERANO i tipi. 📏 Misurati il 10/09: **57** punti nell'app guardano il tipo, e la grande
+  //    maggioranza confronta valori già NORMALIZZATI (`tipoNorm`, `tipoEngine`) ⇒ continuano a
+  //    funzionare da soli **purché la normalizzazione sappia le parole nuove**. È per questo che
+  //    la normalizzazione sta QUI, in una funzione sola, e non ripetuta con `includes('lez')`.
+  //    📌 *È la lezione della 201, che si ruppe in tre punti che enumeravano i gesti — nessuno
+  //    raggiungibile dal banco.*
+
+  const PMO_TIPI_PRENOTAZIONE = [
+    { tipo: 'partita',      etichetta: 'Partita',      engine: 'partita',      giocatori: true,  maestro: false },
+    { tipo: 'lezione',      etichetta: 'Lezione',      engine: 'lezione',      giocatori: true,  maestro: true  },
+    { tipo: 'stage',        etichetta: 'Stage',        engine: 'lezione',      giocatori: true,  maestro: true  },
+    { tipo: 'torneo',       etichetta: 'Torneo',       engine: 'partita',      giocatori: true,  maestro: false },
+    { tipo: 'manutenzione', etichetta: 'Manutenzione', engine: 'manutenzione', giocatori: false, maestro: false },
+  ];
+
+  /**
+   * La scheda del tipo, a partire da QUALUNQUE forma della parola.
+   * ⚠️ Il tipo arriva anche da Matchpoint, dove non è una parola pulita: «Lezione Libera»,
+   *    «LEZIONE», «lezione libera». Per questo il riconoscimento è per CONTENUTO e non per
+   *    uguaglianza — ed è il motivo per cui `includes('lez')` era sparso in 16 punti.
+   * 🚨 L'ordine dei controlli NON è indifferente: `manutenzione` si guarda PRIMA, e le parole
+   *    nuove prima di `lez`, o «stage» finirebbe in una delle altre per caso.
+   */
+  function pmoTipoScheda(tipoGrezzo) {
+    const t = String(tipoGrezzo == null ? '' : tipoGrezzo).toLowerCase().trim();
+    if (!t) return PMO_TIPI_PRENOTAZIONE[0];
+    const per = (nome) => PMO_TIPI_PRENOTAZIONE.find((x) => x.tipo === nome);
+    if (t.includes('manuten')) return per('manutenzione');
+    if (t.includes('stage')) return per('stage');
+    if (t.includes('torneo') || t.includes('tornei')) return per('torneo');
+    if (t.includes('lez')) return per('lezione');
+    return per('partita');
+  }
+
+  /** Il MACCHINARIO: `partita` · `lezione` · `manutenzione`. Mai `stage`, mai `torneo`. */
+  function pmoTipoEngine(tipoGrezzo) { return pmoTipoScheda(tipoGrezzo).engine; }
+
+  /** Vuole un maestro? Lezione e stage sì; partita, torneo e manutenzione no. */
+  function pmoTipoVuoleMaestro(tipoGrezzo) { return pmoTipoScheda(tipoGrezzo).maestro === true; }
+
+  /** Ha dei giocatori in campo? Tutto tranne la manutenzione. */
+  function pmoTipoHaGiocatori(tipoGrezzo) { return pmoTipoScheda(tipoGrezzo).giocatori === true; }
+
+  /** La parola da MOSTRARE, con l'iniziale grande: «Stage», «Torneo», «Lezione»… */
+  function pmoTipoEtichetta(tipoGrezzo) { return pmoTipoScheda(tipoGrezzo).etichetta; }
+
+  /** La parola da SCRIVERE nella prenotazione: quella scelta, non quella del macchinario. */
+  function pmoTipoParola(tipoGrezzo) { return pmoTipoScheda(tipoGrezzo).tipo; }
+
+  // Visibili agli altri blocchi <script> (e al banco, che le esercita davvero).
+  window.pmoTipoEngine = pmoTipoEngine;
+  window.pmoTipoVuoleMaestro = pmoTipoVuoleMaestro;
+  window.pmoTipoHaGiocatori = pmoTipoHaGiocatori;
+  window.pmoTipoEtichetta = pmoTipoEtichetta;
+  window.pmoTipoParola = pmoTipoParola;
+
   const STAFF_CAL_START_H = 8;
   const STAFF_CAL_END_H = 24;
   const STAFF_CAL_SLOT_MIN = 30;
@@ -43156,7 +43231,7 @@ Per confermare scrivi ELIMINA.`);
         if (src && src.idReserva) {
           const _dur = _staffCalDurMin(src.durata);
           const _gioc = Array.isArray(src.giocatori) ? src.giocatori : [];
-          const _tipo = String(src.tipo || '').toLowerCase().includes('lez') ? 'lezione' : 'partita';
+          const _tipo = pmoTipoEngine(src.tipo);   // 🏆 voce 207 — conosce stage e torneo
           const _nome = src.giocatore || src.nome || (_gioc.length ? '' : '');
           const _oraFine = (toOraFine && String(toOraFine).trim()) || _staffCalEndTime(tOra, _dur);
           const newEntry = {
@@ -43246,7 +43321,7 @@ Per confermare scrivi ELIMINA.`);
     // Solo le LEZIONI. È l'unico tipo su cui la card disegna la riga del maestro, e l'unico su cui
     // il sync scrive `istruttore`: su una partita quel posto nella casella del tabellone è occupato
     // da prezzo e categoria, non da una persona. Il tipo che conta è quello della card che RESTA.
-    if (!String(d.tipoReale || d.tipo || '').toLowerCase().includes('lez')) return '';
+    if (!pmoTipoVuoleMaestro(d.tipoReale || d.tipo)) return '';   // 🏆 voce 207
     // Il maestro dello staff_booking vince sempre: è una SCELTA dello staff, non una lettura.
     if (pieno(d.istruttore)) return pieno(d.istruttore);
     return pieno(s.istruttore);
@@ -43314,7 +43389,7 @@ Per confermare scrivi ELIMINA.`);
       if (campoNum < 1 || campoNum > 4) continue;
       const _tLow = String(p.tipo || '').toLowerCase();
       // Manutenzione (import dal tabellone): slot occupato senza giocatori, con solo eventuale nota.
-      const tipo = _tLow.includes('manuten') ? 'manutenzione' : (_tLow.includes('lez') ? 'lezione' : 'partita');
+      const tipo = pmoTipoEngine(_tLow);   // 🏆 voce 207
       const _nota = String(p.descrizione || p.note || p.nota || '');
       const _nomeOcc = (tipo === 'manutenzione')
         ? _nota
@@ -43358,7 +43433,7 @@ Per confermare scrivi ELIMINA.`);
       if (campoNum < 1 || campoNum > 4) continue;
       if (result.some(r => r.ora === p.ora && r.campo === campoNum)) continue;
       const _tLow = String(p.tipo || '').toLowerCase();
-      const tipo = _tLow.includes('manuten') ? 'manutenzione' : (_tLow.includes('lez') ? 'lezione' : 'partita');
+      const tipo = pmoTipoEngine(_tLow);   // 🏆 voce 207
       const _nota = String(p.descrizione || p.note || p.nota || '');
       const _nomeSt = (tipo === 'manutenzione')
         ? _nota
@@ -46153,7 +46228,7 @@ Per confermare scrivi ELIMINA.`);
           blk.appendChild(tc);
         }
         const t2 = document.createElement('div'); t2.style.cssText = 'font-size:' + (isDesktop ? '8px' : '10px') + ';opacity:.85;'; t2.textContent = b.ora + '–' + _staffCalEndTime(b.ora, b.durata); blk.appendChild(t2);
-        const _isLez = String(b.tipoReale || b.tipo || '').toLowerCase().includes('lez');
+        const _isLez = pmoTipoVuoleMaestro(b.tipoReale || b.tipo);   // 🏆 voce 207
         if (_isLez && b.istruttore) { const tm = document.createElement('div'); tm.style.cssText = 'font-size:10px;font-weight:700;opacity:.95;white-space:normal;'; tm.textContent = '\u{1F468}‍\u{1F3EB} ' + b.istruttore; blk.appendChild(tm); }
         // v5.736 — gestisce giocatori come array di stringhe O di oggetti {nome}, e nome con \n.
         // Ogni giocatore va su una riga separata (div). Font ingrandito.
@@ -46828,7 +46903,7 @@ Per confermare scrivi ELIMINA.`);
         const _tipoLow = String((src && src.tipo) || tipoReale || 'partita').toLowerCase();
         // Preserva la manutenzione: NON collassarla in 'partita' (altrimenti la scheda crederebbe
         // hasPlayers e il worker mirerebbe alla ficha sbagliata).
-        const _tipo = _tipoLow.includes('lez') ? 'lezione' : (_tipoLow.includes('manuten') ? 'manutenzione' : 'partita');
+        const _tipo = pmoTipoEngine(_tipoLow);   // 🏆 voce 207
         // NOTA (Osservazioni): è di competenza ESCLUSIVA della lettura autorevole del worker.
         // La `descrizione` dell'occupancy è il TITOLO Matchpoint della prenotazione (per una partita =
         // nome giocatore, es. "-Gianluca Spinazzè."): NON è una nota → usarla la faceva finire nel
@@ -46867,7 +46942,11 @@ Per confermare scrivi ELIMINA.`);
     const campoNum = Number(String(campo).replace(/\D/g, '')) || 0;
     const durMin = _staffCalDurMin(durata);
     const tipoR = String(tipoReale || 'partita').toLowerCase();
-    const hasPlayers = ['partita', 'lezione'].includes(tipoR);
+    // 🏆 VOCE 207 — era `['partita','lezione'].includes(tipoR)`, un confronto ESATTO: con
+    //    `tipo: 'stage'` diceva false, e una scheda senza `hasPlayers` non disegna NÉ i
+    //    giocatori NÉ il selettore del maestro ⇒ uno stage sarebbe nato senza maestro, cioè
+    //    l'opposto di quello che è stato chiesto.
+    const hasPlayers = pmoTipoHaGiocatori(tipoR);
     // A1 — idReserva PERSISTENTE: lo catturo all'apertura dal record locale e lo porto in `st`,
     // così il salvataggio lo passa SEMPRE (Ficha diretta) a prescindere dalle coordinate, anche
     // dopo uno spostamento. L'idReserva Matchpoint è stabile tra gli spostamenti. La lettura
@@ -46915,8 +46994,8 @@ Per confermare scrivi ELIMINA.`);
          * ⭐ Si tiene la parola NORMALIZZATA (`lezione`/`partita`) e non `tipoReale` grezzo: da
          *   Matchpoint arriva roba come «Lezione Libera», e confrontare una parola grezza con
          *   una scelta dal menu direbbe «cambiato» a ogni apertura di una lezione. */
-        origTipoNorm: String(tipoR || '').toLowerCase().includes('lez') ? 'lezione' : 'partita',
-        tipoNorm: String(tipoR || '').toLowerCase().includes('lez') ? 'lezione' : 'partita',
+        origTipoNorm: pmoTipoEngine(tipoR),   // 🏆 voce 207 — uno stage normalizza a `lezione`
+        tipoNorm: pmoTipoEngine(tipoR),
         mCampo: campoNum, mIso: isoDate, mOraIni: ora, mOraFin: _staffCalEndTime(ora, durMin),
         roster: Array.isArray(roster) ? roster : [], remove: {}, add: [],
         // note = valore corrente del campo; origNote = baseline per il confronto (da locale, poi
@@ -47537,7 +47616,8 @@ Per confermare scrivi ELIMINA.`);
     // ── MAESTRO (solo Lezione) — selettore per CAMBIARE l'istruttore della lezione su Matchpoint.
     //    Prima non era modificabile dalla scheda: si poteva impostare solo in creazione. Ora la
     //    scelta viene inviata al worker (edit-booking → dropdown "Monitor" della ficha lezione).
-    if (st.hasPlayers && String(st.tipoReale || '').toLowerCase().includes('lez')) {
+    // 🏆 VOCE 207 — `includes('lez')` non vedeva lo STAGE, che il maestro invece ce l'ha.
+    if (st.hasPlayers && pmoTipoVuoleMaestro(st.tipoReale)) {
       const maestroSec = mkSection('ti-school', 'Maestro');
       const validi = (PARSER_RULES && PARSER_RULES.campi_opzionali && PARSER_RULES.campi_opzionali.istruttore && Array.isArray(PARSER_RULES.campi_opzionali.istruttore.valori_validi))
         ? PARSER_RULES.campi_opzionali.istruttore.valori_validi.slice()
@@ -48767,7 +48847,7 @@ Per confermare scrivi ELIMINA.`);
     const descrChanged = !!(st && st.isManut) && String((st && st.descrizione) || '') !== String((st && st.origDescrizione) || '');
     // MAESTRO (solo lezione) — istruttore cambiato vs il valore caricato. Solo valori non vuoti
     // (il selettore non permette di "svuotare" un maestro già impostato).
-    const _isLez = String((st && st.tipoReale) || '').toLowerCase().includes('lez');
+    const _isLez = pmoTipoVuoleMaestro(st && st.tipoReale);   // 🏆 voce 207 — stage compreso
     const istruttoreChanged = _isLez
       && String((st && st.istruttore) || '').trim() !== String((st && st.origIstruttore) || '').trim()
       && String((st && st.istruttore) || '').trim() !== '';
@@ -48830,7 +48910,7 @@ Per confermare scrivi ELIMINA.`);
     }
     /* 🎭 Le due parole con l'iniziale maiuscola, come sono scritte nel menu: il riepilogo che
      * chiede una conferma deve usare le stesse parole che la persona ha appena letto a schermo. */
-    const _pmoTipoLabel = function (t) { return String(t) === 'lezione' ? 'Lezione' : 'Partita'; };
+    const _pmoTipoLabel = function (t) { return pmoTipoEtichetta(t); };   // 🏆 voce 207
     const parts = [];
     if (moveChanged) parts.push('Sposta → Campo ' + st.mCampo + ' · ' + st.mIso.split('-').reverse().join('/') + ' · ' + st.mOraIni + '–' + st.mOraFin);
     if (playersChanged) parts.push('Giocatori: ' + (addArr.length ? ('+' + addArr.length) : '') + (remove.length ? (' -' + remove.length) : ''));
@@ -50619,7 +50699,7 @@ Per confermare scrivi ELIMINA.`);
       if (!_staffCalPendingRicorrenza || _staffCalPendingRicorrenza.text !== text) {
         // Primo clic: mostra anteprima e chiedi conferma
         _staffCalPendingRicorrenza = { text, parsed, dates };
-        const tipoLabel = parsed.tipo === 'lezione' ? 'Lezione' : 'Partita';
+        const tipoLabel = pmoTipoEtichetta(parsed.tipo);   // 🏆 voce 207 — «Stage» e «Torneo» compresi
         const preview = dates.map(d => {
           const [y,m,g] = d.split('-'); return `${g}/${m}`;
         }).join(', ');
@@ -50721,7 +50801,7 @@ Per confermare scrivi ELIMINA.`);
       return;
     }
     const sendBtn = document.getElementById('staffCalSendBtn');
-    const tipoLabel = parsed.tipo === 'lezione' ? 'Lezione' : 'Partita';
+    const tipoLabel = pmoTipoEtichetta(parsed.tipo);   // 🏆 voce 207
     // Permessi + config (veloci) prima di confermare.
     let staff, supabaseUrl, supabaseKey;
     try {
@@ -51353,10 +51433,14 @@ Per confermare scrivi ELIMINA.`);
   //  dal namespace globale (evita collisioni con addMessage, flowState, ecc.)
   // ═══════════════════════════════════════════════════════════════════
 
+  // 🏆 VOCE 207 — lo «Stage» si aggiunge qui accanto alle lezioni (ne eredita il macchinario,
+  //    maestro compreso), e il «Torneo» smette di essere una voce che si può premere per sentirsi
+  //    dire no: da oggi è una prenotazione, l'ha deciso lui.
   const SVC_DURATE_PER_TIPO = {
     'Partita':           [60, 90, 120, 180],
     'Lezione Singola':   [60, 90],
     'Lezione di Gruppo': [60, 90],
+    'Stage':             [90, 120, 180],
     'Torneo':            [90, 120, 180],
     'Manutenzione':      [30, 60, 90, 120, 180],
   };
@@ -52049,12 +52133,12 @@ Per confermare scrivi ELIMINA.`);
     const SLOTS = staffCalSlots();
     const ddmm = dateISO.split('-').slice(1).reverse().join('/');
     const FIELD_COLORS = ['#f87171','#fbbf24','#34d399','#818cf8'];
-    const TIPI = [
-      { key:'Partita',      engine:'partita', tipo:'partita' },
-      { key:'Lezione',      engine:'lezione', tipo:'lezione' },
-      { key:'Manutenzione', engine:'manutenzione', tipo:'manutenzione' },
-      { key:'Torneo',       engine:null,      tipo:null, disabled:true }
-    ];
+    // 🏆 VOCE 207 — i tipi NON si elencano più qui: vengono dalla fonte unica, o questa lista e
+    //    la normalizzazione potrebbero dire due cose diverse senza che nessuno se ne accorga.
+    //    ⭐ «Torneo» c'era già ma era `disabled:true` — scegliibile mai; «Stage» non c'era affatto.
+    const TIPI = PMO_TIPI_PRENOTAZIONE.map(function (x) {
+      return { key: x.etichetta, engine: x.engine, tipo: x.tipo };
+    });
     const maestri = (typeof PARSER_RULES !== 'undefined' && PARSER_RULES && PARSER_RULES.campi_opzionali && PARSER_RULES.campi_opzionali.istruttore && PARSER_RULES.campi_opzionali.istruttore.valori_validi) || ['LoZio','Spinazze','Lucas Vidal'];
 
     // Leggibilità ADATTIVA: testi/controlli scalano in modo fluido sulla LARGHEZZA REALE del
@@ -52329,20 +52413,13 @@ Per confermare scrivi ELIMINA.`);
       function(tipo) {
         svcFreezeMsg(div);
         svcFlowState.tipo = tipo;
-        if (tipo === 'Lezione Singola' || tipo === 'Lezione di Gruppo') {
-          svcFlowState.tipoLabel = tipo;
-          svcFlowState.tipoEngine = 'lezione';
-          svcFlowState.step = 'ora';
-          svcAskOraInizio();
-          return;
-        }
-        if (tipo === 'Torneo') {
-          svcFlowState = null;
-          svcSetInputMode('normal');
-          svcAddMessage('system', '⛔ Il Torneo non \xe8 ancora gestito dal sistema di prenotazione.');
-          return;
-        }
-        svcFlowState.tipoEngine = 'partita';
+        // 🏆 VOCE 207 — il macchinario lo decide la fonte unica, non un elenco di etichette
+        //    ripetuto qui: «Stage» arriva da sé sulla strada della lezione (maestro compreso), e
+        //    «Torneo» su quella della partita. ⛔ Prima c'era un rifiuto in faccia —
+        //    «Il Torneo non è ancora gestito dal sistema di prenotazione» — che la sua decisione
+        //    del 10/09 ha reso falso: un torneo È una prenotazione.
+        svcFlowState.tipoLabel = tipo;
+        svcFlowState.tipoEngine = pmoTipoEngine(tipo);
         svcFlowState.step = 'ora';
         svcAskOraInizio();
       },
@@ -52594,6 +52671,10 @@ Per confermare scrivi ELIMINA.`);
   async function svcConfirmBooking() {
     if (pmoBlockWriteIfReadonly('creare una prenotazione')) return;
     const { campo, dateISO, ora, durata, players, tipoEngine, istruttore } = svcFlowState;
+    // 🏆 VOCE 207 — LA PAROLA SCELTA, che NON è il macchinario: qui sotto si scriveva
+    //    `tipo: 'lezione'` cablato, quindi uno STAGE perdeva il proprio nome nell'istante in
+    //    cui veniva scritto — e al socio sarebbe arrivato «Lezione con X» per uno stage.
+    const tipoParola = pmoTipoParola(svcFlowState.tipo || tipoEngine);
     const giocatori = _dedupPlayersByIdentity((players || []).map(function(p) { return { nome: (p && typeof p === 'object') ? p.nome : String(p || ''), codice: (p && p.codice) || '', codiceCliente: (p && p.codiceCliente) || '' }; }));
     const nomeStr = giocatori.map(function(g) { return g.nome; }).join(', ');
     let parsed;
@@ -52605,7 +52686,7 @@ Per confermare scrivi ELIMINA.`);
         ora: ora,
         oraFine: svcEndTime(ora, durata),
         durata: durata,
-        tipo: 'lezione',
+        tipo: tipoParola,          // 🏆 voce 207 — «lezione» o «stage», non il macchinario
         istruttore: istruttore,
         nome: (players && players.length) ? nomeStr : istruttore,
         giocatori: giocatori,
@@ -52633,7 +52714,7 @@ Per confermare scrivi ELIMINA.`);
         oraFine: svcEndTime(ora, durata),
         durata: durata,
         nome: nomeStr,
-        tipo: 'partita',
+        tipo: tipoParola,          // 🏆 voce 207 — «partita» o «torneo»
         giocatori: giocatori,
         note: svcFlowState.note || ''
       };
@@ -52711,7 +52792,7 @@ Per confermare scrivi ELIMINA.`);
     let _msgEl;
     if (tipoEngine === 'lezione') {
       const allievi = (players && players.length) ? nomeStr : '—';
-      _msgEl = svcAddMessage('system', _headWait + ' \xb7 lezione: Campo ' + campo + ' \xb7 ' + parsed.data + ' \xb7 ' + ora + '–' + parsed.oraFine + '<br>👨‍🏫 <strong>' + istruttore + '</strong> 👥 ' + allievi + _syncNote);
+      _msgEl = svcAddMessage('system', _headWait + ' \xb7 ' + pmoTipoEtichetta(tipoParola).toLowerCase() + ': Campo ' + campo + ' \xb7 ' + parsed.data + ' \xb7 ' + ora + '–' + parsed.oraFine + '<br>👨‍🏫 <strong>' + istruttore + '</strong> 👥 ' + allievi + _syncNote);
     } else if (tipoEngine === 'manutenzione') {
       _msgEl = svcAddMessage('system', _headWait + ' \xb7 manutenzione: Campo ' + campo + ' \xb7 ' + parsed.data + ' \xb7 ' + ora + '–' + parsed.oraFine + _syncNote);
     } else {
@@ -56523,7 +56604,7 @@ Per confermare scrivi ELIMINA.`);
       }
       rows.sort(function (a, b) { return (a.ora || '').localeCompare(b.ora || '') || (a.campo - b.campo); });
       const items = rows.map(function (r) {
-        const tipo = (r.tipoReale || r.tipo || '').toString().toLowerCase().includes('lez') ? '📚 lezione' : '🎾 partita';
+        const tipo = (pmoTipoVuoleMaestro(r.tipoReale || r.tipo) ? '📚 ' : '🎾 ') + pmoTipoEtichetta(r.tipoReale || r.tipo).toLowerCase();   // 🏆 voce 207
         // v6.077 — allinea alla card (_staffCalBuildHorizontal): usa PRIMA l'array `giocatori`
         // (roster completo), fallback a `nome` (per le partite MP `nome` è solo l'intestatario).
         let _names = Array.isArray(r.giocatori)
@@ -57090,7 +57171,7 @@ Per confermare scrivi ELIMINA.`);
     // che una partita senza giocatori finisca sotto "Staff" (inesistente → errore worker 500).
     function _ospitePlayer() { return { nome: 'Ospite', codice: '', codiceCliente: '000001' }; }
     function _summaryHtml(draft) {
-      const tipoLabel = draft.tipo === 'lezione' ? '📚 Lezione' : '🎾 Partita';
+      const tipoLabel = (pmoTipoVuoleMaestro(draft.tipo) ? '📚 ' : '🎾 ') + pmoTipoEtichetta(draft.tipo);   // 🏆 voce 207
       const oraFine = draft.oraFine || _endTime(draft.ora, draft.durata || _defDur(draft.tipo));
       const lines = [
         '<strong>' + tipoLabel + '</strong>',
