@@ -8724,7 +8724,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.436';
+    const APP_VERSION = '6.437';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -26910,6 +26910,23 @@ Grazie!`
         window.__pmoWalletDelta.set(k, (window.__pmoWalletDelta.get(k) || 0) + peso);
       }
     }
+    /* 👛⭐⭐ VOCE 196 — IL DELTA DI UN MOVIMENTO NOSTRO DEL BORSELLINO, subito.
+     *
+     * ⚖️ Gemella di `_pmoWalletDeltaAggiorna` e NON la stessa funzione, perché il `tipo` cambia
+     * la regola: quella chiede il peso di una riga `payment` (cassa nostra, metodo wallet, col
+     * segno rovesciato), questa di un `wallet_txn`, che porta **già il segno dentro**.
+     * 🚨 Passarle un `wallet_txn` chiamando la gemella darebbe **zero** — `_pmoWalletPesoRiga`
+     * con `tipo: 'payment'` chiede `source` e `method`, che un movimento del borsellino non ha —
+     * e il saldo non si muoverebbe fino al giro dopo, in silenzio.
+     * 📌 *Due domande diverse sullo stesso archivio non si servono con la stessa funzione: la
+     *    seconda risponde comunque, e risponde zero.* */
+    function _pmoWalletDeltaTxn(payload) {
+      const peso = _pmoWalletPesoRiga(payload, 'wallet_txn');
+      if (!peso) return;
+      for (const k of _pmoWalletChiavi(payload)) {
+        window.__pmoWalletDelta.set(k, (window.__pmoWalletDelta.get(k) || 0) + peso);
+      }
+    }
     function _pmoWalletDeltaDi(g) {
       try {
         if (!g || !window.__pmoWalletDelta) return 0;
@@ -43450,6 +43467,107 @@ Per confermare scrivi ELIMINA.`);
     try { if (typeof _incassiState !== 'undefined' && _incassiState) _incassiState.rows = null; } catch (e) {}
     return rec;
   }
+  /* 👛⭐⭐ VOCE 196 — IL BORSELLINO SI MUOVE DA NOI: si scrive il MOVIMENTO, non la fotografia.
+   *
+   * 🗣️ Nasce da un suo gesto sul vivo del sistema nuovo: «Ricarica wallet» → *«Non riuscito.
+   * Ambiente di prova: da qui non si scrive sul gestionale del circolo»*. 📏 E dal censimento
+   * delle 11 edge che scrivono: `matchpoint-wallet-correct` era l'UNICA rimasta senza una strada
+   * dopo il distacco — le prenotazioni hanno il ramo nativo nell'edge, l'importo a carico la 188/B,
+   * l'anagrafica `pmoSistemaNuovoPer`, la cassa la 181. Il borsellino niente, e i bottoni accesi.
+   *
+   * ⚖️ IL RIFIUTO ERA DELIBERATO, e la sua ragione (9/08) era: *«il borsellino è denaro, e
+   * Matchpoint è il libro mastro UNICO — registrare qui vorrebbe dire inventare un secondo
+   * libro»*. ⇒ Quella premessa è **caduta l'08/09**: *«dal gestionale si incassa, perché
+   * Matchpoint non c'è più»*. Il secondo libro adesso esiste, è voluto, ed è la voce 181.
+   * 📌 *Una regola che poggia su un mondo con un pezzo solo non invecchia sbagliando: invecchia
+   *    diventando falsa senza dirlo, e sui soldi «no» sembra sempre la risposta prudente.*
+   *
+   * 🚨⭐⭐ E LA COSA CHE SI SBAGLIEREBBE COPIANDO L'EDGE: **la fotografia NON si riscrive.**
+   * L'edge, dopo il worker, aggiorna `wallet_balance` perché quel numero gliel'ha dato Matchpoint
+   * (voce 143). Qui no: dalla 181 la fotografia è il saldo **d'apertura** e i movimenti nostri ci
+   * si **sommano** sopra (`_walletResolve`). Riscriverla e aggiungere il movimento conterebbe la
+   * ricarica **due volte** — e il verso dell'errore è il peggiore: credito regalato.
+   * ⇒ Si scrive **un** record, `wallet_txn`, che è esattamente ciò che l'app già legge: nella
+   *   somma del saldo e nell'elenco della scheda socio («Ricarica wallet» / «Storno wallet»).
+   *
+   * ⛔ SENZA UNA CHIAVE NON SI SCRIVE: `_pmoPagRigaSocio` attribuisce una riga al socio **solo**
+   * per `member_local_id` o `id_cliente`, mai per nome. Un movimento senza chiave sarebbe denaro
+   * che non è di nessuno, e su un borsellino «di nessuno» non si può nemmeno stornare.
+   * ⭐ Il `member_local_id` è il **nostro** id, e viene PRIMA del codice Matchpoint: è la regola
+   *   del 2/08 (*«l'ID che il bot deve leggere è l'ID PMO»*) applicata al denaro, e il giorno del
+   *   distacco questa riga non si tocca.
+   *
+   * 🔑 `source: 'pmo_wallet_nativo'` e non `'pmo_wallet'` come l'edge, di proposito: dice che
+   *    questo movimento è **nato qui** invece di essere la registrazione di uno mosso su
+   *    Matchpoint. 📏 Nessun lettore filtra `source` sui `wallet_txn` (misurato: zero
+   *    occorrenze), quindi distinguerli non costa niente e il giorno in cui una delle due strade
+   *    sbaglia si sa quale guardare. */
+  /* 🚨⭐⭐ VOCE 196 — LA REGOLA DELLO STORNO, STACCATA IN UNA FUNZIONE PURA.
+   *
+   * ⚖️ Sta qui e non dentro il gemello per la ragione imparata dalla 181: *una guardia che cerca
+   * una PAROLA prova che la parola c'è, non che il codice succeda*. 📏 Provato: col controllo
+   * spento con `if (false)` la parola `EXCEEDS_BALANCE` restava nel sorgente e il banco restava
+   * **verde**. Staccata così, il banco la **esegue**.
+   *
+   * ⛔ Un saldo che non si sa NON autorizza: `null` non è «zero», è «non lo so», e stornare da un
+   * borsellino di cui non conosciamo il saldo lo porterebbe sotto zero senza accorgersene — un
+   * debito che nessuno ha contratto. ⇒ Nel dubbio si rifiuta, che è il verso in cui un rifiuto
+   * costa un messaggio e il contrario costa denaro.
+   * ⭐ E l'intero saldo SÌ: `subtractCents === pre` è lo storno totale, che è il caso normale. */
+  function _pmoWalletStornoAmmesso(preCents, subtractCents) {
+    const sub = Math.round(Number(subtractCents) || 0);
+    if (!(sub > 0)) return false;
+    if (typeof preCents !== 'number' || !Number.isFinite(preCents)) return false;
+    return sub <= preCents;
+  }
+  async function _pmoWalletScriviMovimento(opts) {
+    const op = (opts && opts.op === 'storno') ? 'storno' : 'recharge';
+    const cents = Math.abs(Math.round(Number(opts && opts.amountCents) || 0));
+    if (!cents) throw new Error('IMPORTO_NULLO');
+    const firmato = (op === 'recharge') ? cents : -cents;
+    const adesso = new Date();
+    // Il GIORNO è quello di Roma, non UTC: una ricarica delle 00:30 non è del giorno prima.
+    const giorno = (function () {
+      try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome' }).format(adesso); }
+      catch (e) { return adesso.toISOString().slice(0, 10); }
+    })();
+    const memberLocalId = String((opts && opts.memberLocalId) || '').trim();
+    const idCliente = String((opts && opts.idCliente) || '').trim();
+    if (!memberLocalId && !idCliente) throw new Error('SENZA_CHIAVE');
+    const pre = (opts && typeof opts.preCents === 'number') ? opts.preCents : null;
+    const payload = {
+      op: op,
+      // ⚖️ IL SEGNO È LA DIREZIONE: + ricarica, − storno. Così l'elenco si somma senza che chi
+      // legge debba conoscere il significato di `op` — stessa forma dell'edge.
+      amount_cents: firmato,
+      member_local_id: memberLocalId || null,
+      id_cliente: idCliente || null,
+      codice: String((opts && opts.codice) || '') || null,
+      player_name: (opts && opts.playerName) || '',
+      balance_cents_pre: pre,
+      balance_cents_post: (pre != null) ? (pre + firmato) : null,
+      data: giorno,
+      recorded_at: adesso.toISOString(),
+      source: 'pmo_wallet_nativo',
+      status: 'done',
+    };
+    // 🔑 Una chiave per EVENTO, non per socio: due ricariche allo stesso socio sono due
+    // movimenti, e una chiave deterministica sul socio le farebbe sovrascrivere l'una l'altra.
+    const rnd = (function () {
+      try { return crypto.randomUUID().slice(0, 8); }
+      catch (e) { return String(Math.random()).slice(2, 10); }
+    })();
+    const rec = {
+      record_type: 'wallet_txn',
+      local_key: 'wtx|' + (memberLocalId || idCliente) + '|' + payload.recorded_at + '|' + rnd,
+      payload: payload,
+      deleted: false,
+    };
+    // Il saldo si muove SUBITO, non al prossimo giro di lettura (2 minuti di cache).
+    try { _pmoWalletDeltaTxn(payload); } catch (e) {}
+    await pmoSyncCloudRecordsNow([rec], op === 'recharge' ? 'ricaricare il borsellino' : 'stornare dal borsellino');
+    return rec;
+  }
   // Storno della cassa nostra: marca voided le righe `payment` che combaciano (prenotazione +
   // giocatore per id_cliente o nome). L'aggregazione di Incassi salta i voided → spariscono.
   async function _pmoCassaStorna(idReserva, idCliente, playerName) {
@@ -44312,8 +44430,19 @@ Per confermare scrivi ELIMINA.`);
     const currentCents = (typeof opts.currentCents === 'number') ? opts.currentCents : null;
     const subtractCents = (typeof opts.subtractCents === 'number') ? Math.round(opts.subtractCents) : null;
     const btns = Array.isArray(opts.sourceBtns) ? opts.sourceBtns : [];
-    if (!/^\d{1,8}$/.test(idInterno) && !codice) {
-      try { svcAddMessage('system', '⚠️ Socio senza id Matchpoint né codice: impossibile stornare il wallet.', 'error'); } catch (e) {}
+    /* 👛⭐ VOCE 196 — SUL SISTEMA NUOVO LA CHIAVE È LA NOSTRA, non quella di Matchpoint.
+     * ⚖️ Il codice Matchpoint serviva al worker per ritrovare la scheda; dove il worker non
+     * si chiama non serve a niente, e pretenderlo escluderebbe proprio i soci NATI sul
+     * sistema nuovo — quelli che un codice Matchpoint non l'avranno mai.
+     * ⭐ È la regola del 2/08 (*«l'ID che il bot deve leggere è l'ID PMO»*) applicata al
+     *   denaro: il giorno del distacco questa riga non si tocca.
+     * ⛔ Ma una chiave ci vuole: `_pmoPagRigaSocio` attribuisce un movimento **solo** per
+     *   `member_local_id` o `id_cliente`, mai per nome. Senza, sarebbe denaro di nessuno. */
+    const _walletNativo = (typeof pmoCassaNativa === 'function') ? pmoCassaNativa() : false;
+    if (_walletNativo ? !memberId : (!/^\d{1,8}$/.test(idInterno) && !codice)) {
+      try { svcAddMessage('system', _walletNativo
+        ? '⚠️ Socio senza scheda nel gestionale: impossibile stornare il wallet.'
+        : '⚠️ Socio senza id Matchpoint né codice: impossibile stornare il wallet.', 'error'); } catch (e) {}
       return { ok: false, message: 'NO_CLIENT_REF' };
     }
     if (subtractCents == null || subtractCents <= 0) {
@@ -44335,6 +44464,44 @@ Per confermare scrivi ELIMINA.`);
     if (!okGo) return { ok: false, message: 'CANCELLED' };
     btns.forEach(function (b) { try { b.disabled = true; } catch (e) {} });
     const note = svcAddMessage('system', '↻ Storno wallet di ' + esc(playerName) + '… (non chiudere)');
+    /* 👛⭐⭐ VOCE 196 — LA STRADA NATIVA: qui il borsellino è NOSTRO e il circolo non si chiama.
+     * ⛔ Sta DOPO la conferma di proposito: chi preme deve aver visto socio, saldo e importo —
+     *    che sia nostro o di Matchpoint, il denaro si muove lo stesso e la domanda non si salta.
+     * ⚖️ E il cancello è `pmoCassaNativa`, non `!pmoGestionaleCollegatoAlCircolo`: quello
+     *    fallisce chiuso per LA SUA domanda («nel dubbio non chiamo il circolo») e negarlo
+     *    vorrebbe dire «nel dubbio scrivo denaro». Qui nel dubbio si passa dalla strada vecchia. */
+    if (_walletNativo && !_harness) {
+      try {
+        const _rr = (typeof _walletResolve === 'function' && g) ? _walletResolve(g) : null;
+        const _pre = (currentCents != null) ? currentCents
+          : ((_rr && typeof _rr.balance_cents === 'number') ? _rr.balance_cents : null);
+        /* 🚨 IL SALDO NON PUÒ ANDARE SOTTO ZERO, e il controllo va RIFATTO qui: quello di
+         * sopra guarda `currentCents`, che il chiamante può non avere passato. Nativamente il
+         * saldo lo sappiamo (`_walletResolve`) ⇒ non c'è scusa per non guardarlo, e un
+         * borsellino negativo sarebbe un debito che nessuno ha contratto. */
+        if (!_pmoWalletStornoAmmesso(_pre, subtractCents)) {
+          _setMsg(note, '⚠️ L\'importo da stornare supera il saldo del wallet.');
+          btns.forEach(function (b) { try { b.disabled = false; } catch (e2) {} });
+          return { ok: false, message: 'EXCEEDS_BALANCE' };
+        }
+        await _pmoWalletScriviMovimento({
+          op: 'storno', memberLocalId: memberId, idCliente: idInterno, codice: codice,
+          playerName: playerName, amountCents: subtractCents, preCents: _pre,
+        });
+        const _post = (_pre != null) ? (_pre - subtractCents) : null;
+        _setMsg(note, '↩︎ Stornato ' + _incassiEuro(subtractCents) + ' — ' + esc(playerName)
+          + (_post != null ? (' · nuovo saldo ' + _incassiEuro(_post)) : ''));
+        try { if (typeof displayMembers === 'function' && document.getElementById('memberTableBody')) displayMembers(); else if (typeof renderOpenMemberCard === 'function') renderOpenMemberCard(); } catch (e) {}
+        try { if (typeof svcScheduleAutoClear === 'function') svcScheduleAutoClear(); } catch (e) {}
+        return { ok: true, nativa: true, balanceCentsPost: _post };
+      } catch (e) {
+        /* ⛔ Nel dubbio NON si dice «fatto»: se il movimento non è stato registrato il saldo non
+         * si è mosso, e raccontare il contrario farebbe spendere un credito che non c'è. */
+        _setMsg(note, '⚠️ Storno NON registrato: ' + esc((e && e.message) ? e.message : String(e)));
+        btns.forEach(function (b) { try { b.disabled = false; } catch (e2) {} });
+        return { ok: false, message: (e && e.message) ? e.message : String(e) };
+      }
+    }
     try {
       const cfg = await loadAssessmentSupabaseConfig();
       const supabaseUrl = cfg.supabaseUrl, supabaseKey = cfg.supabaseKey;
@@ -44428,8 +44595,19 @@ Per confermare scrivi ELIMINA.`);
     const currentCents = (typeof opts.currentCents === 'number') ? opts.currentCents : null;
     const addCents = (typeof opts.addCents === 'number') ? Math.round(opts.addCents) : null;
     const btns = Array.isArray(opts.sourceBtns) ? opts.sourceBtns : [];
-    if (!/^\d{1,8}$/.test(idInterno) && !codice) {
-      try { svcAddMessage('system', '⚠️ Socio senza id Matchpoint né codice: impossibile ricaricare il wallet.', 'error'); } catch (e) {}
+    /* 👛⭐ VOCE 196 — SUL SISTEMA NUOVO LA CHIAVE È LA NOSTRA, non quella di Matchpoint.
+     * ⚖️ Il codice Matchpoint serviva al worker per ritrovare la scheda; dove il worker non
+     * si chiama non serve a niente, e pretenderlo escluderebbe proprio i soci NATI sul
+     * sistema nuovo — quelli che un codice Matchpoint non l'avranno mai.
+     * ⭐ È la regola del 2/08 (*«l'ID che il bot deve leggere è l'ID PMO»*) applicata al
+     *   denaro: il giorno del distacco questa riga non si tocca.
+     * ⛔ Ma una chiave ci vuole: `_pmoPagRigaSocio` attribuisce un movimento **solo** per
+     *   `member_local_id` o `id_cliente`, mai per nome. Senza, sarebbe denaro di nessuno. */
+    const _walletNativo = (typeof pmoCassaNativa === 'function') ? pmoCassaNativa() : false;
+    if (_walletNativo ? !memberId : (!/^\d{1,8}$/.test(idInterno) && !codice)) {
+      try { svcAddMessage('system', _walletNativo
+        ? '⚠️ Socio senza scheda nel gestionale: impossibile ricaricare il wallet.'
+        : '⚠️ Socio senza id Matchpoint né codice: impossibile ricaricare il wallet.', 'error'); } catch (e) {}
       return { ok: false, message: 'NO_CLIENT_REF' };
     }
     if (addCents == null || addCents <= 0) {
@@ -44446,6 +44624,36 @@ Per confermare scrivi ELIMINA.`);
     if (!okGo) return { ok: false, message: 'CANCELLED' };
     btns.forEach(function (b) { try { b.disabled = true; } catch (e) {} });
     const note = svcAddMessage('system', '↻ Ricarica wallet di ' + esc(playerName) + '… (non chiudere)');
+    /* 👛⭐⭐ VOCE 196 — LA STRADA NATIVA: qui il borsellino è NOSTRO e il circolo non si chiama.
+     * ⛔ Sta DOPO la conferma di proposito: chi preme deve aver visto socio, saldo e importo —
+     *    che sia nostro o di Matchpoint, il denaro si muove lo stesso e la domanda non si salta.
+     * ⚖️ E il cancello è `pmoCassaNativa`, non `!pmoGestionaleCollegatoAlCircolo`: quello
+     *    fallisce chiuso per LA SUA domanda («nel dubbio non chiamo il circolo») e negarlo
+     *    vorrebbe dire «nel dubbio scrivo denaro». Qui nel dubbio si passa dalla strada vecchia. */
+    if (_walletNativo && !_harness) {
+      try {
+        const _rr = (typeof _walletResolve === 'function' && g) ? _walletResolve(g) : null;
+        const _pre = (currentCents != null) ? currentCents
+          : ((_rr && typeof _rr.balance_cents === 'number') ? _rr.balance_cents : null);
+
+        await _pmoWalletScriviMovimento({
+          op: 'recharge', memberLocalId: memberId, idCliente: idInterno, codice: codice,
+          playerName: playerName, amountCents: addCents, preCents: _pre,
+        });
+        const _post = (_pre != null) ? (_pre + addCents) : null;
+        _setMsg(note, '💰 Ricaricato ' + _incassiEuro(addCents) + ' — ' + esc(playerName)
+          + (_post != null ? (' · nuovo saldo ' + _incassiEuro(_post)) : ''));
+        try { if (typeof displayMembers === 'function' && document.getElementById('memberTableBody')) displayMembers(); else if (typeof renderOpenMemberCard === 'function') renderOpenMemberCard(); } catch (e) {}
+        try { if (typeof svcScheduleAutoClear === 'function') svcScheduleAutoClear(); } catch (e) {}
+        return { ok: true, nativa: true, balanceCentsPost: _post };
+      } catch (e) {
+        /* ⛔ Nel dubbio NON si dice «fatto»: se il movimento non è stato registrato il saldo non
+         * si è mosso, e raccontare il contrario farebbe spendere un credito che non c'è. */
+        _setMsg(note, '⚠️ Ricarica NON registrata: ' + esc((e && e.message) ? e.message : String(e)));
+        btns.forEach(function (b) { try { b.disabled = false; } catch (e2) {} });
+        return { ok: false, message: (e && e.message) ? e.message : String(e) };
+      }
+    }
     try {
       const cfg = await loadAssessmentSupabaseConfig();
       const supabaseUrl = cfg.supabaseUrl, supabaseKey = cfg.supabaseKey;
