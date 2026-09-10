@@ -8227,7 +8227,7 @@ body.assessment-public-mode .assessment-public-only-card {
       <div class="section">
         <div class="dashboard-page-title pmo-section-head">
           <h2>Impostazioni</h2>
-          <p>Utenti e controlli tecnici, notifiche staff, dati Matchpoint, bot Telegram e circoli della zona.</p>
+          <p data-frase-col-circolo="Utenti e controlli tecnici, notifiche staff, dati Matchpoint, bot Telegram e circoli della zona.">Utenti e controlli tecnici, notifiche staff, dati del circolo, bot Telegram e circoli della zona.</p>
         </div>
 
         <div id="pmoAdminUsersSection" class="admin-section-panel" data-pmo-admin-section="users">
@@ -8724,7 +8724,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.429';
+    const APP_VERSION = '6.430';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -26595,7 +26595,7 @@ Grazie!`
           <div><label style="${lblCss}">Al giorno</label><input type="date" id="incassiTo" value="${st.to}" min="${st.from}" onchange="_incassiSetTo(this.value)"></div>
           <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-end;">
             ${pmoCassaNativa() ? `<button type="button" class="btn-secondary small-btn" onclick="pmoIncassiCleanSim(this)" title="Cancella le righe rimaste dall'era della simulazione (source pmo_simulate). NON tocca la cassa del gestionale." style="color:#5b3d00;background:#fdf0cf;border-color:#e6b84a;font-weight:700;">🧹 Pulisci simulazioni</button>` : ''}
-            <button type="button" class="btn-primary small-btn" onclick="pmoPaymentsSyncAll(this)" title="Legge da Matchpoint i pagamenti delle prenotazioni nell'intervallo selezionato (report 11.13)">⟳ Sincronizza da Matchpoint</button>
+            ${pmoCircoloEsternoCollegato() === true ? `<button type="button" class="btn-primary small-btn" onclick="pmoPaymentsSyncAll(this)" title="Legge da ${pmoNomeCircoloEsterno()} i pagamenti delle prenotazioni nell'intervallo selezionato (report 11.13)">⟳ Sincronizza da ${pmoNomeCircoloEsterno()}</button>` : ''}
           </div>
         </div>`;
 
@@ -26677,7 +26677,7 @@ Grazie!`
       let table;
       if (!keys.length) {
         table = `<div class="section" style="text-align:center;padding:36px;color:#999;border:1px dashed #ddd;border-radius:10px;">
-          Nessun incasso nell'intervallo selezionato.<br><span style="font-size:12px;">Premi «⟳ Sincronizza da Matchpoint» per leggere i pagamenti delle prenotazioni dal report 11.13.</span></div>`;
+          Nessun incasso nell'intervallo selezionato.${pmoCircoloEsternoCollegato() === true ? `<br><span style="font-size:12px;">Premi «⟳ Sincronizza da ${pmoNomeCircoloEsterno()}» per leggere i pagamenti delle prenotazioni dal report 11.13.</span>` : ''}</div>`;
       } else {
         let bodyRows = '';
         for (const k of keys) {
