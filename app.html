@@ -4950,7 +4950,6 @@
     .pmo-ricarica-saldo strong { font-size:19px; color:var(--primary); }
     .pmo-ricarica-inner label { display:block; font-size:12px; color:#6b7688; margin-bottom:4px; }
     .pmo-ricarica-inner input { width:100%; font-size:17px; padding:9px 11px; border:1px solid #cfd9e7; border-radius:8px; }
-    .pmo-ricarica-avviso { margin:12px 0 16px; font-size:12.5px; color:#8a5a00; background:#fff8e6; border:1px solid #f0dca6; border-left:4px solid #e8b64a; border-radius:6px; padding:9px 11px; line-height:1.45; }
     .pmo-ricarica-azioni { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     .assessment-public-modal { display:none; position:fixed; inset:0; background:rgba(15,23,42,.45); z-index:10001; padding:18px; align-items:center; justify-content:center; }
     .assessment-public-modal .modal-inner { width:100%; max-width:380px; background:#fff; border-radius:18px; border:1px solid #dfe6ef; box-shadow:0 20px 60px rgba(0,0,0,.28); padding:18px; }
@@ -8724,7 +8723,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.438';
+    const APP_VERSION = '6.439';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -27106,7 +27105,6 @@ Grazie!`
           <button type="button" class="btn-secondary small-btn" style="white-space:nowrap;" onclick="pmoWalletVoidFill('${escapeHtml(String(g.id))}')" title="Riempi con l'intero saldo">Totale</button>
         </div>
         <div class="pmo-ricarica-saldo" style="margin-top:12px;"><span>Saldo dopo lo storno</span><strong id="pmoStornoDopo">—</strong></div>
-        <div class="pmo-ricarica-avviso">⚠️ <strong>Operazione reale.</strong> Sottrae il credito dal wallet su Matchpoint («Correzione del saldo»). Da qui non si annulla: per rimettere il credito serve una ricarica.</div>
         <div class="pmo-ricarica-azioni">
           <button type="button" class="btn-secondary" onclick="pmoChiudiRicarica()">Annulla</button>
           <button type="button" class="btn-danger" onclick="pmoConfermaStorno('${escapeHtml(String(g.id))}', this)">↩︎ Sì, storna</button>
@@ -44476,9 +44474,16 @@ Per confermare scrivi ELIMINA.`);
     }
     const isTotal = (currentCents != null && subtractCents === currentCents);
     /* 🆕 02/09/2026 sera — `giaConfermato`: chi arriva dalla finestra dello storno ha già visto
-       socio, saldo, importo, saldo risultante e l'avviso «operazione reale», nel punto dello schermo
-       dove ha premuto. Ripetere la domanda nel pannello dell'Assistente AI sarebbe una SECONDA
-       domanda, in un altro posto — e a saltarsi è sempre quella che si vede meno.
+       socio, saldo, importo e **saldo risultante**, nel punto dello schermo dove ha premuto.
+       Ripetere la domanda nel pannello dell'Assistente AI sarebbe una SECONDA domanda, in un
+       altro posto — e a saltarsi è sempre quella che si vede meno.
+       🔪 10/09/2026 — QUI SI CITAVA ANCHE «l'avviso ‹operazione reale›», e quel riquadro NON C'È
+       PIÙ: tolto su sua decisione, come il gemello della ricarica poche ore prima. Diceva
+       «dal wallet su Matchpoint» su un borsellino che è NOSTRO (voce 196).
+       ⚖️ E la scorciatoia regge MEGLIO qui che nel gemello: questa finestra mostra un fatto in
+       più — il **saldo dopo lo storno**, calcolato dal vivo — che è esattamente la cosa che chi
+       storna deve guardare prima di premere. 📌 *Un numero che si aggiorna mentre digiti dice
+       più di un riquadro che dice sempre la stessa frase.*
        ⛔ Deve essere `true` ESATTO: una scorciatoia sulla conferma di un movimento di denaro non si
        apre per distrazione (stessa regola del gemello `_pmoRechargeWallet`). */
     const okGo = (opts.giaConfermato === true) ? true : await _pmoConfirmVoidWallet(playerName, subtractCents, isTotal);
