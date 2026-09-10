@@ -8724,7 +8724,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.428';
+    const APP_VERSION = '6.429';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -16553,12 +16553,16 @@ Grazie.`
     async function pmoCreateMemberInMatchpoint(member, options = {}) {
       // notify=false → niente toast showAlert (lo usa l'assistente AI, che riporta l'esito in chat).
       const notify = options.notify !== false;
-      // In TEST il collegamento anagrafica→Matchpoint è scollegato: le prove (anche con
-      // l'assistente) restano in app + Supabase e NON toccano il gestionale.
-      if (typeof PMO_IS_TEST_ENV !== 'undefined' && PMO_IS_TEST_ENV) {
-        console.info('[TEST] creazione socio→Matchpoint disattivata: il socio resta in app + Supabase.');
-        return { status: 'test_env' };
-      }
+      // 🔄⭐⭐ VOCE 190 — LA GUARDIA ERA `PMO_IS_TEST_ENV`, E NON POTEVA RESTARE.
+      // Qui c'era *«in TEST il collegamento anagrafica→Matchpoint è scollegato»*, ed era vero:
+      // questa spinta non partiva, e a differenza di `disable`/`reactivate` (voce 193) il difetto
+      // non si vedeva. 🚨 Ma la domanda era **sbagliata**: `PMO_IS_TEST_ENV` risponde a *«l'indirizzo
+      // comincia per test.»*, e la **voce 184** la spegnerà ⇒ il giorno del passaggio questa riga
+      // tornerebbe `false` **da sola e in silenzio**, e il gestionale ricomincerebbe a creare
+      // schede su un Matchpoint spento. Si chiede invece **con chi si parla**.
+      // 📌 *Una guardia appesa al nome dell'ambiente non scade con un errore: scade con un verde.*
+      const _cfgCircolo = await loadAssessmentSupabaseConfig().catch(() => null);
+      if (pmoSistemaNuovoPer(_cfgCircolo && _cfgCircolo.supabaseUrl)) return { status: 'non_collegato' };
       if (isGuestJollyMember(member)) return { status: 'guest' };
       // Salta SOLO se ha già un vero codice Matchpoint (sole cifre, es. "001016").
       // Un memberId provvisorio dell'app (formato "PMO-XXXXXX") NON conta come già creato.
@@ -16716,8 +16720,11 @@ Grazie.`
           svcAddMessage('system', '⏸️ Lasciato com\'è: il socio è nell\'app, in Matchpoint non c\'è. Puoi rifarlo dalla sua scheda.');
         });
         try { _dom.appendChild(_btns); } catch (e) {}
-      } else if (st === 'test_env') {
-        _setSync('💾 Creato (Matchpoint scollegato in test)', '#067647');
+      } else if (st === 'non_collegato') {
+        // 🆕 VOCE 190 — niente «scollegato in test»: sul gestionale nuovo il socio è creato, punto.
+        // ⛔ La parola «test» qui era peggio del nome del circolo: chi lavora sul gestionale VERO
+        //    leggerebbe che sta usando una prova, e smetterebbe di fidarsi di quello che salva.
+        _setSync('💾 Socio creato', '#067647');
         _linger();
       } else if (st === 'guest' || st === 'skipped') {
         _setSync('💾 Salvato nell\'app', '#475467');
@@ -30610,12 +30617,10 @@ Per confermare scrivi ELIMINA.`);
 	        setTimeout(() => { try { showAlert(msg, type); } catch (_) {} }, 3200);
 	      };
 	      try {
-	        // In TEST il collegamento anagrafica→Matchpoint è scollegato: le prove (anche con
-	        // l'assistente) restano in app + Supabase e NON toccano il gestionale.
-	        if (typeof PMO_IS_TEST_ENV !== 'undefined' && PMO_IS_TEST_ENV) {
-	          console.info('[TEST] aggiornamento socio→Matchpoint disattivato: la modifica resta in app + Supabase.');
-	          return { status: 'test_env' };
-	        }
+	        // 🔄 VOCE 190 — come la creazione qui sopra: la guardia era `PMO_IS_TEST_ENV`, che la
+	        // voce 184 spegnerà in silenzio. Si chiede il **ref Supabase**, cioè con chi si parla.
+	        const _cfgCircolo = await loadAssessmentSupabaseConfig().catch(() => null);
+	        if (pmoSistemaNuovoPer(_cfgCircolo && _cfgCircolo.supabaseUrl)) return { status: 'non_collegato' };
 	        if (typeof isGuestJollyMember === 'function' && isGuestJollyMember(member)) return { status: 'guest' };
 	        const codice = String(member.memberId || '').trim();
 	        if (!/^\d{4,6}$/.test(codice)) {
@@ -30772,8 +30777,9 @@ Per confermare scrivi ELIMINA.`);
       } else if (st === 'ok_level_failed') {
         _setSync('⚠️ Salvato, ma il LIVELLO non è passato su Matchpoint', '#b54708');
         svcAddMessage('system', '⚠️ Gli altri dati sono su Matchpoint; il <strong>livello</strong> no. Riprova dal gestionale se serve.', 'error');
-      } else if (st === 'test_env') {
-        _setSync('💾 Salvato (Matchpoint scollegato in test)', '#067647');
+      } else if (st === 'non_collegato') {
+        // 🆕 VOCE 190 — vedi il gemello della creazione: né il nome del circolo, né «in test».
+        _setSync('💾 Salvato', '#067647');
         _lingerScheda();
       } else if (st === 'skipped' || st === 'no_permission' || st === 'guest') {
         _setSync('💾 Salvato nell\'app', '#475467');
@@ -44642,7 +44648,7 @@ Per confermare scrivi ELIMINA.`);
           if (isMatchpoint && hpx > 65 && !(_pl && Array.isArray(_pl.names))) {
             const badge = document.createElement('div');
             badge.className = 'lock-badge';
-            badge.textContent = '🔒 Matchpoint · Sola lettura';
+            badge.textContent = '🔒 ' + (pmoNomeCircoloEsterno() ? pmoNomeCircoloEsterno() + ' · ' : '') + 'Sola lettura';
             block.appendChild(badge);
           }
           if (_pl && Array.isArray(_pl.names)) {
@@ -44735,7 +44741,7 @@ Per confermare scrivi ELIMINA.`);
         if (entry.tipo !== 'staff-booking') {
           const badge = document.createElement('div');
           badge.className = 'agenda-card-mp-badge';
-          badge.textContent = '🔒 Matchpoint · Sola lettura';
+          badge.textContent = '🔒 ' + (pmoNomeCircoloEsterno() ? pmoNomeCircoloEsterno() + ' · ' : '') + 'Sola lettura';
           card.appendChild(badge);
         } else {
           const delBtn = document.createElement('button');
@@ -46354,7 +46360,7 @@ Per confermare scrivi ELIMINA.`);
             try { return await loadAssessmentSupabaseConfig(); } catch (e) { return null; }
           })();
           if (!_cfgGate || !pmoGestionaleCollegatoAlCircolo(_cfgGate.supabaseUrl)) return;
-          const _msg = svcAddMessage('system', '⏳ Leggo descrizione e note da Matchpoint… (puoi già scrivere)');
+          const _msg = svcAddMessage('system', '⏳ Leggo descrizione e note' + (pmoNomeCircoloEsterno() ? ' da ' + pmoNomeCircoloEsterno() : '') + '… (puoi già scrivere)');
           const _setNote = function (html) {
             const last = _msg && _msg.querySelector(':scope > div:last-child');
             if (last) last.innerHTML = '<span style="color:var(--text-muted);font-size:.78rem;">' + html + '</span>';
@@ -46599,12 +46605,12 @@ Per confermare scrivi ELIMINA.`);
         return;
       }
 
-      const _note = svcAddMessage('system', '⏳ Aggiorno la lista giocatori da Matchpoint… (puoi già modificare)');
+      const _note = svcAddMessage('system', '⏳ Aggiorno la lista giocatori' + (pmoNomeCircoloEsterno() ? ' da ' + pmoNomeCircoloEsterno() : '') + '… (puoi già modificare)');
       let _sec = 0;
       const _timer = setInterval(function () {
         _sec += 1;
         const last = _note && _note.querySelector(':scope > div:last-child');
-        if (last) last.innerHTML = '⏳ Aggiorno la lista giocatori da Matchpoint… (' + _sec + 's · puoi già modificare)';
+        if (last) last.innerHTML = '⏳ Aggiorno la lista giocatori' + (pmoNomeCircoloEsterno() ? ' da ' + pmoNomeCircoloEsterno() : '') + '… (' + _sec + 's · puoi già modificare)';
       }, 1000);
       (async function () {
         const _setNote = function (html) {
@@ -46888,7 +46894,7 @@ Per confermare scrivi ELIMINA.`);
       maestroSec.appendChild(maestroSel);
       const maestroHint = document.createElement('div');
       maestroHint.className = 'svc-edit-label'; maestroHint.style.marginTop = '4px';
-      maestroHint.textContent = 'Cambia il maestro della lezione: verrà salvato su Matchpoint.';
+      maestroHint.textContent = 'Cambia il maestro della lezione: verrà salvato' + pmoSuCircoloEsterno() + '.';
       maestroSec.appendChild(maestroHint);
       box.appendChild(maestroSec);
     }
@@ -56688,7 +56694,7 @@ Per confermare scrivi ELIMINA.`);
         if (!target || target.idx == null) return _say('❌ Non ho più il riferimento del giocatore: riprova.');
         st.remove = st.remove || {}; st.remove[target.idx] = true;
         try { staffCalRenderPlayersEditor(); staffCalBringEditorToTop(); } catch (e) {}
-        _say('➖ Tolgo <strong>' + _escapeHtml(target.nome) + '</strong> e salvo su Matchpoint…');
+        _say('➖ Tolgo <strong>' + _escapeHtml(target.nome) + '</strong> e salvo' + pmoSuCircoloEsterno() + '…');
         try { staffCalPlayersSave({ skipConfirm: true }); }
         catch (e) { return _say('❌ Non riesco a salvare: ' + _escapeHtml((e && e.message) ? e.message : String(e))); }
         return true;
@@ -56998,7 +57004,7 @@ Per confermare scrivi ELIMINA.`);
       if (!target || target.idx == null) return _say('❌ Non ho più il riferimento del giocatore: riprova.');
       st.remove = st.remove || {}; st.remove[target.idx] = true;
       try { staffCalRenderPlayersEditor(); staffCalBringEditorToTop(); } catch (e) {}
-      _say('➖ Tolgo <strong>' + _escapeHtml(target.nome) + '</strong> e salvo su Matchpoint…');
+      _say('➖ Tolgo <strong>' + _escapeHtml(target.nome) + '</strong> e salvo' + pmoSuCircoloEsterno() + '…');
       try { staffCalPlayersSave({ skipConfirm: true }); } catch (e) { return _say('❌ Non riesco a salvare: ' + _escapeHtml((e && e.message) ? e.message : String(e))); }
       return true;
     }
@@ -57035,8 +57041,8 @@ Per confermare scrivi ELIMINA.`);
       for (let i = 0; i < k; i++) { if (guests[i].idx != null) st.remove[guests[i].idx] = true; }
       try { staffCalRenderPlayersEditor(); staffCalBringEditorToTop(); } catch (e) {}
       const _msg = (k === 1)
-        ? '➖ Tolgo <strong>un ospite</strong> e salvo su Matchpoint…'
-        : ('➖ Tolgo <strong>' + k + ' ospiti</strong>' + (want !== 99 && want > guests.length ? ' (ce n’erano solo ' + guests.length + ')' : '') + ' e salvo su Matchpoint…');
+        ? '➖ Tolgo <strong>un ospite</strong> e salvo' + pmoSuCircoloEsterno() + '…'
+        : ('➖ Tolgo <strong>' + k + ' ospiti</strong>' + (want !== 99 && want > guests.length ? ' (ce n’erano solo ' + guests.length + ')' : '') + ' e salvo' + pmoSuCircoloEsterno() + '…');
       _say(_msg);
       try { staffCalPlayersSave({ skipConfirm: true }); } catch (e) { return _say('❌ Non riesco a salvare: ' + _escapeHtml((e && e.message) ? e.message : String(e))); }
       return true;
@@ -57612,7 +57618,7 @@ Per confermare scrivi ELIMINA.`);
         const st = staffCalPlayersState;
         if (!st) return _say('❌ Non riesco ad aprire la prenotazione da spostare.');
         st.mCampo = dest.campo; st.mIso = dest.iso; st.mOraIni = dest.ora; st.mOraFin = dest.oraFin || _staffCalEndTime(dest.ora, st.origDurMin);
-        _say('↪️ Sposto su <strong>Campo ' + dest.campo + ' · ' + _dmy(dest.iso) + ' · ' + dest.ora + '</strong> e salvo su Matchpoint…');
+        _say('↪️ Sposto su <strong>Campo ' + dest.campo + ' · ' + _dmy(dest.iso) + ' · ' + dest.ora + '</strong> e salvo' + pmoSuCircoloEsterno() + '…');
         try { staffCalPlayersSave({ skipConfirm: true }); }
         catch (e) { return _say('❌ Non riesco a salvare lo spostamento: ' + _escapeHtml((e && e.message) ? e.message : String(e))); }
         return true;
@@ -57784,7 +57790,7 @@ Per confermare scrivi ELIMINA.`);
         if (!st) return _say('❌ Non riesco ad aprire la prenotazione.');
         // Stessa data/campo/ora di inizio: cambia SOLO l'ora di fine → edit in place (non spostamento).
         st.mOraFin = _staffCalEndTime(st.mOraIni, newDur);
-        _say('⏱️ Porto la durata a <strong>' + newDur + '′</strong> (fine ' + st.mOraFin + ') e salvo su Matchpoint…');
+        _say('⏱️ Porto la durata a <strong>' + newDur + '′</strong> (fine ' + st.mOraFin + ') e salvo' + pmoSuCircoloEsterno() + '…');
         try { staffCalPlayersSave({ skipConfirm: true }); }
         catch (e) { return _say('❌ Non riesco a salvare: ' + _escapeHtml((e && e.message) ? e.message : String(e))); }
         return true;
@@ -57878,7 +57884,7 @@ Per confermare scrivi ELIMINA.`);
         // anche la RIMOZIONE arriva al worker (payload.note) invece di sembrare "nessuna modifica".
         st.origNote = '\x00';
         st.note = noteText;
-        _say((fs.remove ? '🗑️ Tolgo la nota' : '📝 Salvo la nota') + ' e aggiorno Matchpoint…');
+        _say((fs.remove ? '🗑️ Tolgo la nota' : '📝 Salvo la nota') + ' e aggiorno' + (pmoNomeCircoloEsterno() ? ' ' + pmoNomeCircoloEsterno() : '') + '…');
         try { staffCalPlayersSave({ skipConfirm: true }); }
         catch (e) { return _say('❌ Non riesco a salvare: ' + _escapeHtml((e && e.message) ? e.message : String(e))); }
         return true;
@@ -58545,14 +58551,16 @@ Per confermare scrivi ELIMINA.`);
         const _fireAna = function () { if (typeof _afterAnaCreate === 'function') { const _cb = _afterAnaCreate; _afterAnaCreate = null; try { _cb(newMember); } catch (e) {} } };
         // Ospite/guest: non si crea su Matchpoint (la scheda 000001 esiste già lì).
         if (guest) { _say('✅ Socio <strong>' + _escapeHtml(fullName) + '</strong> aggiunto in anagrafica e su Supabase. <span style="color:#98a2b3;font-size:12px">(ospite: non inviato a Matchpoint)</span>'); _fireAna(); return; }
-        const _isTestEnv = (typeof PMO_IS_TEST_ENV !== 'undefined' && PMO_IS_TEST_ENV);
-        if (_isTestEnv) { _say('✅ Socio <strong>' + _escapeHtml(fullName) + '</strong> salvato in anagrafica e su Supabase. 🧪 Ambiente <strong>TEST</strong>: collegamento con Matchpoint scollegato, non lo creo nel gestionale.'); _fireAna(); return; }
+        // 🆕 VOCE 190 — si chiede con CHI si parla, non come si chiama l'indirizzo (⇒ voce 184).
+        const _sistemaNuovo = pmoSistemaNuovo();
+        if (_sistemaNuovo) { _say('✅ Socio <strong>' + _escapeHtml(fullName) + '</strong> salvato in anagrafica e su Supabase.'); _fireAna(); return; }
         _say('✅ Socio <strong>' + _escapeHtml(fullName) + '</strong> salvato in anagrafica e su Supabase. ⏳ Lo creo anche su <strong>Matchpoint</strong>… <span style="color:#98a2b3;font-size:12px">(può richiedere ~30s, ti avviso a fine operazione)</span>');
         // _fireAna (ritorno alla prenotazione) DOPO la creazione su Matchpoint, così il socio
         // aggiunto alla prenotazione porta GIÀ il codice cliente (memberId) importato da Matchpoint.
         if (typeof pmoCreateMemberInMatchpoint === 'function') {
           Promise.resolve(pmoCreateMemberInMatchpoint(newMember, { notify: false })).then(function (res) {
-            if (res && res.status === 'test_env') { _say('🧪 Ambiente <strong>TEST</strong>: collegamento con Matchpoint scollegato. Il socio resta in app + Supabase.'); _fireAna(); return; }
+            // 🆕 VOCE 190 — silenzio: l'annuncio sopra ha già detto tutto quello che è successo.
+            if (res && res.status === 'non_collegato') { _fireAna(); return; }
             const code = String(newMember.memberId || '').trim();
             if (/^\d{4,6}$/.test(code)) _say('✅ Creato anche su <strong>Matchpoint</strong> · codice <strong>' + _escapeHtml(code) + '</strong>.');
             else _say('⚠️ Creazione su Matchpoint non riuscita: il socio resta in app + Supabase. Riprova più tardi o crealo dal gestionale.');
@@ -58595,15 +58603,16 @@ Per confermare scrivi ELIMINA.`);
         try { displayAssessment(); } catch (e) {}
         try { pmoQueueImmediateMemberCloudSync(next, 'aggiornare il socio (assistente AI) su Supabase'); } catch (e) {}
         const nm = _escapeHtml(playerFullName(next));
-        if (typeof PMO_IS_TEST_ENV !== 'undefined' && PMO_IS_TEST_ENV) {
-          return _say('✅ <strong>' + nm + '</strong> aggiornato in anagrafica e su Supabase. 🧪 Ambiente <strong>TEST</strong>: collegamento con Matchpoint scollegato, non lo aggiorno nel gestionale.');
+        // 🆕 VOCE 190 — con chi si parla, non come si chiama l'indirizzo (⇒ voce 184).
+        if (pmoSistemaNuovo()) {
+          return _say('✅ <strong>' + nm + '</strong> aggiornato in anagrafica e su Supabase.');
         }
         _say('✅ <strong>' + nm + '</strong> aggiornato in anagrafica e su Supabase. ⏳ Aggiorno anche <strong>Matchpoint</strong>…');
         if (typeof pmoPushMemberUpdateToMatchpoint === 'function') {
           Promise.resolve(pmoPushMemberUpdateToMatchpoint(next, { prev: prev, notify: false })).then(function (res) {
             const st = res && res.status;
             if (st === 'ok') _say('✅ Aggiornato anche su <strong>Matchpoint</strong>.');
-            else if (st === 'test_env') _say('🧪 Ambiente <strong>TEST</strong>: collegamento con Matchpoint scollegato. Aggiornato solo in app + Supabase.');
+            else if (st === 'non_collegato') { /* 🆕 VOCE 190 — l'annuncio sopra ha già detto tutto */ }
             else if (st === 'guest') _say('ℹ️ È un ospite: su Matchpoint non si aggiorna. Resta salvato in app + Supabase.');
             else if (st === 'skipped') _say('ℹ️ Socio senza codice Matchpoint: aggiornato solo in app + Supabase.');
             else if (st === 'no_permission') _say('ℹ️ Manca il permesso <code>cloud_sync</code>: aggiornato solo in app + Supabase.');
