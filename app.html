@@ -8724,7 +8724,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.427';
+    const APP_VERSION = '6.428';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -9059,6 +9059,41 @@ body.assessment-public-mode .assessment-public-only-card {
       try {
         const memoria = pmoConfigMemoria && pmoConfigMemoria.valore;
         return pmoCassaNativaPer(memoria && memoria.supabaseUrl);
+      } catch (e) { return false; }
+    }
+
+    /* 🆕🏷️⭐⭐ VOCE 192 — «QUESTO GESTIONALE È IL SISTEMA NUOVO?», la domanda senza il denaro dentro.
+     *
+     * ⚖️ È la **stessa domanda** di `pmoCassaNativaPer` — *l'indirizzo è un ref Supabase leggibile,
+     * e non è quello di PROD?* — ma serve a chi non parla di soldi: l'anagrafica. Chiamare
+     * `pmoCassaNativaPer` per decidere se disiscrivere un socio funzionerebbe e si leggerebbe
+     * male, e un nome che mente al lettore è il primo passo perché qualcuno lo cambi per il
+     * motivo sbagliato.
+     *
+     * 🚨⭐⭐ E COPIA LA FORMA POSITIVA, che non è un dettaglio di stile: chiede un **fatto**, mai
+     * `!pmoGestionaleCollegatoAlCircolo(...)`. Quel cancello fallisce chiuso **per la sua
+     * domanda** (*«nel dubbio non chiamo il circolo»*) e torna `false` anche su un indirizzo
+     * storpiato; negarlo trasformerebbe quel `false` in *«sono il sistema nuovo»*, cioè in un
+     * `true` preso al buio. ⇒ Nel dubbio qui si risponde **`false`**, e si prosegue sulla strada
+     * vecchia: su PROD è quella giusta, e sul sistema nuovo è quella che si comporta come oggi.
+     * 📌 *Il fallimento sicuro di una domanda è il fallimento pericoloso della domanda opposta.*
+     *
+     * ⛔ E guarda il **ref Supabase**, non l'hostname: `PMO_IS_TEST_ENV` risponde a *«sto su un
+     * indirizzo che comincia per test.»*, e la voce 184 la farà scadere. Una guardia appesa a
+     * quella risposta si spegnerebbe da sola il giorno del passaggio — in silenzio, che è il modo
+     * in cui questo progetto perde le protezioni invece di toglierle.
+     *
+     * 🔁 `la-anagrafica-non-chiama-il-circolo.test.mjs` tiene questa funzione e `pmoCassaNativaPer`
+     * **allineate sugli stessi indirizzi**: sono due nomi per un fatto solo, e due copie di un
+     * fatto divergono al primo ripensamento se nessuno le confronta. */
+    function pmoSistemaNuovoPer(supabaseUrl) {
+      const ref = pmoRefSupabaseDellUrl(supabaseUrl);
+      return !!ref && ref !== PMO_PROD_SUPABASE_PROJECT_REF;
+    }
+    function pmoSistemaNuovo() {
+      try {
+        const memoria = pmoConfigMemoria && pmoConfigMemoria.valore;
+        return pmoSistemaNuovoPer(memoria && memoria.supabaseUrl);
       } catch (e) { return false; }
     }
     function pmoDetectRuntimeEnv() {
@@ -17930,12 +17965,20 @@ Grazie.`
         // Disattivazione → disiscrivi anche da Matchpoint (in background, ~30s).
         // La RIATTIVAZIONE resta locale: la "ri-iscrizione" su Matchpoint è una
         // capability worker non ancora disponibile.
-        showAlert('⏸️ Socio disattivato. ⏳ Lo disiscrivo da Matchpoint…', 'success');
+        // 🆕 VOCE 192 — la promessa si fa solo se c'è qualcuno a cui mantenerla: sul sistema
+        // nuovo la disattivazione in app + Supabase **è** tutta l'operazione, e non c'è nessun
+        // secondo passo da annunciare (né da attendere per ~30s).
+        showAlert(pmoSistemaNuovo()
+          ? '⏸️ Socio disattivato.'
+          : '⏸️ Socio disattivato. ⏳ Lo disiscrivo da Matchpoint…', 'success');
         if (typeof pmoDisableMemberInMatchpoint === 'function') {
           Promise.resolve(pmoDisableMemberInMatchpoint(m, { notify: false })).then(function (res) {
             const st = res && res.status;
             const nm = (typeof playerFullName === 'function') ? playerFullName(m) : 'Socio';
-            if (st === 'ok') showAlert('✅ ' + nm + ' disiscritto anche da Matchpoint' + (res.verified === false ? ' (controlla la scheda)' : ''), 'success');
+            // 🆕 VOCE 192 — silenzio, e non è pigrizia: il gesto è finito e l'annuncio l'ha già
+            // detto. Un secondo messaggio qui parlerebbe di un passo che non esiste.
+            if (st === 'non_collegato') { /* sistema nuovo: la disattivazione è tutta qui */ }
+            else if (st === 'ok') showAlert('✅ ' + nm + ' disiscritto anche da Matchpoint' + (res.verified === false ? ' (controlla la scheda)' : ''), 'success');
             else if (st === 'already_disabled') showAlert('ℹ️ Su Matchpoint risultava già disiscritto.', 'info');
             else if (st === 'guest') { /* ospite: su Matchpoint non si disiscrive */ }
             else if (st === 'skipped') showAlert('ℹ️ Socio senza codice Matchpoint: disattivato solo in app + Supabase.', 'info');
@@ -17945,12 +17988,17 @@ Grazie.`
         }
       } else {
         // Riattivazione → ri-iscrivi anche su Matchpoint (bottone "Riattivare" sulla Ficha).
-        showAlert('✅ Socio riattivato. ⏳ Lo ri-iscrivo su Matchpoint…', 'success');
+        // 🆕 VOCE 192 — come sopra: niente promessa dove non c'è un secondo passo.
+        showAlert(pmoSistemaNuovo()
+          ? '✅ Socio riattivato.'
+          : '✅ Socio riattivato. ⏳ Lo ri-iscrivo su Matchpoint…', 'success');
         if (typeof pmoReactivateMemberInMatchpoint === 'function') {
           Promise.resolve(pmoReactivateMemberInMatchpoint(m, { notify: false })).then(function (res) {
             const st = res && res.status;
             const nm = (typeof playerFullName === 'function') ? playerFullName(m) : 'Socio';
-            if (st === 'ok') showAlert('✅ ' + nm + ' ri-iscritto anche su Matchpoint' + (res.verified === false ? ' (controlla la scheda)' : ''), 'success');
+            // 🆕 VOCE 192 — vedi il gemello della disattivazione.
+            if (st === 'non_collegato') { /* sistema nuovo: la riattivazione è tutta qui */ }
+            else if (st === 'ok') showAlert('✅ ' + nm + ' ri-iscritto anche su Matchpoint' + (res.verified === false ? ' (controlla la scheda)' : ''), 'success');
             else if (st === 'already_active') showAlert('ℹ️ Su Matchpoint risultava già iscritto.', 'info');
             else if (st === 'guest') { /* ospite: su Matchpoint non si riattiva */ }
             else if (st === 'skipped') showAlert('ℹ️ Socio senza codice Matchpoint: riattivato solo in app + Supabase.', 'info');
@@ -30742,6 +30790,23 @@ Per confermare scrivi ELIMINA.`);
     // Matchpoint unico → in TEST tocca davvero il gestionale; usare soci di prova).
     async function pmoDisableMemberInMatchpoint(member, opts = {}) {
       try {
+        // 🆕⭐⭐ VOCE 192 — SUL SISTEMA NUOVO NON SI BUSSA A UNA PORTA CHE NON C'È.
+        // 📏 Misurato il 10/09 sulla pagina viva di TEST (6.427): questa funzione **non aveva**
+        // la guardia che `create` e `update` hanno da sempre ⇒ chiamava la edge davvero, e la
+        // edge risponde `503 AMBIENTE_DI_PROVA` (il recinto è cablato sul ref di PROD). Il socio
+        // risultava disattivato — in app e su Supabase, il che è **tutta la verità** sul sistema
+        // nuovo — e subito dopo l'operatore leggeva *«⚠️ Disiscrizione su Matchpoint non
+        // riuscita… Disiscrivilo dal gestionale»*: un allarme falso su un gesto **riuscito**, che
+        // nomina un sistema che non c'è e ordina di rifarlo in uno che si sta spegnendo.
+        // 📌 *Un fallimento annunciato su un'operazione riuscita non è un dettaglio di tono:
+        //    insegna a non credere agli allarmi, e li spegne tutti insieme.*
+        //
+        // ⚖️ La guardia NON è `PMO_IS_TEST_ENV`, che pure sarebbe bastata oggi: quella risponde a
+        // *«l'indirizzo comincia per test.»* e la voce 184 la spegnerà. Il giorno del passaggio
+        // questa riga tornerebbe `false` **da sola e in silenzio**, e il gestionale ricomincerebbe
+        // a chiamare il worker verso un Matchpoint spento. Si chiede invece **con chi parla**.
+        const _cfgCircolo = await loadAssessmentSupabaseConfig().catch(() => null);
+        if (pmoSistemaNuovoPer(_cfgCircolo && _cfgCircolo.supabaseUrl)) return { status: 'non_collegato' };
         if (typeof isGuestJollyMember === 'function' && isGuestJollyMember(member)) return { status: 'guest' };
         const codice = String(member.memberId || '').trim();
         if (!/^\d{4,6}$/.test(codice)) return { status: 'skipped', reason: 'no_matchpoint_code' };
@@ -30801,9 +30866,16 @@ Per confermare scrivi ELIMINA.`);
     }
     // Ri-iscrive (riattiva) il socio su Matchpoint via edge matchpoint-clients-reactivate
     // → worker /reactivate-client (bottone "Riattivare" sulla Ficha, azione diretta).
-    // Specchio di pmoDisableMemberInMatchpoint; nessun guard test_env (riattivata in TEST).
+    // Specchio di pmoDisableMemberInMatchpoint, guardia della voce 192 compresa.
     async function pmoReactivateMemberInMatchpoint(member, opts = {}) {
       try {
+        // 🆕 VOCE 192 — vale identica al gemello qui sopra, dove sta il perché per esteso.
+        // 🚨 E qui l'allarme falso era **peggiore**: la ri-iscrizione su Matchpoint non è mai
+        // esistita come capability del worker (lo dice il commento storico a due passi da qui),
+        // quindi *«Riattivalo dal gestionale»* mandava l'operatore a cercare un bottone che non
+        // c'è — per rimediare a un gesto che era già andato a buon fine.
+        const _cfgCircolo = await loadAssessmentSupabaseConfig().catch(() => null);
+        if (pmoSistemaNuovoPer(_cfgCircolo && _cfgCircolo.supabaseUrl)) return { status: 'non_collegato' };
         if (typeof isGuestJollyMember === 'function' && isGuestJollyMember(member)) return { status: 'guest' };
         const codice = String(member.memberId || '').trim();
         if (!/^\d{4,6}$/.test(codice)) return { status: 'skipped', reason: 'no_matchpoint_code' };
@@ -58069,11 +58141,17 @@ Per confermare scrivi ELIMINA.`);
         try { updateStats(); } catch (e) {}
         try { displayAssessment(); } catch (e) {}
         try { pmoQueueImmediateMemberCloudSync(cur, 'salvare la disattivazione del socio (assistente AI) su Supabase'); } catch (e) {}
-        _say('⏸️ <strong>' + nm + '</strong> disattivato in anagrafica e su Supabase. ⏳ Lo disiscrivo anche da <strong>Matchpoint</strong>… <span style="color:#98a2b3;font-size:12px">(può richiedere ~30s)</span>');
+        // 🆕 VOCE 192 — vedi il gemello nella scheda socio: sul sistema nuovo non c'è un secondo
+        // passo da promettere, e prometterlo faceva finire il gesto con un allarme falso.
+        _say(pmoSistemaNuovo()
+          ? '⏸️ <strong>' + nm + '</strong> disattivato in anagrafica e su Supabase.'
+          : '⏸️ <strong>' + nm + '</strong> disattivato in anagrafica e su Supabase. ⏳ Lo disiscrivo anche da <strong>Matchpoint</strong>… <span style="color:#98a2b3;font-size:12px">(può richiedere ~30s)</span>');
         if (typeof pmoDisableMemberInMatchpoint === 'function') {
           Promise.resolve(pmoDisableMemberInMatchpoint(cur, { notify: false })).then(function (res) {
             const st = res && res.status;
-            if (st === 'ok') _say('✅ Disiscritto anche da <strong>Matchpoint</strong>.' + (res.verified === false ? ' <span style="color:#98a2b3;font-size:12px">(verifica non conclusiva: controlla la scheda nel gestionale)</span>' : ''));
+            // 🆕 VOCE 192 — silenzio: l'annuncio sopra ha già detto tutto quello che è successo.
+            if (st === 'non_collegato') { /* sistema nuovo: la disattivazione è tutta qui */ }
+            else if (st === 'ok') _say('✅ Disiscritto anche da <strong>Matchpoint</strong>.' + (res.verified === false ? ' <span style="color:#98a2b3;font-size:12px">(verifica non conclusiva: controlla la scheda nel gestionale)</span>' : ''));
             else if (st === 'already_disabled') _say('ℹ️ Su <strong>Matchpoint</strong> risultava già disiscritto. Resta disattivato in app + Supabase.');
             else if (st === 'guest') _say('ℹ️ È un ospite: su Matchpoint non si disiscrive. Resta disattivato in app + Supabase.');
             else if (st === 'skipped') _say('ℹ️ Socio senza codice Matchpoint: disattivato solo in app + Supabase.');
@@ -58129,11 +58207,16 @@ Per confermare scrivi ELIMINA.`);
         try { updateStats(); } catch (e) {}
         try { displayAssessment(); } catch (e) {}
         try { pmoQueueImmediateMemberCloudSync(cur, 'salvare la riattivazione del socio (assistente AI) su Supabase'); } catch (e) {}
-        _say('▶️ <strong>' + nm + '</strong> riattivato in anagrafica e su Supabase. ⏳ Lo ri-iscrivo anche su <strong>Matchpoint</strong>… <span style="color:#98a2b3;font-size:12px">(può richiedere ~30s)</span>');
+        // 🆕 VOCE 192 — come il gemello della disattivazione.
+        _say(pmoSistemaNuovo()
+          ? '▶️ <strong>' + nm + '</strong> riattivato in anagrafica e su Supabase.'
+          : '▶️ <strong>' + nm + '</strong> riattivato in anagrafica e su Supabase. ⏳ Lo ri-iscrivo anche su <strong>Matchpoint</strong>… <span style="color:#98a2b3;font-size:12px">(può richiedere ~30s)</span>');
         if (typeof pmoReactivateMemberInMatchpoint === 'function') {
           Promise.resolve(pmoReactivateMemberInMatchpoint(cur, { notify: false })).then(function (res) {
             const st = res && res.status;
-            if (st === 'ok') _say('✅ Ri-iscritto anche su <strong>Matchpoint</strong>.' + (res.verified === false ? ' <span style="color:#98a2b3;font-size:12px">(verifica non conclusiva: controlla la scheda nel gestionale)</span>' : ''));
+            // 🆕 VOCE 192 — vedi il gemello della disattivazione.
+            if (st === 'non_collegato') { /* sistema nuovo: la riattivazione è tutta qui */ }
+            else if (st === 'ok') _say('✅ Ri-iscritto anche su <strong>Matchpoint</strong>.' + (res.verified === false ? ' <span style="color:#98a2b3;font-size:12px">(verifica non conclusiva: controlla la scheda nel gestionale)</span>' : ''));
             else if (st === 'already_active') _say('ℹ️ Su <strong>Matchpoint</strong> risultava già iscritto. Resta attivo in app + Supabase.');
             else if (st === 'guest') _say('ℹ️ È un ospite: su Matchpoint non si riattiva. Resta attivo in app + Supabase.');
             else if (st === 'skipped') _say('ℹ️ Socio senza codice Matchpoint: riattivato solo in app + Supabase.');
