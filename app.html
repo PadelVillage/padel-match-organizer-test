@@ -8509,11 +8509,41 @@ body.assessment-public-mode .assessment-public-only-card {
                   </article>
                 </div>
               </div>
+              <div class="matchpoint-data-accordion" id="matchpointMaestriAccordion">
+                <button type="button" class="matchpoint-data-accordion-toggle" aria-expanded="false" aria-controls="matchpointMaestriAccordionPanel" onclick="toggleMatchpointDataAccordion('matchpointMaestriAccordion')">
+                  <span>
+                    <span class="matchpoint-data-accordion-title"><span class="matchpoint-data-step">7</span> Maestri</span>
+                    <span class="matchpoint-data-accordion-subtitle">Chi tiene le lezioni. Elenco NOSTRO: prima stava in un file su GitHub.</span>
+                  </span>
+                  <span class="matchpoint-data-chevron">&#8250;</span>
+                </button>
+                <div class="matchpoint-data-accordion-panel" id="matchpointMaestriAccordionPanel">
+                  <article class="matchpoint-data-box potential wide" id="anchor-matchpoint-maestri">
+                    <p class="matchpoint-data-copy">
+                      I maestri che si possono scegliere in una <strong>lezione</strong> &mdash; nella scheda che si
+                      apre dal calendario, quando si crea una prenotazione, e nel flusso a bottoni.
+                      <br>Il <strong>nome</strong> &egrave; quello che si legge; il <strong>codice</strong> &egrave;
+                      quello con cui il maestro &egrave; scritto nelle prenotazioni, e per questo non si cambia.
+                      <br><em>Per togliere un maestro si toglie la spunta a &laquo;attivo&raquo;: resta nello storico
+                      delle lezioni che ha gi&agrave; tenuto, ma non lo si pu&ograve; pi&ugrave; scegliere.</em>
+                    </p>
+                    <div class="matchpoint-data-actions">
+                      <button class="btn-secondary" onclick="setActionAnchor(this); pmoCaricaMaestri(true)">Ricarica</button>
+                      <button class="btn-secondary" onclick="setActionAnchor(this); pmoAggiungiMaestro()">+ Aggiungi maestro</button>
+                      <button id="pmoMaestriSalvaBtn" class="btn-warning" onclick="setActionAnchor(this); pmoSalvaMaestri()">Salva</button>
+                      <div id="pmoMaestriStato" class="matchpoint-action-state done">Non ancora caricato</div>
+                    </div>
+                    <div class="potential-slot-details">
+                      <div id="pmoMaestriTabella"></div>
+                    </div>
+                  </article>
+                </div>
+              </div>
               <div class="matchpoint-data-accordion" id="matchpointParserAccordion" hidden>
                 <button type="button" class="matchpoint-data-accordion-toggle" aria-expanded="false" aria-controls="matchpointParserAccordionPanel"
                   onclick="toggleMatchpointDataAccordion('matchpointParserAccordion'); if(document.getElementById('matchpointParserAccordion').classList.contains('open')) pmoParserLoadErrors()">
                   <span>
-                    <span class="matchpoint-data-accordion-title"><span class="matchpoint-data-step" style="background:#0891b2">7</span> Parser Config</span>
+                    <span class="matchpoint-data-accordion-title"><span class="matchpoint-data-step" style="background:#0891b2">8</span> Parser Config</span>
                     <span class="matchpoint-data-accordion-subtitle">Evoluzione automatica del parser prenotazioni staff.</span>
                   </span>
                   <span class="matchpoint-data-chevron">›</span>
@@ -8723,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.440';
+    const APP_VERSION = '6.441';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -10252,6 +10282,7 @@ Grazie.`
         // senza la fascia delle 16:30. Il boot serve a chi ha già la sessione, questo a chi
         // sta entrando adesso: sono due momenti diversi e servono tutti e due.
         try { pmoCaricaFasce(false); } catch (err) { console.warn('pmoCaricaFasce login', err); }
+        try { pmoCaricaMaestri(false); } catch (err) { console.warn('pmoCaricaMaestri login', err); }
       } catch (err) {
         pmoClearSupabaseStaffSession();
         pmoSetLoginMessage(err.message || 'Accesso non riuscito.');
@@ -18210,6 +18241,9 @@ Grazie.`
       if (shouldOpen && id === 'matchpointSlotAccordion' && !pmoListino) {
         try { pmoCaricaFasce(false); } catch (err) { console.warn('pmoCaricaFasce accordion', err); }
       }
+      if (shouldOpen && id === 'matchpointMaestriAccordion' && !pmoMaestri) {
+        try { pmoCaricaMaestri(false); } catch (err) { console.warn('pmoCaricaMaestri accordion', err); }
+      }
       return shouldOpen;
     }
 
@@ -19073,6 +19107,185 @@ Grazie.`
     // con `cloud_sync` le fasce non si caricavano per un profilo staff che quel permesso non ce
     // l'ha, e la Dashboard ripiegava sulla griglia cablata disegnando un lunedì senza la fascia
     // delle 16:30 — un orario che il circolo ha davvero. Il permesso resta sulla SCRITTURA.
+    // ╔══════════════════════════════════════════════════════════════════════════════╗
+    // ║ 👨‍🏫 I MAESTRI — voce 202                                                     ║
+    // ╚══════════════════════════════════════════════════════════════════════════════╝
+    //
+    // 🗣️ Sua richiesta: «bisogna creare un posto nel gestionale di test dove si possono
+    //    aggiungere e modificare i nomi dei maestri che poi si vedono dentro la scheda che si
+    //    apre dal calendario».
+    //
+    // 🚨⭐⭐ PERCHÉ IL `codice` NON SI MODIFICA, ed è la protezione principale di questo
+    //    pannello: il codice è la CHIAVE con cui il maestro è già scritto nelle prenotazioni
+    //    (`istruttore: 'Spinazze'`). `pmo_set_maestri` scrive per chiave e SPEGNE ciò che non
+    //    riceve ⇒ cambiare un codice non rinominerebbe la riga: ne creerebbe una nuova e
+    //    spegnerebbe la vecchia, lasciando le lezioni già fatte a puntare a un maestro spento.
+    //    ⇒ Sulle righe che esistono il codice si MOSTRA e non si tocca; si scrive solo su una
+    //    riga nuova. 📌 *Quello che lui ha chiesto di poter cambiare è il NOME, ed è esattamente
+    //    quello che questo pannello lascia cambiare.*
+    //
+    // ⛔ E NON C'È UN BOTTONE «ELIMINA», di proposito: la RPC non cancella, spegne. Un bottone
+    //    che dicesse «elimina» e lasciasse la riga in tabella mentirebbe su cosa ha fatto ⇒ si
+    //    toglie la spunta ad «attivo», che è il gesto vero, chiamato col suo nome.
+
+    let pmoMaestri = null;
+    let pmoMaestriSporchi = false;
+
+    function pmoMaestriAggiornaStato(testo, tipo) {
+      const el = document.getElementById('pmoMaestriStato');
+      if (!el) return;
+      el.textContent = testo;
+      el.className = `matchpoint-action-state ${tipo || 'done'}`;
+    }
+
+    async function pmoCaricaMaestri(mostraEsito = false) {
+      try {
+        pmoMaestriAggiornaStato('Carico…', 'pending');
+        const res = await pmoStaffRpc('pmo_get_maestri', {}, '', 'leggere i maestri');
+        if (!res || res.ok !== true) throw new Error((res && (res.message || res.error)) || 'risposta non riconosciuta');
+        pmoMaestri = (Array.isArray(res.maestri) ? res.maestri : []).map((m) => ({
+          codice: String(m.codice || ''), nome: String(m.nome || ''),
+          attivo: m.attivo !== false, note: m.note || '', nuovo: false,
+        }));
+        pmoMaestriSporchi = false;
+        pmoRenderMaestri();
+        pmoMaestriPubblica();
+        const attivi = pmoMaestri.filter((m) => m.attivo).length;
+        pmoMaestriAggiornaStato(`${attivi} attiv${attivi === 1 ? 'o' : 'i'} su ${pmoMaestri.length}`, 'done');
+        if (mostraEsito) showAlert(`✅ Maestri caricati: ${attivi} attivi su ${pmoMaestri.length}.`, 'success');
+      } catch (err) {
+        pmoMaestriAggiornaStato('Non caricato', 'pending');
+        if (mostraEsito) showAlert('❌ Maestri non caricati: ' + err.message, 'danger');
+      }
+    }
+
+    /** L'elenco passa a chi disegna i selettori del maestro. ⚠️ Senza questa riga il pannello
+     *  salverebbe e la scheda continuerebbe a mostrare i tre nomi del file: è il punto in cui
+     *  «la tabella vince» diventa vero per chi guarda. */
+    function pmoMaestriPubblica() {
+      try {
+        window.__pmoMaestriElenco = (pmoMaestri || []).map((m) => ({
+          codice: m.codice, nome: m.nome, attivo: m.attivo !== false,
+        }));
+        if (typeof window.pmoApplicaMaestriSuParserRules === 'function') window.pmoApplicaMaestriSuParserRules();
+      } catch (err) { console.warn('[maestri] elenco non pubblicato', err); }
+    }
+
+    function pmoAggiungiMaestro() {
+      if (!pmoMaestri) return showAlert('⚠️ Carica prima i maestri.', 'warning');
+      pmoMaestri.push({ codice: '', nome: '', attivo: true, note: '', nuovo: true });
+      pmoMaestriSporchi = true;
+      pmoRenderMaestri();
+    }
+
+    function pmoRenderMaestri() {
+      const box = document.getElementById('pmoMaestriTabella');
+      if (!box) return;
+      box.innerHTML = '';
+      if (!pmoMaestri) { box.innerHTML = '<div style="opacity:.6">Non ancora caricato.</div>'; return; }
+      if (!pmoMaestri.length) { box.innerHTML = '<div style="opacity:.6">Nessun maestro. Usa «+ Aggiungi maestro».</div>'; return; }
+
+      const tab = document.createElement('table');
+      tab.style.cssText = 'width:100%;border-collapse:collapse;font-size:.92em';
+      tab.innerHTML = '<thead><tr>'
+        + '<th style="text-align:left;padding:6px 8px;opacity:.7">Codice</th>'
+        + '<th style="text-align:left;padding:6px 8px;opacity:.7">Nome e cognome</th>'
+        + '<th style="text-align:center;padding:6px 8px;opacity:.7">Attivo</th>'
+        + '<th style="text-align:left;padding:6px 8px;opacity:.7">Note</th>'
+        + '</tr></thead>';
+      const corpo = document.createElement('tbody');
+
+      pmoMaestri.forEach((m, i) => {
+        const tr = document.createElement('tr');
+        tr.style.cssText = 'border-top:1px solid var(--border)' + (m.attivo ? '' : ';opacity:.55');
+
+        const tdCod = document.createElement('td');
+        tdCod.style.cssText = 'padding:6px 8px';
+        if (m.nuovo) {
+          const inp = document.createElement('input');
+          inp.type = 'text'; inp.className = 'svc-edit-field'; inp.value = m.codice;
+          inp.placeholder = 'come nelle prenotazioni';
+          inp.style.width = '100%';
+          inp.addEventListener('input', () => { m.codice = inp.value; pmoMaestriSporchi = true; });
+          tdCod.appendChild(inp);
+        } else {
+          // Si mostra e non si tocca: è la chiave delle prenotazioni già scritte.
+          const code = document.createElement('code');
+          code.textContent = m.codice;
+          code.title = 'Il codice con cui questo maestro è scritto nelle prenotazioni: non si cambia.';
+          tdCod.appendChild(code);
+        }
+        tr.appendChild(tdCod);
+
+        const tdNome = document.createElement('td');
+        tdNome.style.cssText = 'padding:6px 8px';
+        const inpNome = document.createElement('input');
+        inpNome.type = 'text'; inpNome.className = 'svc-edit-field'; inpNome.value = m.nome;
+        inpNome.placeholder = 'Nome Cognome';
+        inpNome.style.width = '100%';
+        inpNome.addEventListener('input', () => { m.nome = inpNome.value; pmoMaestriSporchi = true; });
+        tdNome.appendChild(inpNome);
+        tr.appendChild(tdNome);
+
+        const tdAtt = document.createElement('td');
+        tdAtt.style.cssText = 'padding:6px 8px;text-align:center';
+        const chk = document.createElement('input');
+        chk.type = 'checkbox'; chk.checked = m.attivo !== false;
+        chk.title = 'Togliendo la spunta non si potrà più scegliere questo maestro. Le lezioni già fatte restano.';
+        chk.addEventListener('change', () => { m.attivo = chk.checked; pmoMaestriSporchi = true; pmoRenderMaestri(); });
+        tdAtt.appendChild(chk);
+        tr.appendChild(tdAtt);
+
+        const tdNote = document.createElement('td');
+        tdNote.style.cssText = 'padding:6px 8px';
+        const inpNote = document.createElement('input');
+        inpNote.type = 'text'; inpNote.className = 'svc-edit-field'; inpNote.value = m.note || '';
+        inpNote.style.width = '100%';
+        inpNote.addEventListener('input', () => { m.note = inpNote.value; pmoMaestriSporchi = true; });
+        tdNote.appendChild(inpNote);
+        tr.appendChild(tdNote);
+
+        corpo.appendChild(tr);
+      });
+
+      tab.appendChild(corpo);
+      box.appendChild(tab);
+    }
+
+    async function pmoSalvaMaestri() {
+      if (!pmoMaestri) return showAlert('⚠️ Carica prima i maestri.', 'warning');
+      if (!pmoMaestriSporchi) return showAlert('Non c\'è niente da salvare.', 'info');
+
+      // I controlli si fanno PRIMA di scrivere, e con parole: li rifiuta anche la RPC
+      // (`CODICE_O_NOME_MANCANTE`, `ELENCO_VUOTO`), ma un codice d'errore in faccia a chi ha
+      // appena compilato una riga non dice cosa sistemare.
+      const righe = pmoMaestri.map((m) => ({
+        codice: String(m.codice || '').trim(), nome: String(m.nome || '').trim(),
+        attivo: m.attivo !== false, note: String(m.note || '').trim() || null,
+      }));
+      if (!righe.length) return showAlert('⚠️ L\'elenco è vuoto: senza maestri non si potrebbe creare una lezione.', 'warning');
+      const senza = righe.find((r) => !r.codice || !r.nome);
+      if (senza) return showAlert('⚠️ Ogni maestro vuole un codice E un nome: manca ' + (!senza.codice ? 'il codice' : `il nome di «${senza.codice}»`) + '.', 'warning');
+      const visti = new Set();
+      for (const r of righe) {
+        const k = r.codice.toLowerCase();
+        if (visti.has(k)) return showAlert(`⚠️ Il codice «${r.codice}» compare due volte: una sola riga per maestro.`, 'warning');
+        visti.add(k);
+      }
+      if (!righe.some((r) => r.attivo)) return showAlert('⚠️ Nessun maestro attivo: così non si potrebbe scegliere nessuno in una lezione.', 'warning');
+
+      try {
+        pmoMaestriAggiornaStato('Salvo…', 'pending');
+        const res = await pmoStaffRpc('pmo_set_maestri', { p_maestri: righe }, 'cloud_sync', 'salvare i maestri');
+        if (!res || res.ok !== true) throw new Error((res && (res.message || res.error)) || 'risposta non riconosciuta');
+        await pmoCaricaMaestri(false);
+        showAlert(`✅ Maestri salvati: ${res.scritti} scritt${res.scritti === 1 ? 'o' : 'i'}${res.spenti ? `, ${res.spenti} spent${res.spenti === 1 ? 'o' : 'i'}` : ''}. La scheda, la creazione e il flusso a bottoni usano questo.`, 'success');
+      } catch (err) {
+        pmoMaestriAggiornaStato('Non salvato', 'pending');
+        showAlert('❌ Maestri non salvati: ' + err.message, 'danger');
+      }
+    }
+
     async function pmoCaricaFasce(mostraEsito = false) {
       try {
         pmoFasceAggiornaStato('Carico…', 'pending');
@@ -33821,6 +34034,9 @@ Per confermare scrivi ELIMINA.`);
 	      // non atterrano, `getDaySlots` ripiega sul blocco vecchio, quindi il calendario non
 	      // nasce mai vuoto. Al ritorno ridisegna la Dashboard da sé.
 	      try { if (typeof pmoCaricaFasce === 'function') pmoCaricaFasce(false); } catch (err) { console.warn('pmoCaricaFasce boot', err); }
+	      // ⭐ VOCE 202 — i maestri arrivano dalla loro tabella, come le fasce. Fire-and-forget:
+	      // finché non atterrano vale il ripiego cablato, quindi i selettori non nascono vuoti.
+	      try { if (typeof pmoCaricaMaestri === 'function') pmoCaricaMaestri(false); } catch (err) { console.warn('pmoCaricaMaestri boot', err); }
 	      refreshAssistantGroupsCountBadge();
       checkLocalDataSafetyOnStartup();
       if (assessmentMatchpointDemoEnabled()) {
@@ -41545,6 +41761,97 @@ Per confermare scrivi ELIMINA.`);
   let PARSER_RULES = Object.assign({}, STAFF_CAL_FALLBACK_RULES);
 
   // ── Carica parser_rules.json da GitHub (branch dinamico per env) ───────────
+  // ── I MAESTRI VENGONO DALLA TABELLA, NON DAL FILE SU GITHUB (voce 202) ──────────
+  //
+  // 🗣️ Sua richiesta: «bisogna creare un posto nel gestionale di test dove si possono aggiungere
+  //    e modificare i nomi dei maestri che poi si vedono dentro la scheda che si apre dal
+  //    calendario». Il posto è il pannello «Maestri» in Impostazioni → Dati; questa è la metà che fa
+  //    sì che quel posto CONTI per chi legge.
+  //
+  // 🚨⭐⭐ PERCHÉ UN SOLO PUNTO DI SCRITTURA, ed è la ragione per cui questa forma è stata
+  //    scelta invece di toccare i lettori: i lettori di `valori_validi` NON sono tre, come
+  //    dichiarava il passaggio di consegne — sono SETTE (la scheda, la creazione, il flusso a
+  //    bottoni, il parser, e tre del pannello Parser Config). Sovrascrivendo `PARSER_RULES`
+  //    **una volta sola** dopo ogni caricamento, chi legge non si tocca — e il conto esatto dei
+  //    lettori smette di essere una cosa da sapere. 📌 *Una cura che dipende dall'aver contato
+  //    giusto i lettori si rompe col lettore che nessuno ha contato.*
+  //
+  // ⛔ FALLISCE CHIUSA, e non è un dettaglio: se la tabella non si è letta (permesso negato,
+  //    rete giù, login non ancora fatto) l'elenco è vuoto ⇒ le regole NON si toccano e resta il
+  //    ripiego cablato. L'alternativa — svuotare `valori_validi` — lascerebbe i selettori del
+  //    maestro VUOTI, cioè una lezione non più creabile, per un guasto di lettura.
+  //
+  // ⚖️ `codice` ≠ `nome`, ed è tutta la ragione per cui la tabella ha due colonne: il codice
+  //    (`Spinazze`) è quello che il sistema scrive e manda avanti, il nome (`Gianluca Spinazzè`)
+  //    è quello che la persona legge. Qui si tiene il codice come VALORE e il nome come
+  //    ETICHETTA: cambiare il valore cambierebbe il significato del dato già scritto.
+
+  /** L'elenco letto dalla tabella `pmo_maestri`. Sta su `window` perché chi lo carica (il
+   *  pannello in Impostazioni → Dati) vive in un altro blocco <script> da chi lo consuma. */
+  window.__pmoMaestriElenco = Array.isArray(window.__pmoMaestriElenco) ? window.__pmoMaestriElenco : [];
+
+  /**
+   * Le regole con i maestri della tabella al posto di quelli del file. PURA di proposito —
+   * prende le regole e l'elenco, torna le regole — così il banco la può esercitare davvero
+   * invece di cercarne il testo nel sorgente.
+   */
+  function pmoMaestriSuRegole(regole, elenco) {
+    if (!regole || typeof regole !== 'object') return regole;
+    const attivi = (Array.isArray(elenco) ? elenco : [])
+      .filter(function (m) { return m && m.attivo !== false && String(m.codice || '').trim(); })
+      .map(function (m) {
+        const codice = String(m.codice).trim();
+        return { codice: codice, nome: String(m.nome || '').trim() || codice };
+      });
+    // ⛔ La porta chiusa: nessun maestro letto ⇒ non si tocca niente.
+    if (!attivi.length) return regole;
+
+    const opz = regole.campi_opzionali = regole.campi_opzionali || {};
+    const istr = opz.istruttore = opz.istruttore || {};
+
+    istr.valori_validi = attivi.map(function (m) { return m.codice; });
+
+    // codice → nome, per le ETICHETTE: il valore resta il codice (vedi sopra).
+    istr.nomi = {};
+    attivi.forEach(function (m) { istr.nomi[m.codice] = m.nome; });
+
+    // Il nome diventa anche una chiave riconoscibile dal parser: la segreteria che aggiunge un
+    // maestro scrive il suo NOME, non il codice interno. Si AGGIUNGE senza sovrascrivere le
+    // voci già presenti — quelle curano errori di battitura veri, visti sul campo.
+    istr.fuzzy_match = Object.assign({}, istr.fuzzy_match || {});
+    attivi.forEach(function (m) {
+      if (!m.nome || m.nome.toLowerCase() === m.codice.toLowerCase()) return;
+      [m.nome, m.nome.toLowerCase()].forEach(function (k) {
+        if (!Object.prototype.hasOwnProperty.call(istr.fuzzy_match, k)) istr.fuzzy_match[k] = m.codice;
+      });
+    });
+
+    // La domanda nominava i tre nomi cablati: lasciarla ferma sarebbe stata una bugia appena
+    // la segreteria aggiunge il quarto.
+    istr.domanda_se_manca = 'Quale istruttore? (' + attivi.map(function (m) { return m.nome; }).join(', ') + ')';
+    return regole;
+  }
+
+  /** Il nome da MOSTRARE per un codice. Sconosciuto ⇒ torna il codice: un maestro che non sta
+   *  in tabella (oggi `Santiago`) si vede com'è, non come un buco. */
+  function pmoMaestroEtichetta(codice) {
+    const c = String(codice == null ? '' : codice).trim();
+    if (!c) return c;
+    const nomi = (PARSER_RULES && PARSER_RULES.campi_opzionali && PARSER_RULES.campi_opzionali.istruttore
+      && PARSER_RULES.campi_opzionali.istruttore.nomi) || {};
+    if (nomi[c]) return nomi[c];
+    const chiave = Object.keys(nomi).find(function (k) { return k.toLowerCase() === c.toLowerCase(); });
+    return chiave ? nomi[chiave] : c;
+  }
+  window.pmoMaestroEtichetta = pmoMaestroEtichetta;
+
+  /** Riapplica l'elenco sulle regole in memoria. La chiama il pannello dopo aver letto o
+   *  salvato la tabella, così la scheda mostra il maestro nuovo SENZA ricaricare la pagina. */
+  window.pmoApplicaMaestriSuParserRules = function () {
+    try { PARSER_RULES = pmoMaestriSuRegole(PARSER_RULES, window.__pmoMaestriElenco); }
+    catch (err) { console.warn('[maestri] regole non aggiornate', err && err.message); }
+  };
+
   (function _staffCalInitParserRules() {
     const branch = (typeof PMO_IS_TEST_ENV !== 'undefined' && PMO_IS_TEST_ENV) ? 'test-preview' : 'main';
     const url = `https://raw.githubusercontent.com/PadelVillage/padel-match-organizer/${branch}/supabase/functions/parser-rules/parser_rules.json`;
@@ -41557,6 +41864,11 @@ Per confermare scrivi ELIMINA.`);
         console.log('[StaffCal] Parser rules ' + json.versione + ' loaded from GitHub');
       } catch (err) {
         console.warn('[StaffCal] Parser rules fetch failed, using fallback:', err.message);
+      } finally {
+        // 🎯 VOCE 202 — la tabella vince, SEMPRE: `PARSER_RULES = json` sostituisce l'oggetto
+        //    intero, quindi l'elenco va rimesso dopo ogni giro — il primo, il rinfresco dell'ora
+        //    dopo, e anche il ramo di RIPIEGO, che altrimenti tornerebbe ai tre nomi cablati.
+        if (typeof window.pmoApplicaMaestriSuParserRules === 'function') window.pmoApplicaMaestriSuParserRules();
       }
     }
     window.loadParserRules = loadParserRules;
@@ -47238,7 +47550,9 @@ Per confermare scrivi ELIMINA.`);
       // Placeholder "— scegli —" SOLO se non c'è ancora un maestro: se ce n'è uno, non offro il "vuoto"
       // (il worker non sa togliere il maestro, solo cambiarlo).
       if (!cur) { const optNone = document.createElement('option'); optNone.value = ''; optNone.textContent = '— scegli maestro —'; optNone.selected = true; maestroSel.appendChild(optNone); }
-      validi.forEach(function (v) { const o = document.createElement('option'); o.value = v; o.textContent = v; if (cur && v.toLowerCase() === cur.toLowerCase()) o.selected = true; maestroSel.appendChild(o); });
+      // 🎯 VOCE 202 — si LEGGE il nome della persona, si MANDA il codice: il valore va al worker
+      //    (dropdown «Monitor» della ficha lezione) e cambiarlo cambierebbe il dato, non l'etichetta.
+      validi.forEach(function (v) { const o = document.createElement('option'); o.value = v; o.textContent = pmoMaestroEtichetta(v); if (cur && v.toLowerCase() === cur.toLowerCase()) o.selected = true; maestroSel.appendChild(o); });
       maestroSel.addEventListener('change', function () { st.istruttore = maestroSel.value; });
       maestroSec.appendChild(maestroSel);
       const maestroHint = document.createElement('div');
@@ -51864,7 +52178,8 @@ Per confermare scrivi ELIMINA.`);
     const fMaestro=document.createElement('div'); fMaestro.style.cssText='margin-bottom:14px;display:none;'; fMaestro.appendChild(lbl('Maestro'));
     const maestroSel=document.createElement('select'); maestroSel.style.cssText=inSel;
     maestroSel.style.fontWeight = '700';
-    maestri.forEach(function(m){ const o=document.createElement('option'); o.value=m; o.textContent=m; maestroSel.appendChild(o); });
+    // 🎯 VOCE 202 — etichetta = il nome della persona, valore = il codice (vedi la scheda).
+    maestri.forEach(function(m){ const o=document.createElement('option'); o.value=m; o.textContent=pmoMaestroEtichetta(m); maestroSel.appendChild(o); });
     fMaestro.appendChild(maestroSel); card.appendChild(fMaestro);
 
     const fGioc=document.createElement('div'); fGioc.style.marginBottom='16px'; const giocLbl=lbl('Giocatori'); fGioc.appendChild(giocLbl);
@@ -52113,9 +52428,16 @@ Per confermare scrivi ELIMINA.`);
     const maestri = (typeof PARSER_RULES !== 'undefined' && PARSER_RULES?.campi_opzionali?.istruttore?.valori_validi) || ['LoZio', 'Spinazze', 'Lucas Vidal'];
     const div = svcAddMessage('system', '👨‍🏫 <strong>Quale maestro?</strong>', 'flow');
     svcFlowState.stepMsg = div;
+    // 🎯 VOCE 202 — `svcMakeStepButtons` consegna a chi scieglie l'ETICHETTA, non un indice:
+    //    si mostrano i NOMI e si ritorna al CODICE con una mappa, perché è il codice che viene
+    //    scritto nella prenotazione. Un nome che non si ritrova ricade sul codice di partenza.
+    const _etichette = maestri.map(function(c){ return pmoMaestroEtichetta(c); });
+    const _perEtichetta = {};
+    maestri.forEach(function(c, i){ _perEtichetta[_etichette[i]] = c; });
     const btns = svcMakeStepButtons(
-      maestri,
-      function(maestro) {
+      _etichette,
+      function(scelto) {
+        const maestro = Object.prototype.hasOwnProperty.call(_perEtichetta, scelto) ? _perEtichetta[scelto] : scelto;
         svcFreezeMsg(div);
         svcFlowState.istruttore = maestro;
         svcFlowState.step = 'players';
