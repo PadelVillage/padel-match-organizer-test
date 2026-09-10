@@ -8724,7 +8724,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.431';
+    const APP_VERSION = '6.432';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -18479,7 +18479,9 @@ Grazie.`
       const rows = [
         {
           key:'clients',
-          title:'Clienti Matchpoint',
+          // 🆕 VOCE 190 — il nome del circolo solo dove c'è: qui è il TITOLO di una riga della
+          // tabella di stato, cioè testo che l'operatore legge in Amministrazione.
+          title:'Clienti' + pmoSuCircoloEsterno(),
           note:'Anagrafica e contatti',
           actionKey:'clients',
           anchorId:'anchor-matchpoint-clienti',
@@ -18517,7 +18519,7 @@ Grazie.`
         },
         {
           key:'history',
-          title:'Storico Matchpoint',
+          title:'Storico' + pmoSuCircoloEsterno(),
           note:'Prenotazioni ultimi 12 mesi',
           actionKey:'history',
           anchorId:'anchor-matchpoint-storico',
