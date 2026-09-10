@@ -8724,7 +8724,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.434';
+    const APP_VERSION = '6.435';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -49338,38 +49338,183 @@ Per confermare scrivi ELIMINA.`);
   // slot passerebbe per conferma della nostra — «lo slot è occupato» non vuol dire «è la mia».
   // ⭐ Il 'boh' non è un vicolo cieco: Matchpoint resta la fonte, quindi il sync normale porta
   // dentro la prenotazione da sé entro un paio di minuti. Il messaggio deve dirlo.
-  async function staffCalAskMatchpoint(parsed, staff, supabaseUrl, supabaseKey) {
-    const _norm = function (s) {
+  /* 🎯⭐⭐ VOCE 187 — «LA PRENOTAZIONE È PASSATA?» SI CHIEDE AL GESTIONALE (10/09/2026)
+   *
+   * 🗣️ La regola del progetto è una riga sola: **il gestionale SA, il bot DICE** — e vale anche
+   * quando a domandare è l'app. Fin qui questa domanda andava a **Matchpoint**, cioè fuori: il
+   * giorno del distacco resta senza destinatario, ed è per questo che la voce esiste.
+   *
+   * 📏 LA MISURA CHE RENDE POSSIBILE LA SOSTITUZIONE, fatta prima di scrivere una riga: sul
+   * sistema nuovo **è la edge stessa a scrivere la riga della prenotazione** in
+   * `pmo_cloud_records` (`saveStaffBookingRecord`, `matchpoint-bookings-create/index.ts`), e la
+   * scrive **prima** di rispondere all'app — se non ci riesce, risponde errore e non «fatto».
+   * ⇒ Un esito ignoto è una **risposta persa per strada**, non una scrittura a metà: o la riga
+   *   c'è (è passata) o non c'è (non è passata). La verità sta nella nostra copia, e da nessuna
+   *   altra parte. La edge lo dice di sé: *«una RETE DI SICUREZZA, serve se l'app non arriva mai
+   *   a scrivere: scheda chiusa, crash»* — cioè esattamente questo caso.
+   * 📌 *Finché la scrittura passava da fuori, la copia era uno specchio e non poteva testimoniare.
+   *    Da quando nasce qui, la copia è il fatto.*
+   *
+   * ⛔ IL «NO» RESTA LA COSA PIÙ PERICOLOSA CHE QUESTA MACCHINA POSSA DIRE, e non cambia col
+   *    destinatario: chi lo legge riprova, e la partita si prenota **due volte**. ⇒ Si dice
+   *    **solo** dopo una lettura che è **riuscita** e che ha potuto **vedere tutto**. Ogni altro
+   *    caso — permesso mancante, rete caduta, pagina piena (⇒ potrei non aver visto la riga che
+   *    cerco) — è `boh`. *Non guardare non è la stessa cosa che guardare e non trovare.*
+   */
+
+  /** Normalizza un nome per il confronto. Promossa a livello di modulo dalla gemella che stava
+   *  dentro `staffCalAskMatchpoint`: adesso i due destinatari fanno lo **stesso** confronto, e il
+   *  banco può provarlo una volta invece di fidarsi che le due copie restino uguali. PURA. */
+  function _staffCalNormNome(s) {
       return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
         .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-    };
-    const _tokens = function (s) { return _norm(s).split(' ').filter(function (t) { return t.length >= 3; }); };
+  }
+  /** I pezzi significativi di un nome (≥3 lettere), da confrontare con quelli trovati. PURA. */
+  function _staffCalTokenNome(s) { return _staffCalNormNome(s).split(' ').filter(function (t) { return t.length >= 3; }); }
+
+  /** ⭐ I nomi che ci aspettiamo di trovare su quello slot: i giocatori più l'intestazione, che
+   *  per una partita è spesso l'elenco unito — va spezzata, o si cercherebbe tutta in un nome
+   *  solo. PURA (stessa regola dei due destinatari, scritta una volta). */
+  function staffCalNomiAttesi(parsed) {
+    const fuori = [];
+    (Array.isArray(parsed && parsed.giocatori) ? parsed.giocatori : []).forEach(function (g) {
+      const n = (g && typeof g === 'object') ? g.nome : g;
+      if (n) fuori.push(String(n));
+    });
+    String((parsed && parsed.nome) || '').split(/[,;+&·/]| e /i).forEach(function (p) {
+      if (p && p.trim()) fuori.push(p.trim());
+    });
+    return fuori;
+  }
+
+  /** Vero se fra i nomi trovati ce n'è almeno uno dei nostri. PURA. */
+  function staffCalRiconosceINostriNomi(nostri, trovati) {
+    const tokenTrovati = (Array.isArray(trovati) ? trovati : []).map(_staffCalTokenNome);
+    return (Array.isArray(nostri) ? nostri : []).some(function (n) {
+      const voluti = _staffCalTokenNome(n);
+      if (!voluti.length) return false;
+      return tokenTrovati.some(function (ha) {
+        return voluti.every(function (t) { return ha.indexOf(t) !== -1; });
+      });
+    });
+  }
+
+  /** Quanto indietro si guarda nella copia del gestionale. Generosa di proposito: il deposito
+   *  delle verifiche in sospeso si scarta da sé a **48 ore** (`_PMO_VERIFICHE_ETA_MAX_MS`), quindi
+   *  72 lasciano un giorno di margine anche a un orologio del browser sfasato. ⚠️ Serve a non
+   *  scaricare tutta la storia, non a decidere: una riga fuori finestra non può esistere, perché
+   *  la scrittura che stiamo verificando è di poco fa. */
+  const _STAFF_CAL_GEST_FINESTRA_MS = 72 * 60 * 60 * 1000;
+  /** Quante righe si chiedono in un colpo. Se ne tornano ESATTAMENTE tante, la pagina è piena e
+   *  la lettura **non ha visto tutto** ⇒ da lì non può uscire un «no». */
+  const _STAFF_CAL_GEST_PAGINA = 1000;
+
+  /** 🚨⭐⭐ IL VERDETTO, SEPARATO DALLA RETE — ed è qui che sta tutto ciò che può sbagliare.
+   *
+   * `righe` sono quelle che il gestionale ha restituito (`{record_type, local_key, payload,
+   * deleted}`), `paginaPiena` dice che potrebbero non essere tutte. PURA: il banco la prova senza
+   * rete, che è l'unico modo di esercitare davvero il ramo del «no». */
+  function staffCalVerdettoDalGestionale(righe, parsed, paginaPiena) {
+    const sulloSlot = (Array.isArray(righe) ? righe : []).filter(function (r) {
+      if (!r || r.deleted === true) return false;
+      const p = r.payload;
+      if (!p || typeof p !== 'object') return false;
+      if (String(p.data || '') !== String((parsed && parsed.data) || '')) return false;
+      if (String(p.ora || '') !== String((parsed && parsed.ora) || '')) return false;
+      const campoRiga = String(p.campo || '').replace(/[^0-9]/g, '');
+      const campoNostro = String((parsed && parsed.campoNum) != null ? parsed.campoNum : '').replace(/[^0-9]/g, '');
+      if (!campoNostro || campoRiga !== campoNostro) return false;
+      return true;
+    });
+    const nomiTrovati = [];
+    sulloSlot.forEach(function (r) {
+      const p = r.payload || {};
+      (Array.isArray(p.giocatori) ? p.giocatori : []).forEach(function (g) {
+        const n = (g && typeof g === 'object') ? g.nome : g;
+        if (n) nomiTrovati.push(String(n));
+      });
+      if (p.nome) nomiTrovati.push(String(p.nome));
+    });
+    if (staffCalRiconosceINostriNomi(staffCalNomiAttesi(parsed), nomiTrovati)) {
+      return { verdict: 'si', why: 'il gestionale ha la prenotazione su quello slot, coi nostri nomi', names: nomiTrovati };
+    }
+    if (sulloSlot.length) {
+      // ⚠️ Occupato non vuol dire «è la nostra»: può essere di un collega. Stesso confine della
+      //    strada vecchia, e per la stessa ragione.
+      return { verdict: 'boh', names: nomiTrovati, why: 'su quello slot il gestionale ha una prenotazione, ma non ci riconosco i nostri nomi' };
+    }
+    if (paginaPiena) {
+      // ⛔ Qui il «no» sarebbe **inventato**: non ho finito di guardare.
+      return { verdict: 'boh', why: 'non sono riuscito a leggere tutte le prenotazioni: da questa lettura non posso dire di no' };
+    }
+    return { verdict: 'no', why: 'il gestionale non ha nessuna prenotazione su quello slot' };
+  }
+
+  /** Il guscio che va a leggere. `opzioni.fetch` e `opzioni.adesso` sono iniettabili perché il
+   *  banco possa esercitarlo davvero invece di constatarlo leggendo il sorgente. */
+  async function staffCalChiediAlGestionale(parsed, staff, supabaseUrl, supabaseKey, opzioni) {
+    const o = opzioni || {};
+    const _fetch = o.fetch || ((typeof fetch === 'function') ? fetch : null);
+    const adesso = Number(o.adesso) || Date.now();
+    if (!_fetch) return { verdict: 'boh', why: 'non ho con che leggere dal gestionale' };
+    const da = new Date(adesso - _STAFF_CAL_GEST_FINESTRA_MS).toISOString();
+    try {
+      const risposta = await _fetch(`${supabaseUrl}/rest/v1/rpc/pmo_get_records_admin_page`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': supabaseKey, 'Authorization': `Bearer ${staff.accessToken}` },
+        body: JSON.stringify({ p_record_types: ['staff_booking'], p_since: da, p_limit: _STAFF_CAL_GEST_PAGINA, p_offset: 0 }),
+      });
+      const testo = await risposta.text();
+      let righe = null;
+      try { righe = testo ? JSON.parse(testo) : null; } catch (e) { righe = null; }
+      // ⛔ FALLISCE CHIUSA: un HTTP storto o una risposta che non è una lista è «non ho guardato»,
+      //    mai «non c'è». Il permesso mancante (`PERMISSION_DENIED`) passa esattamente di qui.
+      if (!risposta.ok || !Array.isArray(righe)) {
+        const perche = (righe && (righe.message || righe.error)) || ('errore HTTP ' + risposta.status);
+        return { verdict: 'boh', why: 'non sono riuscito a chiedere al gestionale (' + perche + ')' };
+      }
+      return staffCalVerdettoDalGestionale(righe, parsed, righe.length >= _STAFF_CAL_GEST_PAGINA);
+    } catch (err) {
+      return { verdict: 'boh', why: 'non sono riuscito a chiedere al gestionale (' + ((err && err.message) ? err.message : String(err)) + ')' };
+    }
+  }
+
+  async function staffCalAskMatchpoint(parsed, staff, supabaseUrl, supabaseKey) {
+    const _norm = _staffCalNormNome;
+    const _tokens = _staffCalTokenNome;
     // ⚠️ Se non ho con che guardare (permesso o configurazione mancanti) NON devo restituire un
     //    'no': non guardare non è la stessa cosa che guardare e non trovare. → 'boh'.
     if (!staff || !staff.accessToken || !supabaseUrl || !supabaseKey) {
-      return { verdict: 'boh', why: 'non ho potuto guardare su Matchpoint (permesso o configurazione non disponibili)' };
+      // 🏷️ VOCE 190 — il nome del circolo si dice solo dove esiste: questo `why` esce anche sul
+      //    sistema nuovo, dove Matchpoint non c'è. Generico è vero in tutti e due i mondi.
+      return { verdict: 'boh', why: 'non ho potuto controllare (permesso o configurazione non disponibili)' };
     }
-    // 🆕⭐⭐ VOCE 180 — IL QUARTO PUNTO, ED È DI UN GENERE DIVERSO DAGLI ALTRI TRE.
+    // 🆕⭐⭐ VOCE 187 — IL BIVIO: A CHI SI CHIEDE «È PASSATA?».
     //
-    // Gli altri tre andavano a Matchpoint a prendere un DATO (soldi, nomi, note) che ormai ha il
-    // gestionale: là la cura è «leggi dalla copia». Questo invece va a fare una DOMANDA — *«la
-    // prenotazione che ho appena provato a scrivere esiste?»* — e quella domanda, dopo il
-    // distacco, **non ha più un destinatario**. Non si converte: si decide cosa farne, ed è un
-    // lavoro suo (la forma è quella della voce 53 — tornare a chiedere al GESTIONALE).
+    // 📖 Da dove viene. La voce 180 aveva trovato **quattro** punti che leggevano dal vivo dal
+    // circolo. Tre andavano a prendere un DATO (soldi, nomi, note) che ormai ha il gestionale, e
+    // la cura era «leggi dalla copia». Questo è il quarto ed è di un genere diverso: fa una
+    // **domanda** — *«la prenotazione che ho appena provato a scrivere esiste?»* — e il giorno
+    // del distacco quella domanda **resta senza destinatario**.
+    // 🩹 Fin qui si falliva chiusi (`boh`), ed era il ripiego onesto: *«il permesso di rimandarla
+    //    sapendo cosa si sta rimandando»*, scritto così nella scheda della voce.
     //
-    // ⛔ QUI SI FALLISCE CHIUSI, cioè `boh`, e non è un ripiego pigro: è l'unica risposta vera.
-    //    Un `no` inventato è il danno peggiore che questa funzione possa fare — chi lo legge
-    //    riprova, e la partita si prenota **due volte**. E la regola del progetto lo dice già:
-    //    *il «no» si dice solo con la freschezza certificata dal gestionale, altrimenti la
-    //    risposta onesta è «non lo so ancora»*.
-    // ⚖️ I chiamanti sanno già trattarlo: `si` e `no` chiudono, tutto il resto diventa «non ho la
-    //    conferma, controlla». Cambia il TEMPO, in meglio — prima si sarebbe arrivati allo stesso
-    //    `boh` dopo 90 secondi di attesa verso un worker che non risponde.
-    // 🚨 E su un gestionale non collegato al circolo questa strada è quasi irraggiungibile: le
-    //    scritture sono native, quindi un «esito ignoto» può nascere solo da una rete caduta verso
-    //    l'edge, non da un worker muto.
+    // ✅ ADESSO IL DESTINATARIO C'È, ed è il **gestionale**: sul sistema nuovo la scrittura è
+    //    nativa e la riga della prenotazione la scrive **la edge stessa, prima di rispondere**
+    //    ⇒ la nostra copia è il fatto, non uno specchio in ritardo. Il perché per esteso, con la
+    //    misura, sta sopra `staffCalChiediAlGestionale`.
+    // ⚖️ È la forma della voce 53 — *quando non sai, torna a chiedere al gestionale* — e della
+    //    regola di architettura: **il gestionale SA**. Non si aggiunge un secondo indirizzo a cui
+    //    chiedere: si cambia indirizzo, e resta uno solo.
+    //
+    // ⛔ NON È UN RIPIEGO CHE DIVENTA UN «SÌ» FACILE: i tre verdetti restano tre, e il «no» esce
+    //    solo da una lettura riuscita e completa. Tutto il resto resta `boh`, che i chiamanti
+    //    sanno già trattare (`si` e `no` chiudono, il resto è «non ho la conferma»).
+    // 🚨 E resta vero che su un gestionale non collegato al circolo questa strada è quasi
+    //    irraggiungibile: con le scritture native un «esito ignoto» può nascere solo da una rete
+    //    caduta verso l'edge, non da un worker muto. Quando ci si arriva, però, adesso si risponde.
     if (!pmoGestionaleCollegatoAlCircolo(supabaseUrl)) {
-      return { verdict: 'boh', why: 'questo gestionale non è collegato al circolo: non c\'è nessun Matchpoint a cui chiedere' };
+      return staffCalChiediAlGestionale(parsed, staff, supabaseUrl, supabaseKey);
     }
     try {
       const _ctrl = new AbortController();
