@@ -8724,7 +8724,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.435';
+    const APP_VERSION = '6.436';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -45184,6 +45184,28 @@ Per confermare scrivi ELIMINA.`);
 
   let _pmoTrascina = null;          // la presa in corso, o `null`
   let _pmoTrascinaFinitoA = 0;      // quando è finita l'ultima: serve a non aprire la scheda dopo un trascinamento
+  /* 🚨⭐⭐ VOCE 195 — E IL TEMPO NON BASTA, PERCHÉ IN MEZZO C'È UN `confirm()` CHE BLOCCA.
+   *
+   * 🗣️ Sue parole (10/09/2026): *«quando faccio il drag & drop sul calendario mi appare per un
+   * breve tempo la scheda e poi si chiude»*.
+   * 📏 RIPRODOTTO sulla pagina viva di TEST (6.435) prima di toccare una riga, con la scheda
+   * sostituita da una spia: presa finita **100 ms** fa ⇒ 0 aperture · **400 ms** ⇒ 0 ·
+   * **600 ms** ⇒ 1 · **1500** ⇒ 1 · **3000** ⇒ 1.
+   * 🔎 IL PERCHÉ, ed è tutto nel `confirm()` di `staffCalDoMove`: quel riquadro **blocca la
+   *    pagina**, e il `click` che il browser genera a fine trascinamento resta **in coda** finché
+   *    non si risponde. ⇒ Alla consegna sono passati «quanto ci ha messo lui a premere OK», non
+   *    «quanto è durato il gesto». Chi risponde in fretta non vede niente; chi legge il riquadro
+   *    apre la scheda — e il ridisegno dopo lo spostamento la richiude. È **la stessa riga** che
+   *    si comporta in due modi, e per questo sembrava intermittente.
+   * 📌 *Una guardia a tempo misura il TEMPO, e presume di misurare un FATTO. Quando in mezzo c'è
+   *    qualcosa che blocca, i due si scollano e la guardia scade proprio mentre serve.*
+   * 🔨 LA CURA: si ricorda il **fatto** — «c'è un click che nasce da un trascinamento, e va
+   *    mangiato» — e lo si dimentica solo quando quel click arriva, o quando ne comincia uno
+   *    nuovo (il `pointerdown` successivo). Niente orologio, niente finestra da indovinare.
+   * ⚖️ La guardia dei 500 ms **resta accanto**, in OR: non mangia nessun click che il flag non
+   *    mangerebbe già, e copre l'ipotesi che il flag venga azzerato da una strada non prevista.
+   *    Due reti, e nessuna delle due sbaglia dalla parte del click perso. */
+  let _pmoTrascinaClickDaMangiare = false;
   let _pmoTrascinaInited = false;
 
   function pmoTrascinaAttacca(blk, dati, ctx) {
@@ -45201,6 +45223,11 @@ Per confermare scrivi ELIMINA.`);
     blk.title = (blk.title ? blk.title + ' · ' : '') + 'Trascinala per spostarla di campo o di orario';
     pmoTrascinaInit();
     blk.addEventListener('pointerdown', function (ev) {
+      /* ⭐ VOCE 195 — un gesto nuovo cancella il ricordo del precedente: se dopo un trascinamento
+         il `click` non è mai arrivato (il puntatore è finito altrove), il flag non deve restare
+         armato a mangiare il prossimo click, che è legittimo. Sta PRIMA di ogni altro controllo
+         apposta: vale anche per i gesti che questa funzione poi ignora. */
+      _pmoTrascinaClickDaMangiare = false;
       if (ev.button != null && ev.button > 0) return;   // solo il tasto principale
       if (_pmoTrascina) return;
       _pmoTrascina = {
@@ -45363,7 +45390,7 @@ Per confermare scrivi ELIMINA.`);
     _pmoTrascina = null;
     if (!t) return;
     if (t.timer) { clearTimeout(t.timer); t.timer = null; }
-    if (t.preso) _pmoTrascinaFinitoA = Date.now();
+    if (t.preso) { _pmoTrascinaFinitoA = Date.now(); _pmoTrascinaClickDaMangiare = true; }
     try { t.blk.releasePointerCapture(t.id); } catch (_e) {}
     if (t.fantasma && t.fantasma.parentNode) t.fantasma.parentNode.removeChild(t.fantasma);
     if (t.mira && t.mira.parentNode) t.mira.parentNode.removeChild(t.mira);
@@ -45614,7 +45641,12 @@ Per confermare scrivi ELIMINA.`);
         (function (iso, cc, oo, nm, du, tp, mp) {
           blk.addEventListener('click', function () {
             /* 🖐️ VOCE 193 — un trascinamento finisce con un `click` sul blocco di partenza, e senza
-               questa riga aprirebbe la SCHEDA della partita appena spostata, sopra la conferma. */
+               questa riga aprirebbe la SCHEDA della partita appena spostata, sopra la conferma.
+               🚨 VOCE 195 — e il tempo da solo NON basta: il `confirm()` dello spostamento blocca
+               la pagina, quindi il click viene consegnato dopo «quanto ci ha messo lui a premere
+               OK». ⇒ Prima si guarda il FATTO, e lo si consuma; il tempo resta come seconda rete.
+               Il perché per esteso, con la misura, sta su `_pmoTrascinaClickDaMangiare`. */
+            if (_pmoTrascinaClickDaMangiare) { _pmoTrascinaClickDaMangiare = false; return; }
             if (Date.now() - _pmoTrascinaFinitoA < 500) return;
             if (mp) staffCalPromoteAndEdit(iso, cc, oo, nm, du, tp);
             else staffCalEditPlayers(iso, cc, oo, nm, du, tp);
