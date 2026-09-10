@@ -8723,7 +8723,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.439';
+    const APP_VERSION = '6.440';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -46597,6 +46597,14 @@ Per confermare scrivi ELIMINA.`);
         isoDate: isoDate, campo: campoNum, ora: ora, dataIt: dataIt,
         origIso: isoDate, origCampo: campoNum, origOra: ora, origDurMin: durMin,
         tipoReale: tipoR, hasPlayers: hasPlayers,
+        /* 🎭 VOCE 201 — la RIGA DI PARTENZA del tipo. Senza, «è cambiato?» non è una domanda a
+         * cui si possa rispondere: è la stessa lezione della 132, dove un importo senza
+         * baseline usciva come «nessuna modifica da salvare».
+         * ⭐ Si tiene la parola NORMALIZZATA (`lezione`/`partita`) e non `tipoReale` grezzo: da
+         *   Matchpoint arriva roba come «Lezione Libera», e confrontare una parola grezza con
+         *   una scelta dal menu direbbe «cambiato» a ogni apertura di una lezione. */
+        origTipoNorm: String(tipoR || '').toLowerCase().includes('lez') ? 'lezione' : 'partita',
+        tipoNorm: String(tipoR || '').toLowerCase().includes('lez') ? 'lezione' : 'partita',
         mCampo: campoNum, mIso: isoDate, mOraIni: ora, mOraFin: _staffCalEndTime(ora, durMin),
         roster: Array.isArray(roster) ? roster : [], remove: {}, add: [],
         // note = valore corrente del campo; origNote = baseline per il confronto (da locale, poi
@@ -47167,6 +47175,52 @@ Per confermare scrivi ELIMINA.`);
       slotSec.appendChild(warn);
     }
     box.appendChild(slotSec);
+
+    /* 🎭⭐⭐ VOCE 201 — PARTITA ↔ LEZIONE: il gesto che non esisteva.
+     * 🗣️ Sua richiesta del 10/09: *«partita ↔ lezione — quel gesto non esiste, e se lo vuoi il
+     *   lavoro è prima creare l'operazione.. si lo voglio»*.
+     * 🎯 Sta QUI, sopra il Maestro, perché è lei a decidere se il Maestro esiste: cambiando il
+     *   tipo la scheda si ridisegna e la sezione sotto compare o sparisce.
+     * ⛔ Solo su partite e lezioni: una MANUTENZIONE non è né l'una né l'altra, e offrirle un
+     *   menu «partita/lezione» sarebbe una domanda senza risposta giusta. */
+    if (st.hasPlayers) {
+      const tipoSec = mkSection('ti-repeat', 'Tipo');
+      const tipoSel = document.createElement('select');
+      tipoSel.className = 'svc-edit-field'; tipoSel.style.width = '100%'; tipoSel.disabled = st.busy;
+      [['partita', 'Partita'], ['lezione', 'Lezione']].forEach(function (v) {
+        const o = document.createElement('option');
+        o.value = v[0]; o.textContent = v[1];
+        if (String(st.tipoNorm || 'partita') === v[0]) o.selected = true;
+        tipoSel.appendChild(o);
+      });
+      tipoSel.addEventListener('change', function () {
+        st.tipoNorm = tipoSel.value;
+        /* 👨‍🏫 IL MAESTRO NON RESTA APPESO, ed è il nodo che il committente ha nominato aprendo
+         * il lavoro: *«una lezione ha un maestro e una partita no. Un cambio di tipo che lascia
+         * il maestro appeso è un dato che mente»*.
+         * ⇒ Diventando PARTITA il maestro si azzera: su una partita non esiste, e tenerlo
+         *   scritto vorrebbe dire conservare un dato che non ha più un significato.
+         * ⚠️ Diventando LEZIONE **non si indovina**: la sezione qui sotto compare col suo
+         *   «— scegli maestro —», e il Salva rifiuta finché non se n'è scelto uno — la stessa
+         *   regola che l'app applica già in creazione. */
+        if (st.tipoNorm === 'partita') st.istruttore = '';
+        // La scheda si ridisegna: `tipoReale` la governa, quindi va tenuto allineato o la
+        // sezione Maestro guarderebbe ancora la parola vecchia.
+        st.tipoReale = st.tipoNorm;
+        staffCalRenderPlayersEditor();
+      });
+      tipoSec.appendChild(tipoSel);
+      const tipoHint = document.createElement('div');
+      tipoHint.className = 'svc-edit-label'; tipoHint.style.marginTop = '4px';
+      /* ⭐ La frase NON nomina il circolo, al contrario della gemella del Maestro, e non è una
+       * svista: questo gesto su Matchpoint **non esiste** (là una partita e una lezione sono
+       * due schede diverse) ⇒ dire «verrà salvato sul circolo» sarebbe falso. */
+      tipoHint.textContent = String(st.tipoNorm) !== String(st.origTipoNorm)
+        ? (st.tipoNorm === 'lezione' ? 'Diventa una lezione: scegli il maestro qui sotto.' : 'Diventa una partita: il maestro viene tolto.')
+        : 'Trasforma la prenotazione da partita a lezione, o viceversa.';
+      tipoSec.appendChild(tipoHint);
+      box.appendChild(tipoSec);
+    }
 
     // ── MAESTRO (solo Lezione) — selettore per CAMBIARE l'istruttore della lezione su Matchpoint.
     //    Prima non era modificabile dalla scheda: si poteva impostare solo in creazione. Ora la
@@ -48404,6 +48458,26 @@ Per confermare scrivi ELIMINA.`);
       && String((st && st.istruttore) || '').trim() !== String((st && st.origIstruttore) || '').trim()
       && String((st && st.istruttore) || '').trim() !== '';
 
+    /* 🎭⭐⭐ VOCE 201 — IL TIPO CAMBIATO (partita ↔ lezione).
+     * ⚖️ Si confronta la parola NORMALIZZATA con la sua riga di partenza, non `tipoReale` grezzo:
+     *   da Matchpoint arriva «Lezione Libera», e un confronto grezzo direbbe «cambiato» a ogni
+     *   apertura di una lezione — cioè manderebbe un avviso a chi non è successo niente. */
+    const tipoChanged = !!(st && st.hasPlayers)
+      && String((st && st.tipoNorm) || '') !== ''
+      && String((st && st.tipoNorm) || '') !== String((st && st.origTipoNorm) || '');
+
+    /* ⛔🚨 UNA LEZIONE SENZA MAESTRO NON SI SALVA, e il Salva si ferma QUI invece di scrivere
+     * metà gesto. È la stessa regola che l'app applica già in creazione (*«Lezione senza
+     * maestro: la scheda il maestro lo chiede»*), portata sul gesto nuovo: senza, si otterrebbe
+     * una lezione che nessuno tiene — cioè esattamente il «dato che mente» che il committente ha
+     * nominato aprendo il lavoro, nel verso opposto a quello ovvio.
+     * ⚖️ Vale solo quando il tipo sta CAMBIANDO: una lezione già esistente e già senza maestro
+     *   non si blocca qui, o non si potrebbe più salvarne la nota. */
+    if (tipoChanged && String(st.tipoNorm) === 'lezione' && !String((st && st.istruttore) || '').trim()) {
+      svcAddMessage('system', '👨‍🏫 Una lezione ha bisogno di un maestro: scegline uno prima di salvare.', 'error');
+      return;
+    }
+
     // 🆕💶 VOCE 132 — gli IMPORTI A CARICO toccati a mano, che fino al 03/09 questo Salva non
     // guardava affatto: non stavano nel pacchetto e non stavano nemmeno nella condizione qui
     // sotto, così cambiando SOLO un importo usciva «ℹ️ Nessuna modifica da salvare» — che è
@@ -48427,7 +48501,10 @@ Per confermare scrivi ELIMINA.`);
     })();
     const chargesChanged = chargeChanges.length > 0;
 
-    if (!moveChanged && !playersChanged && !noteChanged && !descrChanged && !istruttoreChanged && !chargesChanged) {
+    // 🎭 VOCE 201 — `tipoChanged` sta in questa riga o cambiando SOLO il tipo uscirebbe
+    //    «ℹ️ Nessuna modifica da salvare»: è il difetto identico della 132 sugli importi, che
+    //    era stato trovato dal committente provando invece che rileggendo.
+    if (!moveChanged && !playersChanged && !noteChanged && !descrChanged && !istruttoreChanged && !chargesChanged && !tipoChanged) {
       svcAddMessage('system', 'ℹ️ Nessuna modifica da salvare.');
       return;
     }
@@ -48437,12 +48514,21 @@ Per confermare scrivi ELIMINA.`);
       const proceed = confirm('⚠️ La destinazione (Campo ' + st.mCampo + ' · ' + st.mOraIni + '–' + st.mOraFin + ' del ' + st.mIso.split('-').reverse().join('/') + ') sembra già occupata.\n\nProcedere comunque?');
       if (!proceed) return;
     }
+    /* 🎭 Le due parole con l'iniziale maiuscola, come sono scritte nel menu: il riepilogo che
+     * chiede una conferma deve usare le stesse parole che la persona ha appena letto a schermo. */
+    const _pmoTipoLabel = function (t) { return String(t) === 'lezione' ? 'Lezione' : 'Partita'; };
     const parts = [];
     if (moveChanged) parts.push('Sposta → Campo ' + st.mCampo + ' · ' + st.mIso.split('-').reverse().join('/') + ' · ' + st.mOraIni + '–' + st.mOraFin);
     if (playersChanged) parts.push('Giocatori: ' + (addArr.length ? ('+' + addArr.length) : '') + (remove.length ? (' -' + remove.length) : ''));
     if (noteChanged) parts.push((st.note ? (st.isManut ? 'Osservazioni aggiornate' : 'Nota aggiornata') : (st.isManut ? 'Osservazioni rimosse' : 'Nota rimossa')));
     if (descrChanged) parts.push('Descrizione aggiornata');
     if (istruttoreChanged) parts.push('Maestro → ' + (st.istruttore || ''));
+    // 🎭 VOCE 201 — e si scrive per esteso «da → a»: è una trasformazione, e chi conferma deve
+    //    vedere da dove parte. ⭐ Il maestro tolto si DICHIARA, non si fa in silenzio.
+    if (tipoChanged) {
+      parts.push('Tipo: ' + _pmoTipoLabel(st.origTipoNorm) + ' → ' + _pmoTipoLabel(st.tipoNorm)
+        + (st.tipoNorm === 'partita' && String(st.origIstruttore || '').trim() ? ' (il maestro viene tolto)' : ''));
+    }
     // 💶 Nel riepilogo si scrivono i nomi e i DUE numeri: chi conferma deve vedere da dove a
     // dove, non «3 importi cambiati» — è denaro che qualcuno pagherà al banco.
     if (chargesChanged) {
@@ -48516,6 +48602,9 @@ Per confermare scrivi ELIMINA.`);
       note: (st.note || ''), origNote: (st.origNote || ''), noteChanged: noteChanged,
       isManut: !!st.isManut, descrizione: (st.descrizione || ''), origDescrizione: (st.origDescrizione || ''), descrChanged: descrChanged,
       istruttore: (st.istruttore || ''), origIstruttore: (st.origIstruttore || ''), istruttoreChanged: istruttoreChanged,
+      // 🎭 VOCE 201 — il tipo viaggia con la sua riga di partenza: al messaggio serve il «prima»
+      //    per poter dire «è **diventata**» invece di descrivere uno stato.
+      tipoNorm: (st.tipoNorm || ''), origTipoNorm: (st.origTipoNorm || ''), tipoChanged: tipoChanged,
       idReserva: (st.idReserva || null),
     };
     const payload = { campo: op.origCampo, data: op.origIso, ora: op.origOra };
@@ -48529,6 +48618,15 @@ Per confermare scrivi ELIMINA.`);
     if (noteChanged) payload.note = st.note || '';
     if (descrChanged) payload.descrizione = st.descrizione || '';
     if (istruttoreChanged) payload.istruttore = op.istruttore || '';
+    /* 🎭 VOCE 201 — e si manda ANCHE il «prima», che la edge da sola non saprebbe: la copia
+     * locale ce l'ha, ma è quella che stiamo per cambiare. ⭐ La edge ripiega su di lei se questo
+     * campo manca — due fonti per lo stesso fatto, la più fresca prima. */
+    if (tipoChanged) { payload.tipo = op.tipoNorm; payload.tipoPrima = op.origTipoNorm; }
+    /* 👨‍🏫 Diventando una LEZIONE il maestro va mandato anche se «non è cambiato» rispetto alla
+     * baseline: prima non ce n'era uno, e senza questa riga la lezione nascerebbe senza. */
+    if (tipoChanged && op.tipoNorm === 'lezione' && (op.istruttore || '').trim() && !payload.istruttore) {
+      payload.istruttore = op.istruttore.trim();
+    }
     const pendKey = _staffCalEditKey(op.origIso, op.origCampo, op.origOra);
     _staffCalPendingEdits.add(pendKey);
 
@@ -48566,6 +48664,17 @@ Per confermare scrivi ELIMINA.`);
       if (op.noteChanged) { try { staffCalApplyLocalNote(_curIso, _curCampo, _curOra, op.note); } catch (e) { console.warn('staff edit nota locale:', e); } }
       if (op.descrChanged) { try { staffCalApplyLocalDescrizione(_curIso, _curCampo, _curOra, op.descrizione); } catch (e) { console.warn('staff edit descrizione locale:', e); } }
       if (op.istruttoreChanged) { try { staffCalApplyLocalIstruttore(_curIso, _curCampo, _curOra, op.istruttore); } catch (e) { console.warn('staff edit istruttore locale:', e); } }
+      /* 🎭 VOCE 201 — la copia locale è NOSTRA e la possiede l'app, come per l'istruttore: la
+       * edge scrive il registro e dichiara il fatto, il `staff_booking` lo aggiorna qui.
+       * ⛔ E il maestro si toglie nello stesso gesto quando diventa una partita: sono due campi
+       *   ma un fatto solo, e applicarne uno senza l'altro lascerebbe il dato che mente. */
+      if (op.tipoChanged) {
+        try {
+          staffCalApplyLocalTipo(_curIso, _curCampo, _curOra, op.tipoNorm);
+          if (op.tipoNorm === 'partita') staffCalApplyLocalIstruttore(_curIso, _curCampo, _curOra, '');
+          else if ((op.istruttore || '').trim()) staffCalApplyLocalIstruttore(_curIso, _curCampo, _curOra, op.istruttore.trim());
+        } catch (e) { console.warn('staff edit tipo locale:', e); }
+      }
       // Riconcilia col roster AUTOREVOLE del worker, quando ce l'abbiamo: fissa i nomi reali.
       try {
         const nomi = (finalRoster && Array.isArray(finalRoster)) ? finalRoster.map(function (p) { return p && p.nome; }).filter(Boolean).join(', ') : null;
@@ -49008,6 +49117,30 @@ Per confermare scrivi ELIMINA.`);
   // LEZIONE — applica in locale il MAESTRO (istruttore) dello staff_booking, così la card del
   // calendario mostra subito il nuovo maestro (ottimistico) e il push cloud lo propaga cross-device.
   // Il revert su rifiuto ripristina il maestro precedente.
+  /* 🎭 VOCE 201 — il TIPO nella copia locale, gemella esatta di `staffCalApplyLocalIstruttore`.
+   * ⚖️ Scritta accanto a lei e non dentro di lei: sono due campi che cambiano insieme **in un
+   *   caso solo** (partita ↔ lezione) e separatamente in tutti gli altri. Fonderle costringerebbe
+   *   ogni chiamata a passare un valore che non le interessa. */
+  function staffCalApplyLocalTipo(isoDate, campo, ora, tipo) {
+    if (typeof safeLoad !== 'function' || typeof save !== 'function') return;
+    const t = String(tipo || '').trim();
+    // ⛔ Elenco chiuso: questo valore finisce nella copia locale e da lì nelle frasi del bot.
+    if (t !== 'partita' && t !== 'lezione') return;
+    const existing = safeLoad('staffBookings', []);
+    const wantCampo = Number(String(campo).replace(/\D/g, ''));
+    const wantOra = String(ora).trim();
+    let changed = false;
+    existing.forEach(function (b) {
+      if (String(b.data).trim() === String(isoDate).trim() &&
+          Number(String(b.campo).replace(/\D/g, '')) === wantCampo &&
+          String(b.ora).trim() === wantOra) {
+        b.tipo = t;
+        changed = true;
+      }
+    });
+    if (changed) save('staffBookings', existing);
+  }
+
   function staffCalApplyLocalIstruttore(isoDate, campo, ora, istruttore) {
     if (typeof safeLoad !== 'function' || typeof save !== 'function') return;
     const existing = safeLoad('staffBookings', []);
