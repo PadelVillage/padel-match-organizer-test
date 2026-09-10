@@ -8327,14 +8327,14 @@ body.assessment-public-mode .assessment-public-only-card {
                 <div id="matchpointRoutineAlert" class="matchpoint-routine-alert" aria-live="polite"></div>
                 <div class="matchpoint-routine-rules">
                   <span class="matchpoint-routine-rule">Se fallisce, resta attivo l'ultimo dato valido</span>
-                  <span class="matchpoint-routine-rule">Nessun Excel Matchpoint viene archiviato</span>
+                  <span class="matchpoint-routine-rule" data-frase-col-circolo="Nessun Excel Matchpoint viene archiviato">Nessun Excel viene archiviato</span>
                   <span class="matchpoint-routine-rule">Storico operativo limitato agli ultimi 12 mesi</span>
                 </div>
               </article>
 
               <article class="matchpoint-data-box member-audit wide" id="anchor-matchpoint-conteggi-soci">
                 <h3><span class="matchpoint-data-step">A</span> Diagnostica conteggi soci</h3>
-                <p class="matchpoint-data-copy">Analisi read-only tra cloud, Anagrafica, Dashboard e fotografia Matchpoint. Non cancella e non modifica record.</p>
+                <p class="matchpoint-data-copy" data-frase-col-circolo="Analisi read-only tra cloud, Anagrafica, Dashboard e fotografia Matchpoint. Non cancella e non modifica record.">Analisi read-only tra cloud, Anagrafica e Dashboard. Non cancella e non modifica record.</p>
                 <div class="matchpoint-data-actions">
                   <button id="memberCountAuditButton" class="btn-secondary" onclick="setActionAnchor(this); pmoRunMemberCountAuditDryRun()">Analizza conteggi soci</button>
                   <div id="memberCountAuditActionState" class="matchpoint-action-state">Dry-run non ancora eseguito</div>
@@ -8458,7 +8458,7 @@ body.assessment-public-mode .assessment-public-only-card {
                 <button type="button" class="matchpoint-data-accordion-toggle" aria-expanded="false" aria-controls="matchpointSlotAccordionPanel" onclick="toggleMatchpointDataAccordion('matchpointSlotAccordion')">
                   <span>
                     <span class="matchpoint-data-accordion-title"><span class="matchpoint-data-step">6</span> Fasce prenotabili</span>
-                    <span class="matchpoint-data-accordion-subtitle">Quando si gioca e quanto paga ogni giocatore. Griglia NOSTRA, non più di Matchpoint.</span>
+                    <span class="matchpoint-data-accordion-subtitle" data-frase-col-circolo="Quando si gioca e quanto paga ogni giocatore. Griglia NOSTRA, non più di Matchpoint.">Quando si gioca e quanto paga ogni giocatore. La griglia è nostra.</span>
                   </span>
                   <span class="matchpoint-data-chevron">›</span>
                 </button>
@@ -8724,7 +8724,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.430';
+    const APP_VERSION = '6.431';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -14827,7 +14827,7 @@ Grazie.`
       }
       const summary = pmoMemberCountAuditState.summary;
       if (!summary) {
-        target.innerHTML = '<div class="info-box">Esegui il dry-run per confrontare cloud, Anagrafica, Dashboard e Matchpoint. La diagnostica e solo read-only.</div>';
+        target.innerHTML = '<div class="info-box">Esegui il dry-run per confrontare cloud, Anagrafica, Dashboard' + (pmoNomeCircoloEsterno() ? ' e ' + pmoNomeCircoloEsterno() : '') + '. La diagnostica e solo read-only.</div>';
         return;
       }
       const cards = [
@@ -18453,6 +18453,19 @@ Grazie.`
     function renderMatchpointRoutineScheduleInfo() {
       const box = document.getElementById('matchpointRoutineScheduleInfo');
       if (!box) return;
+      /* 🆕⭐⭐ VOCE 190, TERZA MANO — QUESTO RIQUADRO DESCRIVEVA UN ORARIO CHE NON SUCCEDE.
+       * 📏 Misurato il 10/09 su `cudi`: fra le routine schedulate **non c'è nessuna routine dati**
+       * — le sei sono state tolte l'08/09 col disegno «due vite separate» — eppure qui si leggeva
+       * *«ogni notte alle 04:30 si aggiornano i Clienti»*. ⇒ Non è una parola invecchiata: è un
+       * **appuntamento inventato**, e chi lo legge aspetta un aggiornamento che non arriverà.
+       * 🚨 E chiamava **TEST** il gestionale su cui si lavora, che è la bugia peggiore di tutte:
+       * chi la legge smette di fidarsi di quello che salva.
+       * ⛔ La domanda non è più `PMO_IS_TEST_ENV` (⇒ voce 184 la spegnerebbe), è **se il circolo
+       * esterno c'è**: senza di lui non c'è niente da cui aggiornarsi, e si dice. */
+      if (pmoCircoloEsternoCollegato() !== true) {
+        box.innerHTML = `<strong>Aggiornamenti manuali</strong> Questo gestionale non prende dati da nessun sistema esterno: non c'è nessuna routine notturna. Usa i bottoni «Aggiorna adesso» quando ti serve.`;
+        return;
+      }
       box.innerHTML = PMO_IS_TEST_ENV
         ? `<strong>TEST · automatico solo per i clienti</strong> Ogni notte alle 04:30 si aggiornano i Clienti Matchpoint (un solo giro; in PROD sono sei). Le altre routine, rubrica Google compresa, restano manuali: usa i bottoni Aggiorna ora.`
         : `<strong>Sequenza automatica PROD</strong> Clienti 04:30, storico 05:00, backup cloud 06:00. Prenotazioni future: aggiornamento continuo ogni 2 minuti, in pausa dall'01:00 alle 06:00.`;
