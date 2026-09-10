@@ -8724,7 +8724,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.437';
+    const APP_VERSION = '6.438';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -27188,7 +27188,6 @@ Grazie!`
         <div class="pmo-ricarica-saldo"><span>Saldo attuale</span><strong>${escapeHtml(_walletBalanceLabel(g))}</strong></div>
         <label for="pmoWalletRechargeAmt">Importo da aggiungere</label>
         <input id="pmoWalletRechargeAmt" type="text" inputmode="decimal" placeholder="€ 0,00" autocomplete="off">
-        <div class="pmo-ricarica-avviso">⚠️ <strong>Operazione reale.</strong> Aggiunge credito sul wallet di Matchpoint. Non incide sugli incassi: l'incasso si riconosce quando il credito viene speso.</div>
         <div class="pmo-ricarica-azioni">
           <button type="button" class="btn-secondary" onclick="pmoChiudiRicarica()">Annulla</button>
           <button type="button" class="btn-primary" onclick="pmoWalletRechargeClick('${escapeHtml(String(g.id))}', this)">＋ Ricarica</button>
@@ -27256,11 +27255,19 @@ Grazie!`
       const inp = document.getElementById('pmoWalletRechargeAmt');
       const add = inp ? _pmoEuroToCents(inp.value) : null;
       /* 🆕 02/09/2026 — `giaConfermato`: l'unico posto da cui si arriva qui è la finestra della
-         ricarica, che mostra socio, saldo, importo e avviso «operazione reale» ⇒ la domanda è
-         già stata fatta, e dove il gesto avviene. Ripeterla nel pannello dell'Assistente AI
-         sarebbe una seconda domanda, per giunta in un'altra parte dello schermo.
+         ricarica, che mostra socio, saldo e importo ⇒ la domanda è già stata fatta, e dove il
+         gesto avviene. Ripeterla nel pannello dell'Assistente AI sarebbe una seconda domanda,
+         per giunta in un'altra parte dello schermo.
          📌 *Due domande per un gesto solo si imparano a saltare, e a saltarsi è quella che si
-         vede meno.* */
+         vede meno.*
+         🔪 10/09/2026 — QUI SI CITAVA ANCHE «l'avviso ‹operazione reale›», e quel riquadro NON
+         C'È PIÙ (tolto su sua richiesta: diceva «sul wallet di Matchpoint» su un gestionale in
+         cui il borsellino è NOSTRO — voce 196). ⇒ Il commento è stato corretto nello stesso
+         giro, o resterebbe a giustificare la scorciatoia con una cosa che non esiste.
+         ⚖️ E la scorciatoia REGGE lo stesso: a reggerla non era il riquadro ma i tre FATTI —
+         socio, saldo, importo — più un bottone premuto apposta, nel punto dello schermo dove
+         si guarda. 📌 *Togliere una cosa vuol dire cercare chi la nominava ancora: il
+         compilatore che avvisa, qui, non c'è.* */
 
       /* 🔪 `chiudiSeVa` era stato dichiarato e NON agganciato: la finestra sarebbe rimasta
          aperta sopra una ricarica riuscita. Preso rileggendo il proprio diff — è la stessa
@@ -44422,7 +44429,21 @@ Per confermare scrivi ELIMINA.`);
     // Codice cliente (memberId MP, es "000004") + dati identificativi: il worker risolve
     // l'id interno dal codice quando non collegato → storno da QUALSIASI scheda socio.
     const codice = String((opts.codice != null ? opts.codice : (g && (g.memberId || g.codice))) || '').trim();
-    const playerName = opts.playerName || (g && g.nome) || '';
+    /* 🔪 10/09/2026 — QUI IL NOME USCIVA SEMPRE VUOTO, e il banco non poteva vederlo.
+     * 📏 Misurato sulla pagina viva di `cudi`: un socio dell'anagrafica ha `name`, e `nome` è
+     *   `undefined` su **2823 soci su 2823**. ⇒ `player_name` è finito a `''` in tutte e due le
+     *   righe `wallet_txn` scritte finora (rilette dall'RPC: `chi: ""`).
+     * ⚖️ L'inganno è che `.nome` è il campo GIUSTO altrove — sui giocatori dentro una
+     *   prenotazione (`p.giocatori[]`), che sono un'altra forma di oggetto. La riga è stata
+     *   copiata da lì, dove funziona.
+     * 📌 *Un campo che esiste in un oggetto vicino non sbaglia rumorosamente: restituisce
+     *   `undefined`, che `||` trasforma in stringa vuota — e una stringa vuota non è un errore.*
+     * ⛔ Non è cosmetico: la riga del movimento resta senza intestatario. L'attribuzione al
+     *   socio regge lo stesso (`_pmoPagRigaSocio` guarda `member_local_id`/`id_cliente`, mai il
+     *   nome), ma chi legge il libro del denaro si trova un movimento senza un chi. */
+    const playerName = opts.playerName
+      || (g && (g.name || g.nome || ((typeof playerFullName === 'function') ? playerFullName(g) : '')))
+      || '';
     const idNome = (g && (g.firstName || '')) || '';
     const idCognome = (g && (g.surname || '')) || '';
     const idEmail = (g && (g.email || '')) || '';
@@ -44587,7 +44608,21 @@ Per confermare scrivi ELIMINA.`);
     // Codice cliente (memberId MP) + dati identificativi: il worker risolve l'id interno dal
     // codice quando non collegato → ricarica da QUALSIASI scheda socio (anche borsellino a 0).
     const codice = String((opts.codice != null ? opts.codice : (g && (g.memberId || g.codice))) || '').trim();
-    const playerName = opts.playerName || (g && g.nome) || '';
+    /* 🔪 10/09/2026 — QUI IL NOME USCIVA SEMPRE VUOTO, e il banco non poteva vederlo.
+     * 📏 Misurato sulla pagina viva di `cudi`: un socio dell'anagrafica ha `name`, e `nome` è
+     *   `undefined` su **2823 soci su 2823**. ⇒ `player_name` è finito a `''` in tutte e due le
+     *   righe `wallet_txn` scritte finora (rilette dall'RPC: `chi: ""`).
+     * ⚖️ L'inganno è che `.nome` è il campo GIUSTO altrove — sui giocatori dentro una
+     *   prenotazione (`p.giocatori[]`), che sono un'altra forma di oggetto. La riga è stata
+     *   copiata da lì, dove funziona.
+     * 📌 *Un campo che esiste in un oggetto vicino non sbaglia rumorosamente: restituisce
+     *   `undefined`, che `||` trasforma in stringa vuota — e una stringa vuota non è un errore.*
+     * ⛔ Non è cosmetico: la riga del movimento resta senza intestatario. L'attribuzione al
+     *   socio regge lo stesso (`_pmoPagRigaSocio` guarda `member_local_id`/`id_cliente`, mai il
+     *   nome), ma chi legge il libro del denaro si trova un movimento senza un chi. */
+    const playerName = opts.playerName
+      || (g && (g.name || g.nome || ((typeof playerFullName === 'function') ? playerFullName(g) : '')))
+      || '';
     const idNome = (g && (g.firstName || '')) || '';
     const idCognome = (g && (g.surname || '')) || '';
     const idEmail = (g && (g.email || '')) || '';
