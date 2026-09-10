@@ -7472,7 +7472,7 @@ body.assessment-public-mode .assessment-public-only-card {
             <p>Schede e contatti.</p>
           </div>
           <div class="players-head-actions">
-            <button class="btn-secondary" onclick="setActionAnchor(this); pmoWalletSyncAll(this)" title="Legge da Matchpoint i saldi wallet di tutti i soci (report 'Clienti con credito residuo')">↻ Aggiorna saldi wallet</button>
+            <button class="btn-secondary" onclick="setActionAnchor(this); pmoWalletSyncAll(this)" title="Legge dal circolo i saldi wallet di tutti i soci (report 'Clienti con credito residuo')">↻ Aggiorna saldi wallet</button>
             <button class="btn-success" onclick="setActionAnchor(this); openMemberContactsExportPanel()">Esporta rubrica soci</button>
             <button class="btn-secondary" onclick="setActionAnchor(this); pmoNameFixOpen()" title="Trova i soci con nome e cognome probabilmente invertiti (cognome = un nome noto) e scambiali">🔁 Correggi nome↔cognome</button>
             <button class="btn-primary" onclick="setActionAnchor(this); showAddMember()">+ Nuovo socio</button>
@@ -8724,7 +8724,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.433';
+    const APP_VERSION = '6.434';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -17212,9 +17212,9 @@ Grazie.`
           const _wc = _w.balance_cents;
           walletCell = `<span style="font-weight:700;color:${_wc > 0 ? 'var(--green)' : '#9aa3ad'};" title="Saldo wallet · agg. ${escapeHtml(_walletUpdatedLabel(g))}">${escapeHtml(_incassiEuro(_wc))}</span>`;
         } else if (_canWallet) {
-          walletCell = `<button class="btn-secondary small-btn" title="Leggi il saldo del wallet da Matchpoint" onclick="event.stopPropagation(); pmoWalletRefresh('${escapeHtml(String(g.id))}', this)">↻ Saldo</button>`;
+          walletCell = `<button class="btn-secondary small-btn" title="Leggi il saldo del wallet" onclick="event.stopPropagation(); pmoWalletRefresh('${escapeHtml(String(g.id))}', this)">↻ Saldo</button>`;
         } else {
-          walletCell = '<span style="color:#bbb;" title="Socio senza id Matchpoint collegato">—</span>';
+          walletCell = '<span style="color:#bbb;" title="Socio senza id del circolo collegato">—</span>';
         }
         // Doppione: si dice SEMPRE che c'è e PERCHÉ, non solo quando è acceso il filtro — chi
         // arriva qui cercando un nome deve vederlo lo stesso. Un segno senza il motivo accanto
@@ -17492,9 +17492,9 @@ Grazie.`
          «dati operativi visibili, dettagli tecnici richiudibili». I tre codici erano i PRIMI
          tre campi, cioè davanti al nome della persona, e il nome sta già nell'intestazione.
          ⇒ Un documento che dichiara una cosa di sé deve farla, o quella riga mente. */
-      const _idTecniciHtml = `<div><label>ID giocatore Padel Village</label><input value="${escapeHtml(pmoIdPadelVillage(g) || '-')}" readonly title="Il nostro identificatore. È il riferimento del gestionale e del bot, e resta valido anche senza Matchpoint."></div>
-                <div><label>ID giocatore Matchpoint</label><input value="${escapeHtml(pmoIdMatchpoint(g) || '-')}" readonly title="Il codice cliente di Matchpoint (quello della tendina «000140-Nome»). Vuoto per chi non è cliente del circolo."></div>
-                ${pmoIdInternoMatchpoint(g) ? `<div><label>ID interno Matchpoint</label><input value="${escapeHtml(pmoIdInternoMatchpoint(g))}" readonly title="Il numero con cui Matchpoint identifica il socio nelle sue pagine. È DIVERSO dal codice cliente qui sopra e non si può calcolare: se lo prende da solo quando il socio entra in una prenotazione. Serve a riconoscerlo senza passare dal nome (gli omonimi)."></div>` : ''}`;
+      const _idTecniciHtml = `<div><label>ID giocatore Padel Village</label><input value="${escapeHtml(pmoIdPadelVillage(g) || '-')}" readonly title="Il nostro identificatore. È il riferimento del gestionale e del bot${pmoNomeCircoloEsterno() ? ', e resta valido anche senza ' + pmoNomeCircoloEsterno() : ''}."></div>
+                <div><label>ID giocatore${pmoSuCircoloEsterno()}</label><input value="${escapeHtml(pmoIdMatchpoint(g) || '-')}" readonly title="Il codice cliente${pmoSuCircoloEsterno()} (quello della tendina «000140-Nome»). Vuoto per chi non è cliente del circolo."></div>
+                ${pmoIdInternoMatchpoint(g) ? `<div><label>ID interno${pmoSuCircoloEsterno()}</label><input value="${escapeHtml(pmoIdInternoMatchpoint(g))}" readonly title="Il numero con cui ${pmoNomeCircoloEsterno() || 'il circolo'} identifica il socio nelle sue pagine. È DIVERSO dal codice cliente qui sopra e non si può calcolare: se lo prende da solo quando il socio entra in una prenotazione. Serve a riconoscerlo senza passare dal nome (gli omonimi)."></div>` : ''}`;
       const _nIdTecnici = (_idTecniciHtml.match(/<label>/g) || []).length;
       const _anagraficaBody = showSecAnagrafica ? `
               <div class="member-tab-subhead">Dati socio</div>
@@ -26751,7 +26751,7 @@ Grazie!`
               : '<td style="text-align:right;color:#d5d9de;">·</td>';
             bodyRows += `<tr ${apri}>
               <td style="color:#999;white-space:nowrap;">${mv.id ? esc(mv.id) : '—'}</td>
-              <td>${esc(mv.name || '—')}${mv.gift ? ` <span title="Quota offerta (riscossa a 0 € su Matchpoint)">🎁</span>` : ''}${apribile ? ' <span style="color:#c3c8ce;font-size:11px;">›</span>' : ''}</td>
+              <td>${esc(mv.name || '—')}${mv.gift ? ` <span title="Quota offerta (riscossa a 0 €${pmoSuCircoloEsterno()})">🎁</span>` : ''}${apribile ? ' <span style="color:#c3c8ce;font-size:11px;">›</span>' : ''}</td>
               <td style="text-align:center;white-space:nowrap;">${mv.campo ? esc(mv.campo) : '—'}</td>
               <td style="text-align:center;white-space:nowrap;">${mv.ora ? bd + esc(mv.ora) : '—'}</td>
               ${cell('contanti')}${cell('carta')}${cell('borsellino')}
@@ -27456,7 +27456,7 @@ Grazie!`
                 <span class="pmo-pag-cosa">${escapeHtml(r.cosa)}</span>
                 <span class="pmo-pag-come">${escapeHtml((typeof _PAY_METHOD_LABEL !== 'undefined' && _PAY_METHOD_LABEL[r.come]) || r.come)}</span>
                 <span class="pmo-pag-imp">${r.cents < 0 ? '−' : ''}${escapeHtml(_incassiEuro(Math.abs(r.cents)))}</span>
-                ${(PMO_PAYMENTS_VOID_ENABLED && r.stornabile && r.idReserva) ? `<button class="btn-danger small-btn pmo-pag-storna" title="Storna questo pagamento su Matchpoint" onclick="pmoStornaPagamentoDaScheda('${escapeHtml(chiave)}','${escapeHtml(r.idReserva)}','${escapeHtml(r.data)}','${escapeHtml(r.campoNum)}','${escapeHtml(r.oraHm)}','${escapeHtml(r.nome)}','${escapeHtml(r.idCliente)}', this)">↩︎</button>` : `<span class="pmo-pag-nostorno" title="${(PMO_PAYMENTS_VOID_ENABLED && r.stornabile) ? 'Di questa partita il gestionale non ha più il numero di prenotazione: senza, Matchpoint non sa quale pagamento annullare.' : ''}">${(PMO_PAYMENTS_VOID_ENABLED && r.stornabile) ? '—' : ''}</span>`}
+                ${(PMO_PAYMENTS_VOID_ENABLED && r.stornabile && r.idReserva) ? `<button class="btn-danger small-btn pmo-pag-storna" title="Storna questo pagamento${pmoSuCircoloEsterno()}" onclick="pmoStornaPagamentoDaScheda('${escapeHtml(chiave)}','${escapeHtml(r.idReserva)}','${escapeHtml(r.data)}','${escapeHtml(r.campoNum)}','${escapeHtml(r.oraHm)}','${escapeHtml(r.nome)}','${escapeHtml(r.idCliente)}', this)">↩︎</button>` : `<span class="pmo-pag-nostorno" title="${(PMO_PAYMENTS_VOID_ENABLED && r.stornabile) ? 'Di questa partita il gestionale non ha più il numero di prenotazione: senza, ' + (pmoNomeCircoloEsterno() || 'il circolo') + ' non sa quale pagamento annullare.' : ''}">${(PMO_PAYMENTS_VOID_ENABLED && r.stornabile) ? '—' : ''}</span>`}
               </div>`).join('')}</div>`
         : '<div style="padding:10px 2px;color:#667085;font-size:13px;">Nessun movimento registrato per questo socio.</div>';
       return `
@@ -34619,7 +34619,7 @@ Per confermare scrivi ELIMINA.`);
       }
       const memberId = escapeJs(String(row.member?.id || ''));
       const statusHtml = memberId
-        ? `<button type="button" class="assessment-email-inline-status warn assessment-email-inline-action" onclick="setActionAnchor(this); assessmentGoToMatchpointPending('${memberId}')" title="Vai alla sezione Matchpoint">Matchpoint da aggiornare</button>`
+        ? `<button type="button" class="assessment-email-inline-status warn assessment-email-inline-action" onclick="setActionAnchor(this); assessmentGoToMatchpointPending('${memberId}')" title="Vai alla sezione dei dati del circolo">Matchpoint da aggiornare</button>`
         : '<span class="assessment-email-inline-status warn">Matchpoint da aggiornare</span>';
       return `<div class="assessment-email-compact-info">${statusHtml}<span>Livello validato: ${escapeHtml(String(info.level || '-'))}</span></div>`;
     }
@@ -44614,7 +44614,7 @@ Per confermare scrivi ELIMINA.`);
             const sd = document.createElement('span');
             sd.className = 'booking-sync-dot';
             sd.textContent = '●';
-            sd.title = 'Sincronizzazione su Matchpoint in corso…';
+            sd.title = 'Sincronizzazione' + pmoSuCircoloEsterno() + ' in corso…';
             sd.style.cssText = 'color:#f0a020;font-size:9px;margin-left:4px;opacity:.85;align-self:center;';
             hdr.appendChild(sd);
           }
@@ -47102,7 +47102,7 @@ Per confermare scrivi ELIMINA.`);
             if (_statoIgnoto) {
               ic.setAttribute('role', 'img');
               ic.setAttribute('aria-label', 'Stato del pagamento non ancora letto da Matchpoint');
-              ic.title = 'Sto ancora leggendo i pagamenti da Matchpoint: non so se ha pagato.';
+              ic.title = 'Sto ancora leggendo i pagamenti' + (pmoNomeCircoloEsterno() ? ' da ' + pmoNomeCircoloEsterno() : '') + ': non so se ha pagato.';
             } else {
               ic.setAttribute('aria-hidden', 'true');
             }
@@ -47301,7 +47301,7 @@ Per confermare scrivi ELIMINA.`);
               //    Detto nel titolo e con un puntino, non con una scritta che allunghi la riga —
               //    la 133 ha già stabilito che i soldi stanno su una riga sola.
               const _q = _pmoQuandoLetto(_cas.lettoAt);
-              amt.title = 'Importo letto da Matchpoint ' + (_q || 'in una lettura precedente')
+              amt.title = 'Importo letto' + (pmoNomeCircoloEsterno() ? ' da ' + pmoNomeCircoloEsterno() : '') + ' ' + (_q || 'in una lettura precedente')
                 + (st.rosterRefreshing ? ' — sto rileggendo adesso' : ' — non ancora riletto');
             } else if (_cas.natoQui) {
               // ⚖️ Si dice da dove viene, non che sia dubbio: il prezzo è quello del listino del
@@ -47383,7 +47383,7 @@ Per confermare scrivi ELIMINA.`);
               tag.className = 'svc-pl-paidmeth svc-pl-paidmeth-gift';
               tag.innerHTML = '<i class="ti ti-gift" aria-hidden="true"></i>';
               tag.appendChild(document.createTextNode('Offerta'));
-              tag.title = 'Su Matchpoint la quota risulta riscossa a 0 €: è stata offerta.';
+              tag.title = (pmoNomeCircoloEsterno() ? 'Su ' + pmoNomeCircoloEsterno() + ' la' : 'La') + ' quota risulta riscossa a 0 €: è stata offerta.';
               wrap.appendChild(tag);
             } else if (_payBadge && _payBadge.kind === 'methods') {
               _payBadge.methods.forEach(function (b) {
@@ -51337,7 +51337,9 @@ Per confermare scrivi ELIMINA.`);
     noteLblRow.appendChild(noteLblTxt); noteLblRow.appendChild(noteHint);
     fNote.appendChild(noteLblRow);
     const noteTA=document.createElement('textarea');
-    noteTA.placeholder='Osservazioni per Matchpoint...';
+    // 🆕 VOCE 190 — un placeholder non lo vede `innerText`, ma lo legge chi scrive: era l'ultima
+      // frase del circolo dentro il gesto più frequente della giornata.
+      noteTA.placeholder = 'Osservazioni' + (pmoNomeCircoloEsterno() ? ' per ' + pmoNomeCircoloEsterno() : '') + '...';
     noteTA.rows=2; noteTA.maxLength=300;
     noteTA.style.cssText='width:100%;box-sizing:border-box;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;font-size:'+FS.ctrl+'px;font-family:inherit;resize:none;background:var(--surface);color:var(--text);';
     noteTA.addEventListener('input', function(){ if(svcFlowState) svcFlowState.note = noteTA.value.trim(); });
