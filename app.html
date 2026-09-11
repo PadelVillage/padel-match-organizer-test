@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.455';
+    const APP_VERSION = '6.456';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -27343,6 +27343,69 @@ Grazie!`
       if (String(payload.method || '') !== 'wallet') return 0;
       if (payload.voided === true || String(payload.status || '') === 'void') return 0;
       return -(Number(payload.amount_cents) || 0);
+    }
+    /* 👛⭐⭐ VOCE 219 — IL SALDO SI CALCOLA DA NOI, e questa funzione è il calcolo.
+     *
+     * 🗣️ Sua, 11/09/2026: *«il saldo Wallet viene da Matchpoint via worker: sul gestionale di test
+     *    non deve essere così, lo dobbiamo calcolare internamente»*.
+     *
+     * 🧮 LA FORMULA: **fotografia + i movimenti venuti DOPO di lei**. E il «dopo» non è un dettaglio
+     *    di precisione: i movimenti **precedenti** sono GIÀ dentro il numero fotografato ⇒ sommarli
+     *    tutti conterebbe due volte le stesse ricariche. 📌 *Una fotografia non è un punto di
+     *    partenza vuoto: è un totale che contiene già una parte di ciò che si sta per aggiungere.*
+     *
+     * 🚨⭐⭐ E LO ZERO NON ESISTE, QUI: chi non ha né fotografia né movimenti ha un saldo **IGNOTO**,
+     *    e la funzione torna `null`. 📏 Misurato l'11/09: le fotografie in archivio sono **83 su
+     *    2826 soci** ⇒ scrivere «0,00 €» sarebbe dire a **2743** persone che non hanno credito
+     *    senza averlo mai guardato. È la regola del terzo segno (voci 111 e 149) applicata ai soldi
+     *    di qualcun altro, dove costa più che altrove.
+     *
+     * ⚖️ I TRE ESITI, e vanno tenuti distinti da chi la usa:
+     *    · `{ cents, base: 'fotografia' }` — si sa, e si sa da quando;
+     *    · `{ cents, base: 'nostri' }`     — si sa solo quello che è passato da NOI: è un
+     *                                        **parziale**, e chi lo mostra deve dirlo;
+     *    · `null`                          — non si sa. Non è zero.
+     * PURA: non legge il DOM e non chiama nessuno — le righe gliele passa chi la chiama. */
+    function _pmoWalletSaldoDaNoi(righe, socio) {
+      if (!socio || !Array.isArray(righe)) return null;
+      const mid = String((socio && socio.id) || '').trim();
+      const pmo = String((socio && socio.pmoPlayerId) || '').trim().toUpperCase();
+      if (!mid && !pmo) return null;
+      const _suo = function (pl) {
+        if (!pl) return false;
+        const p = String(pl.pmo_player_id || '').trim().toUpperCase();
+        if (p && pmo) return p === pmo;
+        const m = String(pl.member_local_id || '').trim();
+        return !!(m && mid && m === mid);
+      };
+      let foto = null;
+      for (const r of righe) {
+        if (!r || r.deleted || r.record_type !== 'wallet_balance' || !r.payload) continue;
+        if (!_suo(r.payload)) continue;
+        const c = Number(r.payload.balance_cents);
+        if (!isFinite(c)) continue;
+        const q = String(r.payload.synced_at || '');
+        // La più RECENTE: di fotografie ce ne può essere più d'una, e la vecchia direbbe il falso.
+        if (!foto || q > foto.quando) foto = { cents: c, quando: q };
+      }
+      let mossi = 0, quanti = 0;
+      for (const r of righe) {
+        if (!r || r.deleted || !r.payload) continue;
+        const t = r.record_type;
+        if (t !== 'wallet_txn' && t !== 'payment') continue;
+        if (!_suo(r.payload)) continue;
+        // ⛔ Solo ciò che è venuto DOPO la fotografia: prima è già contato dentro di lei.
+        const quando = String(r.payload.recorded_at || r.payload.synced_at || '');
+        if (foto && foto.quando && quando && quando <= foto.quando) continue;
+        // 🚨 Senza data, con una fotografia in mano, NON si indovina: si lascia fuori. Sommarlo
+        //    potrebbe raddoppiare una ricarica già dentro il totale.
+        if (foto && foto.quando && !quando) continue;
+        const peso = _pmoWalletPesoRiga(r.payload, t);
+        if (peso) { mossi += peso; quanti++; }
+      }
+      if (foto) return { cents: foto.cents + mossi, base: 'fotografia', quando: foto.quando, movimenti: quanti };
+      if (quanti) return { cents: mossi, base: 'nostri', quando: '', movimenti: quanti };
+      return null;
     }
     /** Muove il delta in memoria, senza aspettare il prossimo giro di lettura. */
     function _pmoWalletDeltaAggiorna(payload, segno) {
@@ -47776,6 +47839,43 @@ Per confermare scrivi ELIMINA.`);
     }
     buildState(_localRoster, _gestNote);
 
+    /* 👛⭐⭐ VOCE 219 — IL SALDO DEL BORSELLINO, CALCOLATO DA NOI, in sottofondo.
+     * 🗣️ Sua: *«il saldo Wallet viene da Matchpoint via worker: sul gestionale di test non deve
+     *    essere così, lo dobbiamo calcolare internamente»*.
+     * ⛔ SOLO dove la cassa è NOSTRA: dove il borsellino è quello di Matchpoint, il numero suo
+     *    resta l'unico vero e non lo si tocca. ⇒ Su PROD questo ramo non si accende mai.
+     * ⚖️ E NON sovrascrive un saldo che il worker ha già portato: quello è il dato del sistema che
+     *    tiene ancora i soldi. Riempie solo i buchi, che è il caso della scheda nata da noi.
+     * 🚨 `null` NON diventa `0`: un socio di cui non sappiamo il saldo resta «non lo so», e il
+     *    bottone resta spento **per il motivo giusto**. */
+    (async function () {
+      try {
+        if (typeof pmoCassaNativa !== 'function' || !pmoCassaNativa()) return;
+        if (typeof pmoStaffRpcPaged !== 'function' || typeof _pmoWalletSaldoDaNoi !== 'function') return;
+        const _st0 = staffCalPlayersState;
+        if (!_st0 || !Array.isArray(_st0.roster) || !_st0.roster.length) return;
+        // Chi ha già un saldo dal worker non ci interessa: si chiede il cloud solo se serve.
+        if (_st0.roster.every(function (p) { return typeof p.saldoCents === 'number'; })) return;
+        const righe = await pmoStaffRpcPaged('pmo_get_records_admin',
+          { p_record_types: ['wallet_balance', 'wallet_txn', 'payment'], p_since: null },
+          'cloud_sync', 'calcolare il saldo del borsellino');
+        const st = staffCalPlayersState;
+        if (!st || st !== _st0 || !Array.isArray(st.roster)) return;   // scheda cambiata sotto: si lascia stare
+        let toccate = 0;
+        st.roster.forEach(function (p) {
+          if (!p || typeof p.saldoCents === 'number') return;          // il worker ha già risposto
+          const socio = (typeof _staffCalSocioDelGiocatore === 'function') ? _staffCalSocioDelGiocatore(p) : null;
+          if (!socio) return;                                          // senza persona non c'è borsellino
+          const saldo = _pmoWalletSaldoDaNoi(righe, socio);
+          if (!saldo || typeof saldo.cents !== 'number') return;       // ignoto: resta ignoto
+          p.saldoCents = saldo.cents;
+          p.saldoBase = saldo.base;                                    // 'fotografia' | 'nostri'
+          toccate++;
+        });
+        if (toccate && typeof staffCalRenderPlayersEditor === 'function') staffCalRenderPlayersEditor();
+      } catch (e) { /* il borsellino non si sa: la scheda resta com'è, senza inventare uno zero */ }
+    })();
+
     // Lettura autorevole dei giocatori dal worker, in SOTTOFONDO (non blocca la scheda).
     (async function () {
       const _stOpen = staffCalPlayersState;
@@ -48730,9 +48830,12 @@ Per confermare scrivi ELIMINA.`);
               const a = _pmoEuroToCents(amt.value);
               const okSaldo = (saldoCents != null && a != null && a > 0 && saldoCents >= a);
               wBtn.disabled = !okSaldo;
+              /* 👛 VOCE 219 — un saldo fatto dei SOLI movimenti nostri è un parziale, e dirlo fa
+                 parte del numero: chi incassa deve sapere che non è il totale del socio. */
+              const _parz = (p && p.saldoBase === 'nostri') ? ' \u00b7 solo i movimenti registrati da noi' : '';
               wBtn.title = okSaldo
-                ? 'Incassa dal Wallet (saldo ' + _incassiEuro(saldoCents) + ')'
-                : (saldoCents == null ? 'Saldo Wallet non disponibile' : 'Saldo insufficiente (' + _incassiEuro(saldoCents || 0) + ')');
+                ? 'Incassa dal Wallet (saldo ' + _incassiEuro(saldoCents) + _parz + ')'
+                : (saldoCents == null ? 'Saldo Wallet non disponibile' : 'Saldo insufficiente (' + _incassiEuro(saldoCents || 0) + _parz + ')');
             };
             if (!_payCollectActive) {
               cBtn.disabled = true; cBtn.title = 'Incasso disponibile dalla Fase 2b';
