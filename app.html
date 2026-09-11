@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.454';
+    const APP_VERSION = '6.455';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -27312,10 +27312,25 @@ Grazie!`
       return out;
     }
     /** Il socio (id locale) da un id cliente Matchpoint, se lo conosciamo. */
-    function _pmoSocioLocalId(idCliente) {
+    /* 🆔 VOCE 215 — si risolve dal `PMO-` della persona, e solo in mancanza di quello dal codice
+     * di Matchpoint. ⚖️ Il valore restituito resta `member.id`, perché è la chiave con cui le
+     * **1421** righe di pagamento già scritte agganciano il socio (`_pmoPagRigaSocio`): cambiarla
+     * adesso staccherebbe tutte quelle. ⇒ Il PMO è la chiave con cui si CERCA, `member.id` quella
+     * con cui si SCRIVE — e il giorno in cui si vorrà spostare anche quella, si sposta in un posto
+     * solo. 📌 *Cambiare la chiave di ricerca non costa niente; cambiare quella già scritta sui
+     * dati costa tutti i dati.* */
+    function _pmoSocioLocalId(idCliente, pmoId) {
       try {
+        if (typeof giocatori === 'undefined' || !Array.isArray(giocatori)) return null;
+        const pid = String(pmoId || '').trim().toUpperCase();
+        if (/^PMO-\d{3,}$/.test(pid)) {
+          const perPmo = giocatori.find(function (x) {
+            return String((x && x.pmoPlayerId) || '').trim().toUpperCase() === pid;
+          });
+          if (perPmo) return String(perPmo.id);
+        }
         const idc = String(idCliente || '').trim();
-        if (!idc || typeof giocatori === 'undefined' || !Array.isArray(giocatori)) return null;
+        if (!idc) return null;
         const g = giocatori.find(function (x) { return String(_walletClientId(x) || '') === idc; });
         return g ? String(g.id) : null;
       } catch (e) { return null; }
@@ -27720,8 +27735,20 @@ Grazie!`
     window.__pmoPagamentiCache = window.__pmoPagamentiCache || new Map();
     const _pmoPagamentiInCorso = new Set();
 
+    /* 🆔⭐⭐ VOCE 215 — TRE CHIAVI, IN QUEST'ORDINE, e l'ordine è la regola.
+     * ① il `PMO-` della persona: è **nostro** e sopravvive al distacco (sua direzione);
+     * ② `member_local_id`: la chiave con cui agganciano le **1421** righe già in archivio;
+     * ③ il codice interno di Matchpoint: il ripiego, finché il ponte c'è.
+     * ⛔ E MAI PER NOME, che resta la regola che la **138** ha pagato per scrivere: il codice
+     *    cliente di Laura Aprea era identico all'id interno di Marco Aprea.
+     * 🚨 Ogni ramo che trova la sua chiave **decide e basta**: se il PMO c'è da tutt'e due le parti
+     *    e non combacia, la risposta è NO — non «riprovo con un'altra chiave finché una dice sì».
+     *    📌 *Provare più chiavi finché una aggancia non è robustezza: è cercare un sì.* */
     function _pmoPagRigaSocio(payload, g, idInterno) {
       if (!payload) return false;
+      const pidRiga = String(payload.pmo_player_id || '').trim().toUpperCase();
+      const pidSocio = String((g && g.pmoPlayerId) || '').trim().toUpperCase();
+      if (pidRiga && pidSocio) return pidRiga === pidSocio;
       const mid = String(payload.member_local_id || '').trim();
       if (mid) return mid === String(g.id);
       const idc = String(payload.id_cliente || payload.id_cliente_mp || '').trim();
@@ -43279,6 +43306,9 @@ Per confermare scrivi ELIMINA.`);
       if (!p || typeof p !== 'object') return riga;
       if (p.idx != null && String(p.idx) !== '') riga.idx = String(p.idx);
       if (p.idCliente != null && String(p.idCliente) !== '') riga.idCliente = String(p.idCliente);
+      // 🆔 VOCE 215 — senza questo il `PMO-` si perde alla prima riapertura della scheda, che è
+      //    esattamente il momento in cui serve per incassare.
+      if (p.pmoId != null && String(p.pmoId) !== '') riga.pmoId = String(p.pmoId);
       const imp = _num(p.importoCents), pen = _num(p.pendenteCents);
       if (imp != null) riga.importoCents = imp;
       if (pen != null) riga.pendenteCents = pen;
@@ -44149,6 +44179,12 @@ Per confermare scrivi ELIMINA.`);
     const payload = {
       id_reserva: String(opts.idReserva || ''),
       id_cliente: String(opts.idCliente || ''),
+      /* 🆔⭐⭐ VOCE 215 — CHI HA PAGATO, con l'id NOSTRO (`PMO-000112`).
+       * 🗣️ Sua: *«il nostro ID di riferimento è quello PMO»*. ⇒ È questo il campo che resta
+       *    leggibile il giorno in cui `id_cliente` (codice Matchpoint) non vorrà più dire niente.
+       * ⚖️ Si scrive ACCANTO a `member_local_id`, non al posto suo: quella è la chiave con cui le
+       *    1421 righe già in archivio agganciano il socio, e sostituirla le staccherebbe tutte. */
+      pmo_player_id: String(opts.pmoId || ''),
       player_name: opts.playerName || '',
       method: opts.method || '',
       amount_cents: (typeof opts.amountCents === 'number') ? opts.amountCents : 0,
@@ -44592,6 +44628,8 @@ Per confermare scrivi ELIMINA.`);
     }
     const idReserva = String(opts.idReserva == null ? '' : opts.idReserva).trim();
     const idCliente = String(opts.idCliente == null ? '' : opts.idCliente).trim();
+    // 🆔 VOCE 215 — chi è, con l'id NOSTRO. Senza questo la riga di cassa nasce di nessuno.
+    const pmoId = String(opts.pmoId == null ? '' : opts.pmoId).trim().toUpperCase();
     const playerName = opts.playerName || '';
     const method = opts.method || '';
     const amountCents = opts.amountCents;
@@ -44630,7 +44668,7 @@ Per confermare scrivi ELIMINA.`);
     // Matchpoint si spegne, questa strada non se ne accorge.*
     if (_cassa) {
       try {
-        await _pmoCassaScriviIncasso({ idReserva: idReserva, idCliente: idCliente, idx: opts.idx, playerName: playerName, method: method, amountCents: amountCents, data: opts.data, campo: opts.campo, ora: opts.ora, memberLocalId: _pmoSocioLocalId(idCliente) });
+        await _pmoCassaScriviIncasso({ idReserva: idReserva, idCliente: idCliente, pmoId: pmoId, idx: opts.idx, playerName: playerName, method: method, amountCents: amountCents, data: opts.data, campo: opts.campo, ora: opts.ora, memberLocalId: _pmoSocioLocalId(idCliente, pmoId) });
       } catch (e) {
         _setMsg(note, '⚠️ Incasso non registrato: ' + esc(e && e.message ? e.message : String(e)));
         btns.forEach(function (b) { try { b.disabled = false; } catch (e2) {} });
@@ -46981,6 +47019,25 @@ Per confermare scrivi ELIMINA.`);
       // ⛔ Nessun riempimento di zeri: quello serve al CODICE CLIENTE («140» = «000140»),
       //    l'id interno è un numero e basta, e normalizzarlo qui vorrebbe dire far combaciare
       //    cose che Matchpoint tiene distinte.
+      /* 🆔⭐⭐ VOCE 215 — IL `PMO-` DELLA PERSONA VIENE PRIMA, ed è l'unica strada che
+         sopravvive al distacco. 🗣️ Sua: *«il nostro ID di riferimento è quello PMO»*.
+         ⚖️ Il codice interno di Matchpoint resta SOTTO come ripiego finché il ponte c'è — le 31
+            prenotazioni su 37 arrivate dal sync portano solo quello, e toglierlo oggi spegnerebbe
+            l'aggancio proprio dove funziona. 📌 *Una chiave nuova si mette davanti a quella vecchia,
+            non al posto suo, finché i dati vecchi esistono ancora.*
+         ⛔ E NON si aggancia per nome: è la regola che la 138 ha pagato per scrivere (il codice
+            cliente di Laura Aprea era identico all'id interno di Marco Aprea). */
+      const pmoId = String((p && p.pmoId) || '').trim().toUpperCase();
+      if (/^PMO-\d{3,}$/.test(pmoId)) {
+        const perPmo = giocatori.find(function (g) {
+          return String((g && g.pmoPlayerId) || '').trim().toUpperCase() === pmoId;
+        }) || null;
+        // ⛔ Trovato o no, qui si esce: un PMO che non aggancia NON ricade sul codice di
+        //    Matchpoint. Se il nostro id non trova nessuno, la risposta è «non lo so», non
+        //    «riprovo con la chiave che stiamo togliendo».
+        if (perPmo && typeof isGuestJollyMember === 'function' && isGuestJollyMember(perPmo)) return null;
+        return perPmo;
+      }
       const idInterno = String((p && p.idCliente) || '').trim();
       if (!/^\d{1,12}$/.test(idInterno)) return null;
       // ⛔🎭 L'«OSPITE» NON È UNA PERSONA — DUE SERRATURE, e la prima non bastava.
@@ -47015,6 +47072,28 @@ Per confermare scrivi ELIMINA.`);
     // salvato in matchpointIdInterno. NON memberId (che è il codice/tessera, un numero diverso).
     const raw = String((member && member.matchpointIdInterno) || '').trim();
     return /^\d{1,12}$/.test(raw) ? raw : '';
+  }
+  /* 🆔⭐⭐ VOCE 215 — L'ID DELLA PERSONA, ED È IL NOSTRO: `PMO-000112`.
+   * 🗣️ Sua, 11/09/2026: *«il nostro ID di riferimento è quello PMO»* · *«l'ID riserva non ci serve
+   *    a nulla, utilizziamo solamente il nostro ID PMO»*. E non è una preferenza nuova: è la sua
+   *    decisione del **2/08/2026** già scritta qui sotto — *«il nostro è il perno e sopravvive al
+   *    distacco da Matchpoint»*.
+   * 📏 MISURATO su `cudi` l'11/09, prima di scrivere una riga: **2822 soci vivi su 2826** hanno un
+   *    `pmoPlayerId`, **tutti** col prefisso `PMO-`. I quattro senza sono esattamente quelli che non
+   *    devono averlo: due **«Ospite»** (il jolly del circolo, non è una persona) e due utenze di
+   *    servizio (*Demo App*, *Tennis App*). ⇒ Copre **tutte le persone vere**.
+   * ⚠️ E l'unico «doppione» NON è un doppione di persone: `PMO-000112` sono **due record della
+   *    stessa persona** (Alberto Modanese, stesso `id`, stessa tessera) scritti con due `local_key`
+   *    diverse — una `phone:`, una `email:`. L'id **non collide fra persone diverse**, che è l'unica
+   *    cosa che conta per agganciare.
+   * 🚨 DUE `PMO-` DIVERSI, e confonderli sarebbe il danno: quello della **PRENOTAZIONE**
+   *    (`PMO-` + UUID, in `id_reserva`) e quello della **PERSONA** (`PMO-` + 6 cifre, qui). Le forme
+   *    sono distinguibili apposta, e questa guardia accetta **solo** la seconda.
+   * ⛔ Perché non `member.id`, che era la strada che avevo imboccato: per **1043 soci su 2826** si
+   *    chiama `matchpoint_…` ⇒ porta addosso il nome del sistema che stiamo spegnendo. PURA. */
+  function _staffCalPmoId(member) {
+    const raw = String((member && member.pmoPlayerId) || '').trim();
+    return /^PMO-\d{3,}$/i.test(raw) ? raw.toUpperCase() : '';
   }
   function _staffCalClientCode(member) {
     // Codice cliente Matchpoint (quello in tendina "000005-Nome"), salvato in memberId
@@ -47767,8 +47846,36 @@ Per confermare scrivi ELIMINA.`);
           try { data = respText ? JSON.parse(respText) : null; } catch { data = respText; }
           clearInterval(_timer); clearTimeout(_to);
           const ok = response.ok && !(data && data.ok === false);
-          const roster = (ok && data && data.worker && Array.isArray(data.worker.partecipantiFinali))
+          let roster = (ok && data && data.worker && Array.isArray(data.worker.partecipantiFinali))
             ? _normRoster(data.worker.partecipantiFinali) : null;
+          /* 🆔🚨⭐⭐ VOCE 215 — IL `PMO-` NON VIENE DAL WORKER, E QUI SI PERDEVA.
+           * 🔎 Il roster del worker è la ficha di **Matchpoint**: porta nomi, importi e codici
+           *    loro, e del nostro id non sa niente. Sostituendo il roster locale con quello,
+           *    `pmoId` spariva ⇒ l'incasso fatto DOPO la rilettura nasceva di nuovo senza
+           *    proprietario. ⛔ E sarebbe stato il difetto peggiore da trovare: la cura
+           *    funzionava, e smetteva dopo qualche secondo, da sola.
+           * 🔨 Si riporta per NOME normalizzato, ed è lecito qui e non altrove: non si sta
+           *    decidendo CHI è una persona (quello lo ha già deciso chi ha messo il giocatore
+           *    nella prenotazione, per id) — si sta ricucendo una riga che è **la stessa riga**,
+           *    letta due volte dalle due parti. 📌 *Il nome non serve a riconoscere: serve a
+           *    ritrovare una cosa che era già riconosciuta.*
+           * ⚖️ E non sovrascrive mai: se il worker portasse un `pmoId` (oggi non succede), vince
+           *    il suo. */
+          if (roster && Array.isArray(_localRoster) && _localRoster.length) {
+            const _pmoPerNome = new Map();
+            _localRoster.forEach(function (p) {
+              const k = (typeof pmoChiaveNome === 'function') ? pmoChiaveNome(p && p.nome) : String((p && p.nome) || '').trim().toLowerCase();
+              if (k && p && p.pmoId) _pmoPerNome.set(k, String(p.pmoId));
+            });
+            if (_pmoPerNome.size) {
+              roster = roster.map(function (p) {
+                if (!p || p.pmoId) return p;
+                const k = (typeof pmoChiaveNome === 'function') ? pmoChiaveNome(p.nome) : String(p.nome || '').trim().toLowerCase();
+                const _pid = k ? _pmoPerNome.get(k) : null;
+                return _pid ? Object.assign({}, p, { pmoId: _pid }) : p;
+              });
+            }
+          }
           const st = staffCalPlayersState;
           const stillOpen = st && st === _stOpen && !st.busy;
           // A1 — l'idReserva del worker è AUTOREVOLE (non è dato editabile dall'utente): aggiornalo
@@ -48640,6 +48747,9 @@ Per confermare scrivi ELIMINA.`);
                 return _pmoCollectPayment({
                   idReserva: (st.idReserva != null ? String(st.idReserva) : ''),
                   idCliente: (p.idCliente != null ? String(p.idCliente) : ''),
+                  // 🆔 VOCE 215 — chi è, con l'id nostro: è il campo che rende la riga di cassa
+                  //    attribuibile su una prenotazione nata da noi, dove `idCliente` non c'è.
+                  pmoId: (p.pmoId != null ? String(p.pmoId) : ''),
                   idx: (p.idx != null ? String(p.idx) : ''),
                   playerName: p.nome, method: method, amountCents: _pmoEuroToCents(amt.value),
                   campo: st.campo, data: st.isoDate, ora: st.ora,
@@ -49029,7 +49139,9 @@ Per confermare scrivi ELIMINA.`);
       return !_staffCalGiaInPrenotazione(s.member, st, !!n && _quantiConQuelNome[n] > 1);
     }).slice(0, 6);
     const addResolved = function(member) {
-      st.add.push({ nome: _staffCalPlayerName(member, raw), codice: _staffCalPlayerCode(member), codiceCliente: _staffCalClientCode(member) });
+      // 🆔 VOCE 215 — il `PMO-` della persona viaggia accanto agli altri due codici, non al posto
+      //    loro: finché Matchpoint c'è, il worker ha ancora bisogno dei suoi.
+      st.add.push({ nome: _staffCalPlayerName(member, raw), codice: _staffCalPlayerCode(member), codiceCliente: _staffCalClientCode(member), pmoId: _staffCalPmoId(member) });
       staffCalRenderPlayersEditor();
       staffCalBringEditorToTop();
     };
@@ -49318,7 +49430,10 @@ Per confermare scrivi ELIMINA.`);
       return;
     }
     const remove = st.hasPlayers ? st.roster.filter(function (p) { return st.remove[p.idx]; }).map(function (p) { return p.nome; }) : [];
-    const addArr = st.hasPlayers ? _dedupPlayersByIdentity(st.add).map(function (p) { const o = { nome: p.nome }; if (p.codice) o.codice = p.codice; if (p.codiceCliente) o.codiceCliente = p.codiceCliente; return o; }) : [];
+    // 🆔🚨 VOCE 215 — QUI il PMO moriva: la serializzazione teneva solo i due codici di Matchpoint,
+    //    quindi un campo nuovo sul chip non sarebbe MAI arrivato nel payload della prenotazione.
+    //    📌 *Aggiungere un campo dove nasce non serve a niente se chi lo scrive non lo copia.*
+    const addArr = st.hasPlayers ? _dedupPlayersByIdentity(st.add).map(function (p) { const o = { nome: p.nome }; if (p.codice) o.codice = p.codice; if (p.codiceCliente) o.codiceCliente = p.codiceCliente; if (p.pmoId) o.pmoId = p.pmoId; return o; }) : [];
     const playersChanged = addArr.length || remove.length;
     // Nota cambiata vs il valore caricato (origNote): include l'azzeramento ('' diverso da nota esistente).
     const noteChanged = String((st && st.note) || '') !== String((st && st.origNote) || '');
@@ -50474,7 +50589,7 @@ Per confermare scrivi ELIMINA.`);
         const nomeSocio = playerFullName(best) || best.name || nm;
         const codice = (typeof _staffCalPlayerCode === 'function') ? _staffCalPlayerCode(best) : '';          // id interno Matchpoint (se noto)
         const codiceCliente = (typeof _staffCalClientCode === 'function') ? _staffCalClientCode(best) : (String(best.memberId || '').trim());  // codice cliente
-        resolved.push({ nome: nomeSocio, codice, codiceCliente });
+        resolved.push({ nome: nomeSocio, codice, codiceCliente, pmoId: (typeof _staffCalPmoId === 'function') ? _staffCalPmoId(best) : '' });
       }
       if (resolved.length) giocatoriPayload = resolved;
     }
@@ -53104,7 +53219,7 @@ Per confermare scrivi ELIMINA.`);
       });
     }
     function hideSugg(){ sugg.style.display='none'; sugg.innerHTML=''; }
-    function addMember(m){ svcFlowState.players.push({ nome:_staffCalPlayerName(m, m.name||playerFullName(m)), codice:_staffCalPlayerCode(m), codiceCliente:_staffCalClientCode(m) }); giocInput.value=''; hideSugg(); renderChips(); giocInput.focus(); }
+    function addMember(m){ svcFlowState.players.push({ nome:_staffCalPlayerName(m, m.name||playerFullName(m)), codice:_staffCalPlayerCode(m), codiceCliente:_staffCalClientCode(m), pmoId:_staffCalPmoId(m) }); giocInput.value=''; hideSugg(); renderChips(); giocInput.focus(); }
     function addPlayer(){ const v=giocInput.value.trim(); if(v){ svcFlowState.players.push({ nome:v, codice:'' }); giocInput.value=''; hideSugg(); renderChips(); giocInput.focus(); } }
     function renderSuggestions(){
       const v=giocInput.value.trim();
@@ -53432,7 +53547,7 @@ Per confermare scrivi ELIMINA.`);
     //    `tipo: 'lezione'` cablato, quindi uno STAGE perdeva il proprio nome nell'istante in
     //    cui veniva scritto — e al socio sarebbe arrivato «Lezione con X» per uno stage.
     const tipoParola = pmoTipoParola(svcFlowState.tipo || tipoEngine);
-    const giocatori = _dedupPlayersByIdentity((players || []).map(function(p) { return { nome: (p && typeof p === 'object') ? p.nome : String(p || ''), codice: (p && p.codice) || '', codiceCliente: (p && p.codiceCliente) || '' }; }));
+    const giocatori = _dedupPlayersByIdentity((players || []).map(function(p) { return { nome: (p && typeof p === 'object') ? p.nome : String(p || ''), codice: (p && p.codice) || '', codiceCliente: (p && p.codiceCliente) || '', pmoId: (p && p.pmoId) || '' }; }));
     const nomeStr = giocatori.map(function(g) { return g.nome; }).join(', ');
     let parsed;
     if (tipoEngine === 'lezione') {
@@ -57592,7 +57707,7 @@ Per confermare scrivi ELIMINA.`);
         const nomeSocio = (typeof playerFullName === 'function' ? playerFullName(best) : '') || best.name || nm;
         const codice = (typeof _staffCalPlayerCode === 'function') ? _staffCalPlayerCode(best) : '';
         const codiceCliente = (typeof _staffCalClientCode === 'function') ? _staffCalClientCode(best) : (String(best.memberId || '').trim());
-        giocatori.push({ nome: nomeSocio, codice: codice, codiceCliente: codiceCliente });
+        giocatori.push({ nome: nomeSocio, codice: codice, codiceCliente: codiceCliente, pmoId: (typeof _staffCalPmoId === 'function') ? _staffCalPmoId(best) : '' });
         if (ambiguous) notes.push('Più soci simili a “' + nm + '”: ho scelto ' + nomeSocio + ' (se sbaglio, annulla e specifica meglio).');
         // Nome digitato/dettato incompleto o diverso dal tesserato (es. "Lidia Comes" →
         // "Lidia Ciao Comes"): annuncia il riconoscimento così l'utente conferma dal riepilogo.
