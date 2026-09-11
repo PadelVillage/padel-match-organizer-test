@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.446';
+    const APP_VERSION = '6.447';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -27111,7 +27111,7 @@ Grazie!`
        movimento (misurato leggendo `marcaStornato` nell'edge: filtra per cliente/nome **e slot**,
        non per metodo). Far credere il contrario con un importo precompilato sarebbe una promessa
        che il circolo non mantiene. */
-    function pmoIncassiApriPartita(dataIso, campoNum, oraHm, nome) {
+    async function pmoIncassiApriPartita(dataIso, campoNum, oraHm, nome) {
       try {
         const iso = String(dataIso || '').slice(0, 10);
         const campo = String(campoNum || '').replace(/\D/g, '');
@@ -27126,12 +27126,37 @@ Grazie!`
         /* 💶 VOCE 198 — IL TIPO E LA DURATA SI LEGGONO, NON SI INVENTANO.
            Qui c'erano `90` e `'partita'` CABLATI, ed era l'unico dei 12 chiamanti di
            `staffCalEditPlayers` a farlo: una riga di cassa di una LEZIONE apriva la scheda come
-           partita, cioè **senza il selettore del maestro**. Il ripiego resta quello di prima
-           (`90`/`'partita'`) per il caso in cui lo slot non si trovi in nessuna delle due fonti:
-           una scheda che si apre imperfetta è meglio di una che non si apre. */
-        var _td = (typeof _pmoLookupTipoDurata === 'function') ? _pmoLookupTipoDurata(iso, campo, ora) : null;
+           partita, cioè **senza il selettore del maestro**.
+           🔄 11/09 — E NON BASTAVA LEGGERE LA MEMORIA: 📏 su 705 slot di cassa la memoria ne
+           conosceva **19**, perché tiene il futuro (07/09→07/10) mentre ogni incasso guarda il
+           passato. ⇒ Adesso, se la memoria non sa, si CHIEDE AL CLOUD (`_pmoTipoDurataOvunque`),
+           e solo dopo si ripiega. */
+        var _td = (typeof _pmoTipoDurataOvunque === 'function')
+          ? await _pmoTipoDurataOvunque(iso, campo, ora)
+          : ((typeof _pmoLookupTipoDurata === 'function') ? _pmoLookupTipoDurata(iso, campo, ora) : null);
         var _tipoVero = (_td && _td.tipo) || 'partita';
         var _durVera = (_td && _td.durata != null) ? _td.durata : 90;
+        /* 🚨⭐⭐ IL RIPIEGO SI DICHIARA, e questa è la metà che mancava.
+         * ⚖️ Finché il ripiego serviva a un caso di bordo, aprire «partita/90» in silenzio era
+         *   una scelta difendibile — *una scheda imperfetta è meglio di una che non si apre*.
+         *   📏 Ma la misura dice che oggi tocca **324 slot su 704**, cioè quasi la metà: a quel
+         *   volume il silenzio non è un arrotondamento, è un'affermazione falsa ripetuta. La
+         *   scheda direbbe «Partita · 90 minuti» con la faccia di un dato letto.
+         * ⛔ E NON è distruttivo, va detto per intero invece di spaventare: con `tipoNorm` e
+         *   `origTipoNorm` tutt'e due a `partita` il tipo non risulta cambiato, e
+         *   `istruttoreChanged` pretende `pmoTipoVuoleMaestro` ⇒ salvando NON si sovrascrive il
+         *   maestro di una lezione. Quello che si perde è **vederlo**.
+         * 📌 *Un ripiego raro può tacere; un ripiego su metà dei casi che tace è una bugia di
+         *   default.* */
+        if (!(_td && _td.tipo)) {
+          var _perche = (_td && _td.fonte === 'illeggibile')
+            ? 'non sono riuscito a leggere l\'archivio delle prenotazioni'
+            : 'di questa partita il gestionale non ha più la scheda (è più vecchia dello storico che conserviamo)';
+          try {
+            showAlert('⚠️ La apro come <strong>partita da 90 minuti</strong>, ma è un ripiego: '
+              + _perche + '. Se era una lezione, qui non vedrai il maestro.', 'warning');
+          } catch (e) {}
+        }
         if (typeof staffCalEditPlayers === 'function') staffCalEditPlayers(iso, campo, ora, String(nome || ''), _durVera, _tipoVero);
       } catch (e) {
         console.warn('pmoIncassiApriPartita:', e);
@@ -51134,16 +51159,34 @@ Per confermare scrivi ELIMINA.`);
    *    dovuto): due ricerche identiche in due funzioni sono due cose che divergono al primo
    *    cambio di una fonte. 📌 *La seconda volta che si cerca la stessa cosa, la ricerca diventa
    *    una funzione.* */
+  /* 🕐⭐⭐ VOCE 198 — L'ORA SI NORMALIZZA PRIMA DI CONFRONTARLA, e non è pignoleria.
+   * 📏 Misurato l'11/09 sui record veri di `cudi`: **129 righe `payment` su 2.605** portano
+   *    l'ora NON paddata (`9:00`), mentre TUTTE le fonti dello slot la portano paddata
+   *    (`09:00`): `booking` 288/288 · `booking_history` 2.881/2.881 · `booking_occupancy`
+   *    163/163 · `staff_booking` 37/37. ⇒ Un confronto fra stringhe grezze su quelle 129 righe
+   *    **non può riuscire mai**, e falliva in silenzio cadendo sul ripiego.
+   * ⚖️ E non tocca solo il TIPO: `_pmoDovutoDelloSlot` cerca dallo stesso punto, quindi quelle
+   *    righe dicevano «dovuto **non so**» per una ragione di formato, non perché il dato manchi
+   *    — cioè il terzo esito della voce usciva **falso**.
+   * 📌 *Due scritture della stessa ora non sono due ore: chi confronta deve dirlo, o il
+   *    confronto risponde «diverso» con la faccia di un fatto.* */
+  function _pmoOraNorm(ora) {
+    var s = String(ora == null ? '' : ora).trim();
+    var m = s.match(/^(\d{1,2}):(\d{1,2})/);
+    if (!m) return s.slice(0, 5);
+    return ('0' + m[1]).slice(-2) + ':' + ('0' + m[2]).slice(-2);
+  }
+
   function _pmoTrovaSlot(iso, campoNum, ora) {
     try {
       var wantData = String(iso).trim();
       var wantCampo = Number(String(campoNum).replace(/\D/g, ''));
-      var wantOra = String(ora).trim();
+      var wantOra = _pmoOraNorm(ora);
       var match = function (x) {
         return x
           && String(x.data).trim() === wantData
           && Number(String(x.campo).replace(/\D/g, '')) === wantCampo
-          && String(x.ora).trim() === wantOra;
+          && _pmoOraNorm(x.ora) === wantOra;
       };
       var sb = (typeof safeLoad === 'function') ? safeLoad('staffBookings', []) : [];
       var b = (Array.isArray(sb) ? sb : []).find(match);
@@ -51226,6 +51269,95 @@ Per confermare scrivi ELIMINA.`);
         durata: (b.durata != null && b.durata !== '') ? b.durata : null,
       };
     } catch (e) { return vuoto; }
+  }
+
+  /* ☁️⭐⭐ VOCE 198 — QUANDO IN MEMORIA NON C'È, SI VA A LEGGERLO: LO SLOT DAL CLOUD.
+   *
+   * 🚨 IL LIMITE DICHIARATO DALLA 117ª ERA PIÙ PICCOLO DEL VERO, e la misura l'ha corretto.
+   *    Diceva *«fuori dal giorno caricato il lookup torna null»* — come se fosse il giorno a
+   *    mancare. 📏 Misurato l'11/09 sulla pagina viva di TEST, su tutte le righe di cassa:
+   *    delle **705** terne `data+campo+ora` distinte dei pagamenti, il lookup in memoria ne
+   *    trovava **19**. Cioè **686 su 705 (97,3%)** aprivano la scheda col ripiego, non un caso
+   *    di bordo.
+   * ⚖️ **E il perché non è il giorno: è la FINESTRA.** Le tre fonti in memoria tengono il
+   *    FUTURO — 📏 `booking` e `booking_occupancy` vanno dal **07/09 al 07/10** — mentre ogni
+   *    riga di cassa guarda il PASSATO (i pagamenti vanno dal 01/06 al 07/09). ⇒ Le due
+   *    finestre quasi non si toccano, ed è per questo che il difetto sembrava raro e non lo era.
+   *
+   * 🩹 LO STORICO C'È, MA NON IN MEMORIA: 📏 `booking_history` ha **2.881** righe vive sul
+   *    cloud, e `safeLoad('storicoPrenotazioni')` nel browser ne ha **0** — l'app non lo idrata
+   *    all'avvio. È esattamente ciò che dice già il commento di `pmoCaricaPagamenti`, pagato
+   *    sullo storno: *«una funzione che legge una variabile globale sta scommettendo che
+   *    qualcun altro l'abbia riempita: se le importa davvero, se la carica»*. ⇒ Qui si applica
+   *    la stessa cura, invece di riscoprirla una terza volta.
+   * 📏 Copertura misurata con questa strada, normalizzando l'ora: da **18** a **380** slot su
+   *    704. I **324** che restano non ci sono NEANCHE sul cloud (⇒ `_pmoAvvisoSlotIgnoto`).
+   *
+   * ⏳ Si chiede UNA volta sola e si tiene l'indice: sono ~3.200 record, e pagarli a ogni click
+   *    sarebbe peggio del difetto. Si costruisce **solo** quando la memoria ha già fallito, così
+   *    chi clicca una partita recente non paga niente. */
+  var _pmoSlotCloudIdx = null;       // Map chiave → payload dello slot
+  var _pmoSlotCloudInVolo = null;    // la lettura in corso: due click vicini non chiedono due volte
+
+  function _pmoSlotChiave(data, campo, ora) {
+    return String(data == null ? '' : data).slice(0, 10)
+      + '|' + (Number(String(campo == null ? '' : campo).replace(/\D/g, '')) || 0)
+      + '|' + _pmoOraNorm(ora);
+  }
+
+  function _pmoIndiceSlotDalCloud() {
+    if (_pmoSlotCloudIdx) return Promise.resolve(_pmoSlotCloudIdx);
+    if (_pmoSlotCloudInVolo) return _pmoSlotCloudInVolo;
+    if (typeof pmoStaffRpcPaged !== 'function') return Promise.resolve(null);
+    _pmoSlotCloudInVolo = (async function () {
+      try {
+        var rows = await pmoStaffRpcPaged('pmo_get_records_admin',
+          { p_record_types: ['booking', 'booking_history', 'staff_booking'], p_since: null },
+          'cloud_sync', 'leggere la scheda della partita di questo incasso');
+        var idx = new Map();
+        /* ⚖️ L'ORDINE CONTA, e il primo che scrive vince: `staff_booking` è la NOSTRA scheda
+         *    (quella che qualcuno ha aperto e corretto), `booking`/`booking_history` sono la
+         *    copia arrivata dal circolo. Se le due si contraddicono, quella vera è la nostra. */
+        var priorita = { staff_booking: 0, booking: 1, booking_history: 2 };
+        var ordinate = (rows || []).slice().sort(function (a, b) {
+          return (priorita[a && a.record_type] ?? 9) - (priorita[b && b.record_type] ?? 9);
+        });
+        for (var i = 0; i < ordinate.length; i++) {
+          var r = ordinate[i];
+          if (!r || r.deleted || !r.payload) continue;
+          var b = r.payload;
+          var k = _pmoSlotChiave(b.data, b.campo, b.ora);
+          if (!idx.has(k)) idx.set(k, b);
+        }
+        _pmoSlotCloudIdx = idx;
+        return idx;
+      } catch (e) {
+        // ⛔ Si torna `null` e NON una mappa vuota: «non ho potuto leggere» e «non c'è» sono due
+        //    cose diverse, ed è lo zero che non sa dire «rotto» della voce 165.
+        console.warn('_pmoIndiceSlotDalCloud:', e);
+        return null;
+      } finally { _pmoSlotCloudInVolo = null; }
+    })();
+    return _pmoSlotCloudInVolo;
+  }
+
+  /* Torna SEMPRE un esito parlante — `memoria` · `cloud` · `assente` · `illeggibile` — perché
+     chi chiama deve poter dire all'operatore quale dei quattro è capitato. Un `null` solo non
+     distingue «non c'è» da «non sono riuscito a guardare». */
+  async function _pmoTipoDurataOvunque(iso, campoNum, ora) {
+    var locale = _pmoLookupTipoDurata(iso, campoNum, ora);
+    if (locale && locale.tipo) return { tipo: locale.tipo, durata: locale.durata, fonte: 'memoria' };
+    var idx = null;
+    try { idx = await _pmoIndiceSlotDalCloud(); } catch (e) { idx = null; }
+    if (!idx) return { tipo: null, durata: null, fonte: 'illeggibile' };
+    var b = idx.get(_pmoSlotChiave(iso, campoNum, ora));
+    if (!b) return { tipo: null, durata: null, fonte: 'assente' };
+    var grezzo = b.tipoReale || b.tipo || '';
+    return {
+      tipo: grezzo ? pmoTipoParola(grezzo) : null,
+      durata: (b.durata != null && b.durata !== '') ? b.durata : null,
+      fonte: 'cloud',
+    };
   }
 
   // Helper v5.720: cerca l'idReserva Matchpoint di una prenotazione per slot (data+campo+ora).
