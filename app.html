@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.444';
+    const APP_VERSION = '6.445';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -51109,8 +51109,13 @@ Per confermare scrivi ELIMINA.`);
           && Number(String(x.campo).replace(/\D/g, '')) === wantCampo
           && String(x.ora).trim() === wantOra;
       };
-      // Stesse due fonti, e nello stesso ordine, di `_staffCalLookupIdReserva`: prima le nostre
-      // (più fresche e col nostro vocabolario), poi quelle importate dal circolo.
+      /* Le fonti sono TRE, e la terza l'ha aggiunta una misura sulla pagina viva: le due di
+       * `_staffCalLookupIdReserva` non coprono tutto quello che il calendario disegna.
+       * 📏 Contate su TEST l'11/09: `prenotazioni` **288** righe · `prenotazioniOccupazione`
+       *    **163** · `staffBookings` **36**. ⇒ Fermarsi alle prime due lasciava fuori la fonte
+       *    più capiente, e con lei gli slot per cui il ripiego «partita» fa danno.
+       * ⚖️ L'ordine non è indifferente: prima le NOSTRE (`staffBookings`, col nostro vocabolario
+       *    e la durata già in minuti), poi le due importate dal circolo. */
       var sb = (typeof safeLoad === 'function') ? safeLoad('staffBookings', []) : [];
       var b = (Array.isArray(sb) ? sb : []).find(match);
       if (!b) {
@@ -51119,10 +51124,23 @@ Per confermare scrivi ELIMINA.`);
           : ((typeof safeLoad === 'function') ? safeLoad('prenotazioniOccupazione', []) : []);
         b = (Array.isArray(occ) ? occ : []).find(match);
       }
+      if (!b) {
+        var pre = (typeof prenotazioni !== 'undefined' && Array.isArray(prenotazioni))
+          ? prenotazioni
+          : ((typeof safeLoad === 'function') ? safeLoad('prenotazioni', []) : []);
+        b = (Array.isArray(pre) ? pre : []).find(match);
+      }
       if (!b) return vuoto;
       // `tipoReale` prima solo perché un oggetto già passato per la memoria può averlo; il campo
       // che esiste nei record è `tipo`. Nessuno dei due si confronta a mano.
       var grezzo = b.tipoReale || b.tipo || '';
+      /* ⚠️ LA DURATA HA DUE FORMATI, misurati: `staffBookings` la tiene in MINUTI (`90`), le due
+       * fonti del circolo in ORE come STRINGA (`"1.5"`, `"2"`). ⇒ Qui si restituisce **grezza**
+       * di proposito, perché chi la riceve la passa a `staffCalEditPlayers`, che la normalizza
+       * con `_staffCalDurMin` — e quella sa già leggere entrambi (`n >= 30` ⇒ minuti, altrimenti
+       * ore × 60). 📏 Verificato prima di fidarsene: `"1.5"` ⇒ 90.
+       * 📌 *Normalizzare due volte è peggio che una: la seconda conversione riceve un numero già
+       *    convertito e non ha modo di saperlo.* */
       return {
         tipo: grezzo ? pmoTipoParola(grezzo) : null,
         durata: (b.durata != null && b.durata !== '') ? b.durata : null,
