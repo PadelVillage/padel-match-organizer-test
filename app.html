@@ -8722,7 +8722,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.457';
+    const APP_VERSION = '6.458';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -11291,7 +11291,15 @@ Grazie.`
       if (tabName === 'administration') {
         if (key.includes('notifiche')) pmoSetAdminSection('notifications', { silent:true });
         else if (key.includes('telegram') || key.includes('bot')) pmoSetAdminSection('telegram', { silent:true });
-        else if (key.includes('dati matchpoint') || key.includes('clienti matchpoint') || key.includes('prenotazioni future matchpoint') || key.includes('storico matchpoint') || key.includes('backup dati') || key.includes('slot potenziali matchpoint') || key.includes('routine dati')) pmoSetAdminSection('matchpoint-data', { silent:true });
+        /* 🧹🚨 VOCE 199 — `key === 'dati'` VA TENUTO PER PRIMO, e senza di lui la voce «Dati» del
+           menu NON apre più niente: la sezione si chiamava «Dati Matchpoint», e rinominandola in
+           «Dati» la chiave smetteva di combaciare con `includes('dati matchpoint')`.
+           📏 TROVATO DALLA PROVA FISICA l'11/09: il bottone lasciava aperta «Utenti», in silenzio.
+           ⛔ E il banco non poteva vederlo: controllava `pmoAdminSectionKey`, che è UN'ALTRA
+           strada — questa mappa è la prima, e decide prima che quella venga interrogata.
+           📌 *Due strade che rispondono alla stessa domanda vanno provate tutte e due: quella che
+           non si prova è quella che comanda.* */
+        else if (key === 'dati' || key.includes('dati matchpoint') || key.includes('clienti matchpoint') || key.includes('prenotazioni future matchpoint') || key.includes('storico matchpoint') || key.includes('backup dati') || key.includes('slot potenziali matchpoint') || key.includes('routine dati')) pmoSetAdminSection('matchpoint-data', { silent:true });
         else if (key.includes('calendario staff') || key.includes('calendario campi') || key.includes('prenotazione staff')) pmoSetAdminSection('calendario-staff');
         else if (key.includes('sessione')) pmoSetAdminSection('users', { silent:true });
         // I controlli tecnici vivono dentro Utenti: qualunque parola li cerchi porta li'.
