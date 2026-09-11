@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.451';
+    const APP_VERSION = '6.452';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -26777,6 +26777,58 @@ Grazie!`
         ignoti: ignoti,
         completo: ignoti === 0,
       };
+    }
+    /* 💶 VOCE 214 ① — LE VOCI DEL CONTO SI LEGGONO IN UN POSTO SOLO.
+     *
+     * ⚖️ Vivevano dentro il disegno della scheda (`_vociConto`, voce 152), che è il posto giusto
+     *    finché a chiederle è solo chi disegna. Da adesso le chiede anche il SALVA, per sapere se
+     *    resta qualcosa da incassare ⇒ o si sposta la lettura qui, o nascono **due** conti che
+     *    possono divergere. 📌 *Il gestionale SA una cosa sola: quando due punti la calcolano per
+     *    conto proprio, la seconda copia è già una bugia in attesa.* */
+    function _pmoCentsDelConto(txt) {
+      /* Lo zero LETTO è un dato, la casella vuota no — e `_pmoEuroToCents` da solo non basta:
+         rifiuta lo zero di proposito (per il cambio importo uno zero non è una modifica da
+         mandare). Qui invece uno `0,00` è l'omaggio della 149, e va contato. */
+      const raw = String(txt == null ? '' : txt).trim();
+      if (!raw) return null;                       // casella vuota = importo non letto
+      const c = _pmoEuroToCents(raw);
+      if (c != null) return c;
+      return /^0+([.,]0*)?$/.test(raw.replace(/[€\s]/g, '')) ? 0 : null;
+    }
+    function _pmoVociContoDaScheda(st) {
+      const voci = (st && Array.isArray(st.contoPagate)) ? st.contoPagate.slice() : [];
+      ((st && st.payRows) || []).forEach(function (r) {
+        if (!r || !r.input) return;
+        voci.push({ cents: _pmoCentsDelConto(r.input.value), incassato: false });
+      });
+      return voci;
+    }
+    /* 💶⭐⭐ VOCE 214 ② — «NESSUNA MODIFICA DA SALVARE» È VERO, MA NON AIUTA (11/09/2026).
+     *
+     * 🗣️ Nasce dalla sua domanda della 211: *«perché non mi fa salvare il pagamento?»* — davanti a
+     *    una scheda con *A carico 12,00 € · Manca all'appello 12,00 €* il Salva rispondeva solo
+     *    *«Nessuna modifica da salvare»*. 📏 E aveva **ragione**: il Salva salva le modifiche della
+     *    scheda, e lui non ne aveva fatte. Ma la risposta giusta lo lasciava senza sapere dove
+     *    andare, e da lì è nata la 210 (dieci click sui bottoni dell'incasso).
+     * ⚖️ La separazione resta quella della 132 — *un importo a carico non è un pagamento* — e
+     *    questa riga NON la tocca: il Salva continua a non incassare. Cambia solo che, invece di
+     *    fermarsi a «non c'è niente da fare», dice **dove** si fa la cosa che l'operatore voleva.
+     * 📌 *Una risposta vera che lascia la persona ferma è vera a metà: l'altra metà è la strada.*
+     *
+     * 🚨 NON MENTE SUL NUMERO: se il conto è parziale (una riga senza importo letto) quel totale è
+     *    un **minimo**, e si scrive «almeno». Un numero preso per esatto quando è un minimo è
+     *    esattamente il difetto che la 152 aveva già curato nel riquadro del conto.
+     * ⛔ E non nomina Matchpoint: sul sistema nuovo la cassa è NOSTRA (⇒ *IL DISTACCO*), e il
+     *    giorno in cui Matchpoint si spegne questa frase non si tocca.
+     *
+     * PURA, così il banco la ESEGUE invece di rileggerla. */
+    function _pmoTestoSalvaSenzaModifiche(conto, euro) {
+      const base = 'ℹ️ Nessuna modifica da salvare.';
+      const manca = conto && typeof conto.mancaCents === 'number' ? conto.mancaCents : 0;
+      if (!(manca > 0)) return base;
+      const quanto = (typeof euro === 'function') ? euro(manca) : String(manca);
+      return base + ' 💶 Restano ' + (conto.completo ? '' : 'almeno ') + quanto
+        + ' da incassare: l\'incasso si fa con <strong>Cash · Card · Wallet</strong> accanto al giocatore, non da qui.';
     }
     function _pmoEuroToCents(txt) {
       if (txt == null) return null;
@@ -48665,24 +48717,10 @@ Per confermare scrivi ELIMINA.`);
      *    a un disegno approvato.
      * ⛔ Si disegna solo dove ha senso: niente giocatori (manutenzione) ⇒ niente conto. */
     if (st.hasPlayers && Array.isArray(st.payRows)) {
-      /** Lo zero LETTO è un dato, la casella vuota no — e `_pmoEuroToCents` da solo non basta:
-       *  rifiuta lo zero di proposito (per il cambio importo uno zero non è una modifica da
-       *  mandare). Qui invece uno `0,00` è l'omaggio della 149, e va contato. */
-      const _centsPerConto = function (txt) {
-        const raw = String(txt == null ? '' : txt).trim();
-        if (!raw) return null;                       // casella vuota = importo non letto
-        const c = _pmoEuroToCents(raw);
-        if (c != null) return c;
-        return /^0+([.,]0*)?$/.test(raw.replace(/[€\s]/g, '')) ? 0 : null;
-      };
-      const _vociConto = function () {
-        const v = (Array.isArray(st.contoPagate) ? st.contoPagate : []).slice();
-        (st.payRows || []).forEach(function (r) {
-          if (!r || !r.input) return;
-          v.push({ cents: _centsPerConto(r.input.value), incassato: false });
-        });
-        return v;
-      };
+      /* 🔄 VOCE 214 — la lettura delle voci è SALITA in `_pmoVociContoDaScheda`, perché adesso la
+       *    chiede anche il Salva. Qui resta la chiamata: due copie dello stesso conto sono due
+       *    numeri che un giorno divergono sulla stessa scheda. */
+      const _vociConto = function () { return _pmoVociContoDaScheda(st); };
       const conto = document.createElement('div');
       conto.className = 'svc-edit-conto';
       const _riga = function (etichetta, extra) {
@@ -49263,7 +49301,17 @@ Per confermare scrivi ELIMINA.`);
     //    «ℹ️ Nessuna modifica da salvare»: è il difetto identico della 132 sugli importi, che
     //    era stato trovato dal committente provando invece che rileggendo.
     if (!moveChanged && !playersChanged && !noteChanged && !descrChanged && !istruttoreChanged && !chargesChanged && !tipoChanged) {
-      svcAddMessage('system', 'ℹ️ Nessuna modifica da salvare.');
+      /* 💶 VOCE 214 — se non c'è niente da salvare MA resta del denaro da incassare, si dice DOVE.
+       * ⛔ Il conto si chiede a `_pmoContoPartita`, lo stesso giudice del riquadro: qui non si
+       *    somma niente a mano, o fra un mese i due numeri direbbero cose diverse sulla stessa
+       *    scheda. Se qualcosa non si può leggere, il testo lo dichiara invece di arrotondare. */
+      let _testo = 'ℹ️ Nessuna modifica da salvare.';
+      try {
+        if (st.hasPlayers && Array.isArray(st.payRows)) {
+          _testo = _pmoTestoSalvaSenzaModifiche(_pmoContoPartita(_pmoVociContoDaScheda(st)), _incassiEuro);
+        }
+      } catch (e) {}
+      svcAddMessage('system', _testo);
       return;
     }
     // skipConfirm = percorso ASSISTENTE: la verifica/conferma occupazione è già stata fatta in chat
