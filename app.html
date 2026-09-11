@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.453';
+    const APP_VERSION = '6.454';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -43813,7 +43813,13 @@ Per confermare scrivi ELIMINA.`);
     if (/gift|omagg|offert/i.test(m)) return 'omaggio'; // record `payment` a 0 € scritti da _pmoGiftSyncFromRoster
     try { return (typeof _incassiMethodBucket === 'function') ? _incassiMethodBucket(m) : ''; } catch (e) { return ''; }
   }
-  function _staffCalPaidIndexAdd(key, name, method, cents) {
+  /* ↩︎⭐⭐ VOCE 217 — LA RIGA DEVE SAPERE DA QUALE LIBRO VIENE, e prima non lo sapeva.
+   * 🔎 Lo storno nativo (`_pmoCassaStorna`) tocca **solo** le righe della cassa nostra
+   *    (`pmo_cassa`/`pmo_simulate`) e salta di proposito quelle di Matchpoint, «che le annulla il
+   *    loro libro». ⇒ Offrire il ↩︎ senza sapere la sorgente vorrebbe dire metterlo anche dove non
+   *    fa niente: un bottone che si preme e non succede nulla è peggio di un bottone che manca.
+   * 📌 *Un gesto si offre dove può arrivare in fondo, non dove il dato ha la stessa forma.* */
+  function _staffCalPaidIndexAdd(key, name, method, cents, nostro) {
     const k = String(key == null ? '' : key).trim();
     const n = _payNormName(name);
     if (!k || !n) return;
@@ -43824,6 +43830,18 @@ Per confermare scrivi ELIMINA.`);
     const b = _payBucket(method);
     if (b && cur.methods.indexOf(b) < 0) cur.methods.push(b);
     if (typeof cents === 'number' && cents > 0) cur.cents += cents;
+    // ⛔ Si accende e non si spegne: fra due righe sulla stessa persona, una nostra e una del
+    //    circolo, la nostra resta stornabile da qui. Il verso opposto toglierebbe un'uscita
+    //    che esiste davvero.
+    if (nostro === true) cur.nostro = true;
+  }
+  /** La riga di cassa è NOSTRA? Una sola regola, in un posto solo: `pmo_cassa` è la cassa di oggi,
+   *  `pmo_simulate` quella dell'era della simulazione — tutt'e due si stornano da qui, e
+   *  `_pmoCassaStorna` guarda **esattamente** queste due. ⛔ Tutto il resto (le 2603 righe arrivate
+   *  da Matchpoint) appartiene a un altro libro. PURA. */
+  function _payRigaNostra(p) {
+    const s = String((p && p.source) || '');
+    return s === PMO_CASSA_SOURCE || s === PMO_CASSA_SOURCE_VECCHIA;
   }
   function _staffCalPaidIndexRemove(key, name) {
     const k = String(key == null ? '' : key).trim();
@@ -43925,6 +43943,8 @@ Per confermare scrivi ELIMINA.`);
         if (b && cur.methods.indexOf(b) < 0) cur.methods.push(b);
         const c = Number(p.amount_cents) || 0;
         if (c > 0) cur.cents += c;
+        // ↩︎ VOCE 217 — da quale libro viene questa riga: è ciò che decide se il ↩︎ ha dove andare.
+        if (_payRigaNostra(p)) cur.nostro = true;
       }
       // Preserva gli add ottimistici (cobro appena fatto, non ancora nel cloud sync). Dove il
       // sync ha già la voce, vince il sync (autorevole); l'ottimistico riempie solo i buchi.
@@ -44627,7 +44647,8 @@ Per confermare scrivi ELIMINA.`);
           if (tgt) { tgt.stato = 'riscosso'; tgt.pendenteCents = 0; if (tgt.importoCents == null) tgt.importoCents = amountCents; }
         }
       } catch (e) {}
-      try { _staffCalPaidIndexAdd(_payNatKey(opts.data, opts.campo, opts.ora), playerName, method, amountCents); } catch (e) {}
+      // ↩︎ VOCE 217 — ramo NATIVO: la riga è nostra ⇒ il ↩︎ le spetta anche alla riapertura.
+      try { _staffCalPaidIndexAdd(_payNatKey(opts.data, opts.campo, opts.ora), playerName, method, amountCents, true); } catch (e) {}
       _setMsg(note, '💶 Incassato ' + esc(methodLabel) + ' ' + _incassiEuro(amountCents) + ' — ' + esc(playerName) + ' (in Incassi)');
       try { if (typeof staffCalRenderPlayersEditor === 'function' && staffCalPlayersState) staffCalRenderPlayersEditor(); } catch (e) {}
       try { renderStaffCalendar(); } catch (e) {}
@@ -44665,7 +44686,9 @@ Per confermare scrivi ELIMINA.`);
             if (tgt) { tgt.stato = 'riscosso'; tgt.pendenteCents = 0; if (tgt.importoCents == null) tgt.importoCents = amountCents; }
           }
         } catch (e) {}
-        try { _staffCalPaidIndexAdd(_payNatKey(opts.data, opts.campo, opts.ora), playerName, method, amountCents); } catch (e) {}
+        // ↩︎ VOCE 217 — ramo MATCHPOINT: `false` DETTO, non sottinteso. Quella riga la annulla il
+        //    suo libro, e da qui lo storno nativo non la toccherebbe.
+        try { _staffCalPaidIndexAdd(_payNatKey(opts.data, opts.campo, opts.ora), playerName, method, amountCents, false); } catch (e) {}
         /* 👛 VOCE 143 — col BORSELLINO il denaro è uscito da lì, quindi il saldo va riletto: in
            sottofondo, senza far aspettare il cassiere. ⛔ Cash e card NON toccano il borsellino e
            qui non chiedono niente al worker: un browser solo, condiviso col sync, non si occupa
@@ -48377,7 +48400,26 @@ Per confermare scrivi ELIMINA.`);
             // quello) muove denaro vero sul sistema del circolo.
             // 📌 Un dato basta per INFORMARE molto prima di bastare per AGIRE, e confondere le
             // due soglie è il modo tipico in cui una comodità diventa un danno.
-            if (_payVoidActive && !isGift && stato === 'riscosso') {
+            /* ↩︎🚨⭐⭐ VOCE 217 — «NON C'È LA POSSIBILITÀ DI FARE LO STORNO», e il bottone
+               c'era: era dietro un cancello che sul sistema nuovo non si apre MAI.
+               📏 MISURATO sul codice, non dedotto: due righe sopra `isPaid` accetta **due**
+                  fonti (`stato === 'riscosso'` OPPURE `_pagatoDalGestionale`, cioè la nostra
+                  cassa), mentre lo storno ne guardava **una sola**. ⇒ La riga si dipinge
+                  «pagato» verde e il ↩︎ accanto non compare: pagato sì, disfabile no.
+               🔎 E PERCHÉ LUI L'HA VISTO SOLO DOPO: subito dopo l'incasso il roster aperto
+                  riceve `tgt.stato = 'riscosso'` in via ottimistica ⇒ il ↩︎ **c'è**. Riaprendo
+                  la scheda il roster si ricostruisce, `stato` torna `null`, e il bottone
+                  sparisce. 📌 *Un gesto che esiste solo finché non si riapre la pagina non
+                  esiste: esiste il ricordo di averlo visto.*
+               ⚖️ PERCHÉ ALLARGARE È SICURO, e non è un allentamento della 142: quella regola
+                  esigeva la conferma del CIRCOLO perché uno storno sbagliato *«muove denaro
+                  vero sul sistema del circolo»*. Sulla cassa nostra quel sistema **non
+                  esiste** — il libro è il nostro — e la prudenza è comunque a valle:
+                  `_pmoCassaStorna` **rilegge le righe dal cloud** prima di marcarle void, e
+                  tocca solo `pmo_cassa`/`pmo_simulate`.
+               ⛔ Per le righe di MATCHPOINT non cambia niente: `nostro` lì non si accende, e
+                  resta richiesto `stato === 'riscosso'` — cioè la 142 intera, dov'era nata. */
+            if (_payVoidActive && !isGift && (stato === 'riscosso' || (_payInfo && _payInfo.nostro === true))) {
               const sBtn = document.createElement('button');
               sBtn.type = 'button'; sBtn.className = 'svc-pl-iconbtn';
               sBtn.innerHTML = '<i class="ti ti-arrow-back-up" aria-hidden="true"></i>';
@@ -54831,7 +54873,7 @@ Per confermare scrivi ELIMINA.`);
         giftKey: function (data, campo, ora, name) { return _pmoGiftKey(data, campo, ora, name); },
         giftRecord: function (data, campo, ora, p) { return _pmoGiftRecord(data, campo, ora, p); },
         giftSyncFromRoster: function (data, campo, ora, roster) { return _pmoGiftSyncFromRoster(data, campo, ora, roster); },
-        paidIndexAdd: function (data, campo, ora, name, method, cents) { return _staffCalPaidIndexAdd(_payNatKey(data, campo, ora), name, method, cents); },
+        paidIndexAdd: function (data, campo, ora, name, method, cents, nostro) { return _staffCalPaidIndexAdd(_payNatKey(data, campo, ora), name, method, cents, nostro); },
         // Organizzatore della partita (regola del 29/07/2026): torna la VOCE del roster o null.
         organizzatorePartita: function (tipoReale, roster) { return _pmoOrganizzatorePartita(tipoReale, roster); },
         // v6.134 — la regola COMPLETA: distingue «è della SEGRETERIA» da «non lo so», che per
