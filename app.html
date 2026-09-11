@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.447';
+    const APP_VERSION = '6.448';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -44175,20 +44175,114 @@ Per confermare scrivi ELIMINA.`);
   // edge `matchpoint-payment-write` (NON ottimistico, NIENTE retry: il cobro è
   // irreversibile). In harness mockato la conferma si auto-accetta. In SIMULAZIONE
   // (solo TEST) il cobro non tocca MP: scrive il record `payment` nel cloud TEST.
+  /* 🔁⭐⭐ VOCE 210 (11/09/2026) — UNA DOMANDA PER VOLTA, E CHE SI FACCIA VEDERE.
+   *
+   * 🗣️ Sua segnalazione, con lo schermo davanti: *«Perché se io clicco i bottoni cash e card uno
+   *    dopo l'altro mi fa questo, dovrebbe non darmi tutti questi tentativi oppure è giusto?»*
+   * 📏 **La cifra sta nel suo schermo**: `↓ 10 nuovi · 💰 CASSA DEL GESTIONALE — Incassare 12,00 €
+   *    da Lidia Comes in Card?` ⇒ ogni click aveva accodato **una domanda**, e ne erano rimaste
+   *    **dieci** in attesa.
+   *
+   * 🚨⭐⭐ **LA RISPOSTA ALLA SUA DOMANDA È «NO, NON È GIUSTO», e il motivo non è il fastidio**:
+   *    queste conferme **non sono un dialogo modale** — sono messaggi in un pannello che scorre, e
+   *    la scritta *«↓ 10 nuovi»* dice esattamente che stanno **fuori dalla vista**. ⇒ Chi preme non
+   *    vede cosa gli è stato chiesto, e **l'incasso non parte** perché nessuno può confermarlo.
+   *    📌 *Dieci domande che nessuno vede non sono dieci tentativi: sono zero incassi.*
+   *
+   * 🔗 **E DA QUI NASCE LA 211**, che è la stessa cosa vista dall'altro capo: non vedendo
+   *    succedere niente ha provato col **Salva**, e il Salva ha risposto *«Nessuna modifica da
+   *    salvare»* — che è **vero** (il Salva salva le modifiche, l'incasso passa da Cash/Card/Wallet)
+   *    e non aiuta per niente. 📌 *Quando qualcuno usa il bottone sbagliato, la prima domanda
+   *    non è perché ha sbagliato: è cosa ha fatto il bottone giusto quando l'ha premuto.*
+   *
+   * ⚖️ **PERCHÉ LA SECONDA SOSTITUISCE E NON SI ACCODA**: a una domanda si risponde **una per
+   *    volta**, e l'ultima premuta descrive l'intenzione di adesso — chi preme Cash e poi Card ha
+   *    **cambiato idea**, non ha chiesto due incassi. ⇒ Accodare è l'unica delle tre opzioni che
+   *    non corrisponde a niente che una persona possa volere.
+   *
+   * 🚨 **MA LA SOSTITUZIONE SI DICHIARA**, o si scambia una coda invisibile con un **annullo**
+   *    invisibile — e sui soldi è peggio: la domanda vecchia resta dov'è e **scrive** di essere
+   *    stata sostituita, così chi scorre indietro non trova un buco.
+   *    📌 *Togliere in silenzio una richiesta di denaro è lo stesso difetto di accodarla: in
+   *       tutti e due i casi qualcuno decide al posto di chi guarda.*
+   *
+   * ⭐ **E LA DOMANDA SI PORTA SOTTO GLI OCCHI** — la metà che la pastiglia non poteva dare.
+   *    ⚖️ La pastiglia della **134** c'era e **ha funzionato**: diceva `↓ 10 nuovi` col testo della
+   *    domanda. Ma una pastiglia annuncia **un esito da andare a prendere**, e questa è **una
+   *    domanda che aspetta**: leggerla non basta, va **risposta**. ⇒ Qui il tetto della 127 si
+   *    scavalca **di proposito**, come già fa il click sulla pastiglia e per la stessa ragione —
+   *    è un movimento **chiesto da chi ha appena premuto**, non un salto deciso dal programma.
+   *    📌 *Un esito si può andare a prendere; una domanda deve venire lei.* */
+  var _pmoCollectPending = null;   // { chiudi, msg, chi, come }
+
+  /** Chiude la domanda aperta dichiarandolo dentro il messaggio stesso. Torna quella che c'era. */
+  function _pmoCollectChiudiPendente(nuovaEtichetta) {
+    var p = _pmoCollectPending;
+    if (!p) return null;
+    _pmoCollectPending = null;
+    try {
+      var riga = p.msg && p.msg.querySelector(':scope > div:last-child');
+      var testo = '⏭️ <strong>Richiesta sostituita</strong> da quella qui sotto'
+        + (nuovaEtichetta ? (' (' + nuovaEtichetta + ')') : '')
+        + '.<br><span style="color:var(--text-muted);font-size:.78rem;">Non è stato incassato niente per questa.</span>';
+      if (riga) riga.innerHTML = testo; else if (p.msg) p.msg.innerHTML = testo;
+      // I bottoni della vecchia spariscono: lasciare un «✅ Sì, incassa» che non incassa più
+      // niente è una bugia con la faccia di un'azione.
+      if (p.msg) Array.prototype.forEach.call(p.msg.querySelectorAll('.svc-step-btns, button'), function (b) {
+        try { b.remove(); } catch (e) {}
+      });
+    } catch (e) {}
+    try { p.chiudi(false); } catch (e) {}
+    return p;
+  }
+
+  /** Porta un messaggio del pannello dentro il bordo. Movimento voluto da chi ha premuto. */
+  function _pmoPortaInVista(msg) {
+    try {
+      var cont = document.getElementById('svcChatMessages');
+      if (!cont || !msg) return false;
+      /* Si calcola `scrollTop` a mano invece di usare la scorciatoia del browser: quella
+         scorrerebbe anche gli antenati, cioè la PAGINA sotto il pannello — e il difetto che si
+         cura è proprio *«qualcosa si è mosso e non so cosa»*. */
+      var dc = cont.getBoundingClientRect(), dm = msg.getBoundingClientRect();
+      var giu = dm.bottom - dc.bottom;
+      var su = dc.top - dm.top;
+      if (giu > 0) cont.scrollTop += giu + 12;
+      else if (su > 0) cont.scrollTop -= su + 12;
+      return true;
+    } catch (e) { return false; }
+  }
+
   function _pmoConfirmCollect(name, methodLabel, amountCents, simulate) {
     return new Promise(function (resolve) {
       const _harness = PMO_IS_TEST_ENV && typeof window !== 'undefined' && window.__pmoPayHarness === true;
       const _simAuto = PMO_IS_TEST_ENV && typeof window !== 'undefined' && window.__pmoPaySimAuto === true;
       if (_harness || _simAuto) { resolve(true); return; }
       const esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return String(s == null ? '' : s); };
+      // 🔁 VOCE 210 — prima di chiedere, si chiude quella che sta già aspettando.
+      _pmoCollectChiudiPendente(esc(methodLabel) + ' · ' + esc(name));
       const msg = svcAddMessage('system', simulate
         ? '💰 <strong>CASSA DEL GESTIONALE</strong> — Incassare <strong>' + _incassiEuro(amountCents) + '</strong> da <strong>' + esc(name) + '</strong> in <strong>' + esc(methodLabel) + '</strong>?<br><span style="color:var(--text-muted);font-size:.78rem;">L\'incasso resta nel gestionale (sezione Incassi) e si può stornare. Il Matchpoint del circolo non viene chiamato.</span>'
         : '💶 Incassare <strong>' + _incassiEuro(amountCents) + '</strong> da <strong>' + esc(name) + '</strong> in <strong>' + esc(methodLabel) + '</strong>?<br><span style="color:var(--text-muted);font-size:.78rem;">Operazione reale su Matchpoint: crea un cobro, non annullabile dall’app.</span>');
       let _done = false;
+      /* ⚠️ `_done` NON è ciò che rende innocuo un doppio click: a garantirlo è la **Promise**,
+       *    che si risolve una volta sola — misurato togliendo questa riga e vedendo il banco
+       *    restare verde. Serve alla sola contabilità di `_pmoCollectPending`, e sta scritta per
+       *    quello che è invece di prendersi un merito che non è suo. */
+      const chiudi = function (esito) {
+        if (_done) return;
+        _done = true;
+        if (_pmoCollectPending && _pmoCollectPending.msg === msg) _pmoCollectPending = null;
+        resolve(esito);
+      };
       const btns = svcMakeStepButtons(['✅ Sì, incassa'],
-        function () { if (_done) return; _done = true; resolve(true); },
-        function () { if (_done) return; _done = true; resolve(false); });
+        function () { chiudi(true); },
+        function () { chiudi(false); });
       try { msg.appendChild(btns); } catch (e) {}
+      _pmoCollectPending = { chiudi: chiudi, msg: msg, chi: String(name || ''), come: String(methodLabel || '') };
+      /* ⭐ DOPO i bottoni, non prima: il messaggio è alto quanto sarà davvero. Portandolo in
+         vista prima si farebbe il gesto e non l'effetto — la riga cresce e riesce dal bordo. */
+      try { requestAnimationFrame(function () { _pmoPortaInVista(msg); }); } catch (e) { _pmoPortaInVista(msg); }
     });
   }
   /* 👛⭐⭐ VOCE 143, SECONDA METÀ (06/09/2026) — DOPO UN GESTO CHE MUOVE IL BORSELLINO, IL SALDO
