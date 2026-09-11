@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.452';
+    const APP_VERSION = '6.453';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -44092,19 +44092,52 @@ Per confermare scrivi ELIMINA.`);
             : String(st.origOra || st.ora).trim() === String(ora).trim());
   }
 
+  /* 💶🚨⭐⭐ VOCE 216 — `data` È IL GIORNO DELLA CASSA, `booking_data` QUELLO DELLA PARTITA
+   *  (11/09/2026, e i due erano lo STESSO valore).
+   *
+   * 🗣️ Trovato da lui in tre parole — *«non c'è nulla in cassa»* — con la sezione **Incassi** aperta
+   *    su **Oggi**, subito dopo aver incassato 12,00 € con le sue mani.
+   *
+   * 📏 IL FATTO: l'incasso era registrato con `data: 2026-09-14`, cioè il giorno della **partita**,
+   *    mentre il denaro era entrato in cassa **oggi**. ⇒ La sezione Incassi filtra per `data`, e su
+   *    «Oggi» non trovava niente: quei 12,00 € comparivano in un giorno **futuro**.
+   *
+   * 🔎 CHE I DUE CAMPI SIANO COSE DIVERSE NON È UN'OPINIONE, È MISURATO sulle righe che arrivano da
+   *    Matchpoint: su **2603**, ce ne sono **84** in cui `data` e `booking_data` **non coincidono** —
+   *    un pagamento il 06/09 per una partita del 05/09 (pagata il giorno dopo), uno il 06/09 per una
+   *    del 07/09 (pagata il giorno prima). ⇒ Nel libro da cui copiamo, `data` è **quando il denaro si
+   *    muove** e `booking_data` è **quando si gioca**. Noi scrivevamo il secondo in tutti e due.
+   *
+   * ⚖️ PERCHÉ COSTA, e non è un dettaglio di visualizzazione: chi fa cassa la sera conta quello che è
+   *    entrato **quel giorno**. Un incasso che si presenta nel giorno della partita non è «in ritardo»,
+   *    è in un **altro** giorno — e il cassetto non torna, né la sera dell'incasso né quella della
+   *    partita. 📌 *Due campi che portano lo stesso valore non sono ridondanti: sono una distinzione
+   *    che qualcuno ha smesso di fare, e si scopre il giorno in cui i due valori dovevano differire.*
+   *
+   * ⛔ COSA NON CAMBIA, ed è ciò che rende la cura sicura invece che rischiosa:
+   *    · la **chiave** resta quella dello SLOT (`_pmoCassaKey(_slot, …)`) ⇒ resta **idempotente**:
+   *      incassare due volte lo stesso giocatore sulla stessa partita non raddoppia, nemmeno a
+   *      giorni diversi. Legarla a «oggi» l'avrebbe rotta esattamente lì;
+   *    · `booking_data` resta il giorno della partita ⇒ la scheda **continua a ritrovare** il
+   *      pagamento: 📏 l'indice lo cerca con `_payNatKey(p.booking_data || p.data, …)`, cioè
+   *      **preferendo** `booking_data`. Misurato prima di toccare, non dedotto dopo. */
   async function _pmoCassaScriviIncasso(opts) {
-    const _data = opts.data || (typeof _incassiToday === 'function' ? _incassiToday() : '');
+    // Il giorno della PARTITA: chiave naturale e `booking_data`.
+    const _slot = opts.data || (typeof _incassiToday === 'function' ? _incassiToday() : '');
+    // Il giorno della CASSA: quando il denaro è entrato davvero, cioè adesso.
+    const _giornoCassa = (typeof _incassiToday === 'function' ? _incassiToday() : _slot) || _slot;
     const payload = {
       id_reserva: String(opts.idReserva || ''),
       id_cliente: String(opts.idCliente || ''),
       player_name: opts.playerName || '',
       method: opts.method || '',
       amount_cents: (typeof opts.amountCents === 'number') ? opts.amountCents : 0,
-      data: _data,
+      // 💶 VOCE 216 — il giorno della CASSA: è per questo che filtra la sezione Incassi.
+      data: _giornoCassa,
       // Giorno/campo/ora della PRENOTAZIONE: è la chiave naturale con cui scheda e chip
       // agganciano il pagamento (vedi _payNatKey). Il sync reale le porta da Giorno/Spazio/Ora
       // del report 11.13: sono la chiave con cui scheda e chip ritrovano il pagamento.
-      booking_data: _data,
+      booking_data: _slot,
       campo: (opts.campo != null ? String(opts.campo) : ''),
       ora: (opts.ora != null ? String(opts.ora) : ''),
       recorded_at: new Date().toISOString(),
@@ -44116,7 +44149,9 @@ Per confermare scrivi ELIMINA.`);
       // incasso col borsellino non si saprebbe da quale borsellino è uscito.
       member_local_id: opts.memberLocalId || null,
     };
-    const rec = { record_type: 'payment', local_key: _pmoCassaKey(_data, opts.campo, opts.ora, opts.playerName), payload, deleted: false };
+    // 🔑 La chiave è quella dello SLOT, non del giorno di cassa: legata a «oggi» perderebbe
+    //    l'idempotenza — lo stesso incasso rifatto domani nascerebbe come una riga nuova.
+    const rec = { record_type: 'payment', local_key: _pmoCassaKey(_slot, opts.campo, opts.ora, opts.playerName), payload, deleted: false };
     try { _pmoWalletDeltaAggiorna(payload, +1); } catch (e) {}   // il saldo si muove SUBITO, non al prossimo giro
     await pmoSyncCloudRecordsNow([rec], 'registrare un incasso');
     try { if (typeof _incassiState !== 'undefined' && _incassiState) _incassiState.rows = null; } catch (e) {}
