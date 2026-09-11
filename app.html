@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.450';
+    const APP_VERSION = '6.451';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -47809,6 +47809,15 @@ Per confermare scrivi ELIMINA.`);
       // l'input in modalità normale. Senza, la scheda resta aperta a schermo. v6.093
       svcResetToNeutral();
       svcAddMessage('system', '📝 Modifica chiusa.');
+      /* 🫥 VOCE 209 — e se non è rimasto niente da leggere, il contenitore si spegne.
+       * ⭐ DOPO il messaggio, non prima, ed è la riga che fa i due casi con una domanda sola:
+       *   se quella frase fosse finita in chat, la chat NON sarebbe vuota e il pannello resterebbe
+       *   aperto a farla leggere — che è esattamente ciò che si vuole. Oggi va nella barra
+       *   (`SVC_ESITI_NELLA_SCHEDA`) e non lascia niente, quindi si chiude. Il giorno in cui quella
+       *   riga cambiasse lista, questa non va ritoccata: la risposta cambia da sé. */
+      try {
+        if (svcChatSenzaContenuto(document.getElementById('svcChatMessages'))) svcCloseChat();
+      } catch (e) {}
     });
     actions.appendChild(saveBtn);
     actions.appendChild(closeBtn);
@@ -52144,6 +52153,44 @@ Per confermare scrivi ELIMINA.`);
       svcAutoCloseIfMobile();
       svcScheduleAutoClear();
     }
+  }
+
+  /* 🫥⭐⭐ VOCE 209 — UN CONTENITORE SENZA CONTENUTO SI SPEGNE (11/09/2026).
+   *
+   * 🗣️ Sua, 11/09/2026, con lo schermo: «quando chiudo una scheda rimane questo banner».
+   *
+   * 📏 MISURATO sulla pagina viva di TEST 6.450 con la console remota, con una LINEA DEL TEMPO e
+   *    non con uno scatto solo: premuto «Chiudi» sulla scheda del 14/09 · C3 · 18:00, a +200 ms il
+   *    pannello è già alto **55 px** e ci resta identico fino a **+9 s** — `svc-chat-open` ancora
+   *    addosso, e dentro **nessun** messaggio (solo il bottone `↓` della pastiglia). È la striscia
+   *    che lui vede sopra il calendario, e che copre la prima fascia oraria.
+   *
+   * 🔎 PERCHÉ NESSUNO LO SPEGNE, e gli anelli sono TRE — nessuno dei quali è rotto:
+   *    ① `svcResetToNeutral()` smonta la scheda e **per scelta dichiarata** non chiude il pannello
+   *       («NON chiude il pannello»), ed è giusto così per il SALVA: lì la ✅ dev'essere letta;
+   *    ② il messaggio che segue — «📝 Modifica chiusa.» — casca in `SVC_ESITI_NELLA_SCHEDA`, quindi
+   *       `svcAddMessage` **esce prima di appendere** e torna un div orfano ⇒ in chat non entra niente;
+   *    ③ su desktop l'unico che arriva a `svcCloseChat()` è `svcScheduleAutoClear`, e a programmarlo
+   *       è `svcMpSyncConfirmed`, che su una chiusura non scatta mai.
+   *    ⇒ Il guscio non resta per un guasto: resta perché il quarto caso — **chiudere senza aver
+   *      scritto niente** — non era di nessuno dei tre.
+   *    📌 *Un difetto può non avere un colpevole: può avere solo un caso che nessuno si è preso.*
+   *
+   * ⛔ LA CURA NON AGGIUNGE UN SECONDO POSTO CHE NASCONDE — è l'errore che la scheda della voce
+   *    segnalava in anticipo: si riusa `svcCloseChat()`, l'interruttore che già esiste, e NON si
+   *    tocca `svcResetToNeutral()`, o si spegnerebbe anche il Salva insieme al suo esito.
+   *
+   * ⚖️ E NON SI CHIUDE ALLA CIECA: se in chat è rimasto qualcosa da leggere — un errore di prima,
+   *    l'esito di un'altra operazione — spegnere se lo porterebbe via, che è il danno opposto e
+   *    peggiore (una striscia vuota si vede, un errore mai letto no). La domanda «è rimasto
+   *    niente?» sta qui, PURA, così il banco la **esegue** invece di rileggerla.
+   * ⛔ Senza contenitore risponde **false**: «non lo so» non è «è vuoto», e nel dubbio non si spegne. */
+  function svcChatSenzaContenuto(container) {
+    if (!container) return false;
+    return Array.from(container.children || []).every(function (el) {
+      // La pastiglia `↓` è arredamento del pannello, non una cosa da leggere.
+      return !!(el && el.classList && el.classList.contains('svc-chat-nuovi'));
+    });
   }
 
   function svcCloseChat() {
