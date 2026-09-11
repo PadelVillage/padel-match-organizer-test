@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.448';
+    const APP_VERSION = '6.449';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -44220,17 +44220,35 @@ Per confermare scrivi ELIMINA.`);
     var p = _pmoCollectPending;
     if (!p) return null;
     _pmoCollectPending = null;
+    /* 🚨⭐⭐ LA NOTA SI AGGIUNGE, LA DOMANDA NON SI TOCCA — e questa riga è stata CORRETTA dopo
+     *    averla guardata sulla pagina viva, non rileggendola.
+     * 📏 Qui c'era `p.msg.querySelector(':scope > div:last-child').innerHTML = nota`, scritto
+     *    credendo che l'ultimo figlio fosse la riga della DOMANDA. Misurata la struttura vera del
+     *    messaggio: `.svc-msg-label` · la riga della domanda · **`.svc-step-buttons`** ⇒ l'ultimo
+     *    figlio erano **i bottoni**, e la nota ci finiva dentro. L'effetto sembrava giusto (la
+     *    domanda restava, i bottoni sparivano) **per la ragione sbagliata**.
+     * ⛔ E il caso in cui sarebbe andata male è proprio quello che questa voce vuole impedire: se
+     *    i bottoni non fossero ancora attaccati, l'ultimo figlio sarebbe **la domanda**, e la nota
+     *    l'avrebbe **cancellata** — cioè avrei tolto in silenzio la richiesta di denaro che stavo
+     *    dichiarando di non voler togliere in silenzio.
+     * 📌 *Un effetto giusto ottenuto da una premessa falsa non è una cura: è la stessa scommessa
+     *    di prima, vinta una volta.* */
     try {
-      var riga = p.msg && p.msg.querySelector(':scope > div:last-child');
-      var testo = '⏭️ <strong>Richiesta sostituita</strong> da quella qui sotto'
-        + (nuovaEtichetta ? (' (' + nuovaEtichetta + ')') : '')
-        + '.<br><span style="color:var(--text-muted);font-size:.78rem;">Non è stato incassato niente per questa.</span>';
-      if (riga) riga.innerHTML = testo; else if (p.msg) p.msg.innerHTML = testo;
-      // I bottoni della vecchia spariscono: lasciare un «✅ Sì, incassa» che non incassa più
-      // niente è una bugia con la faccia di un'azione.
-      if (p.msg) Array.prototype.forEach.call(p.msg.querySelectorAll('.svc-step-btns, button'), function (b) {
+      // ① via i bottoni: un «✅ Sì, incassa» che non incassa più niente è una bugia con la
+      //    faccia di un'azione.
+      if (p.msg) Array.prototype.forEach.call(p.msg.querySelectorAll('.svc-step-buttons, .svc-step-btns, button'), function (b) {
         try { b.remove(); } catch (e) {}
       });
+      // ② la nota si AGGIUNGE in fondo: la domanda resta leggibile, qualunque sia la struttura.
+      if (p.msg) {
+        var nota = document.createElement('div');
+        nota.className = 'pmo-richiesta-sostituita';
+        nota.style.cssText = 'margin-top:6px;font-size:.82rem;';
+        nota.innerHTML = '⏭️ <strong>Richiesta sostituita</strong> da quella qui sotto'
+          + (nuovaEtichetta ? (' (' + nuovaEtichetta + ')') : '')
+          + '.<br><span style="color:var(--text-muted);font-size:.78rem;">Non è stato incassato niente per questa.</span>';
+        p.msg.appendChild(nota);
+      }
     } catch (e) {}
     try { p.chiudi(false); } catch (e) {}
     return p;
