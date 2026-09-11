@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.445';
+    const APP_VERSION = '6.446';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -26862,21 +26862,53 @@ Grazie!`
       /* 💶 VOCE 198 — LA BARRA DEL FOCUS, e deve stare DENTRO `controls`, cioè nella parte
          sticky: un filtro che scorre via lascia numeri parziali sullo schermo senza dire che
          sono parziali. 📌 *Un totale filtrato senza il filtro accanto è un totale sbagliato.* */
-      const _fxBar = (function () {
+      /* ⚠️ È una FUNZIONE e non una stringa perché il confronto col dovuto si può fare solo
+         DOPO il ciclo che somma gli incassi: costruirla prima voleva dire non poterlo mostrare.
+         Nei due ritorni anticipati (sto caricando · non ho ancora le righe) si chiama senza
+         conto, e la barra dice solo su cosa è filtrata — che è l'unica cosa vera in quel momento. */
+      const _fxBar = function (incassatoCents) {
         const f = st.focus;
         if (!f || !f.bdata || !f.campo || !f.ora) return '';
         const _e = (typeof escapeHtml === 'function') ? escapeHtml : (x => String(x == null ? '' : x));
         const _gg = String(f.bdata).slice(8, 10) + '/' + String(f.bdata).slice(5, 7) + '/' + String(f.bdata).slice(0, 4);
+        /* 💶⭐⭐ VOCE 198, passo ③ — IL CONFRONTO, e si ferma alla PARTITA.
+           📏 Misurato l'11/09 perché il livello non è una preferenza: su 17 righe con importo,
+           una aveva i pagamenti a nome di **altre tre persone** e un'altra partita aveva **due
+           «Ospite»** nel roster ⇒ per persona il conto è falso o indecidibile.
+           ⛔ E i tre esiti sono TRE, non due: quadra · manca qualcosa · **non lo so** — e il
+           terzo non è un numero. Chiamare «non pagato» ciò che è «non letto» è la trappola
+           della 111, e qui costerebbe un'accusa. */
+        let conto = '';
+        if (typeof incassatoCents === 'number') {
+          const d = (typeof _pmoDovutoDelloSlot === 'function') ? _pmoDovutoDelloSlot(f.bdata, f.campo, f.ora) : null;
+          const inc = `<strong>${_incassiEuro(incassatoCents)}</strong> incassati`;
+          if (!d || !d.trovato) {
+            conto = `<span style="color:#555;">${inc} · <span title="La prenotazione non è fra quelle che il gestionale ha in casa adesso: senza di lei il dovuto non si può sapere.">dovuto <strong>non so</strong></span></span>`;
+          } else if (d.righe === 0) {
+            conto = `<span style="color:#555;">${inc} · <span title="Su questa prenotazione non c'è nessun giocatore: non c'è niente da addebitare.">nessun giocatore da addebitare</span></span>`;
+          } else if (d.cents == null || d.ignoti > 0) {
+            const parziale = (d.cents != null && d.cents > 0) ? ` (almeno ${_incassiEuro(d.cents)})` : '';
+            conto = `<span style="color:#8a6d1f;">${inc} · <span title="${d.ignoti} giocator${d.ignoti === 1 ? 'e' : 'i'} senza importo: il dovuto di questa partita è un minimo, non un totale.">dovuto <strong>incompleto</strong>${parziale}</span></span>`;
+          } else if (incassatoCents === d.cents) {
+            conto = `<span style="color:#0b7;">${inc} su <strong>${_incassiEuro(d.cents)}</strong> dovuti · <strong>quadra</strong> ✓</span>`;
+          } else {
+            const diff = d.cents - incassatoCents;
+            conto = diff > 0
+              ? `<span style="color:#b45309;">${inc} su <strong>${_incassiEuro(d.cents)}</strong> dovuti · <span title="Differenza sulla PARTITA, non su una persona: chi paga per chi non si può sapere da qui.">mancano <strong>${_incassiEuro(diff)}</strong></span></span>`
+              : `<span style="color:#b45309;">${inc} su <strong>${_incassiEuro(d.cents)}</strong> dovuti · <span title="Incassato più del dovuto: può essere un importo cambiato dopo l'incasso, o un pagamento di troppo.">${_incassiEuro(-diff)} in più</span></span>`;
+          }
+        }
         return `<div class="section" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;background:#fff8e6;border:1px solid #e6c86a;border-radius:10px;padding:10px 12px;">
           <span style="font-weight:800;">🎯 Solo i pagamenti di questa prenotazione</span>
           <span style="color:#555;">Campo <strong>${_e(f.campo)}</strong> · ${_e(_gg)} · ore <strong>${_e(f.ora)}</strong>${f.nome ? ' · ' + _e(f.nome) : ''}</span>
+          ${conto}
           <span style="font-size:11px;color:#8a6d1f;">l'intervallo di date qui sopra è ignorato: un incasso può essere stato registrato un altro giorno</span>
           <button type="button" class="btn-secondary small-btn" style="margin-left:auto;" onclick="_incassiFocusClear()">✕ Mostra tutti gli incassi</button>
         </div>`;
-      })();
+      };
 
-      if (st.loading) { root.innerHTML = controls + _fxBar + `<div class="section" style="text-align:center;padding:30px;color:#888;">Carico gli incassi…</div>`; return; }
-      if (st.rows == null) { root.innerHTML = controls + _fxBar + `<div class="section" style="text-align:center;padding:30px;color:#888;">—</div>`; _incassiReload(); return; }
+      if (st.loading) { root.innerHTML = controls + _fxBar() + `<div class="section" style="text-align:center;padding:30px;color:#888;">Carico gli incassi…</div>`; return; }
+      if (st.rows == null) { root.innerHTML = controls + _fxBar() + `<div class="section" style="text-align:center;padding:30px;color:#888;">—</div>`; _incassiReload(); return; }
 
       // somma i pagamenti nell'intervallo [from,to]; raggruppa per GIORNO e, dentro, per GIOCATORE.
       // Gli OMAGGI (method 'gift', quota offerta a 0 €) contano a parte: compaiono come riga a
@@ -27046,7 +27078,7 @@ Grazie!`
       // Titolo + riepilogo totali PINNATI in alto durante lo scroll (sticky); la tabella
       // (intestazione colonne + righe giocatori) scorre sotto. Sfondo opaco = pagina (#f8f9fb)
       // così le righe non traspaiono sotto la parte fissa.
-      root.innerHTML = `<div style="position:sticky;top:0;z-index:5;background:#f8f9fb;box-shadow:0 6px 10px -8px rgba(0,0,0,.18);">${controls}${_fxBar}${summary}</div>${table}`;
+      root.innerHTML = `<div style="position:sticky;top:0;z-index:5;background:#f8f9fb;box-shadow:0 6px 10px -8px rgba(0,0,0,.18);">${controls}${_fxBar(_fx ? sel.totale : undefined)}${summary}</div>${table}`;
     }
     function _incassiSetToday() { const t = _incassiToday(); _incassiState.from = t; _incassiState.to = t; renderIncassi(); }
     // Sposta l'intervallo di ±1 giorno. Giorno singolo → prev/next; intervallo → trasla intero.
@@ -51097,8 +51129,12 @@ Per confermare scrivi ELIMINA.`);
    * ⚠️ **59 `staff_booking` su 338 non hanno `tipo` affatto** (e 6 nemmeno `durata`) ⇒ il
    *    ripiego non è teorico: `pmoTipoScheda('')` cade su `partita`, che è ciò che l'app fa oggi.
    */
-  function _pmoLookupTipoDurata(iso, campoNum, ora) {
-    var vuoto = { tipo: null, durata: null };
+  /* 💶 VOCE 198 — LA RICERCA DELLO SLOT, in un punto solo.
+   * ⚖️ Estratta quando è servita la SECONDA domanda sullo stesso record (prima il tipo, poi il
+   *    dovuto): due ricerche identiche in due funzioni sono due cose che divergono al primo
+   *    cambio di una fonte. 📌 *La seconda volta che si cerca la stessa cosa, la ricerca diventa
+   *    una funzione.* */
+  function _pmoTrovaSlot(iso, campoNum, ora) {
     try {
       var wantData = String(iso).trim();
       var wantCampo = Number(String(campoNum).replace(/\D/g, ''));
@@ -51109,27 +51145,71 @@ Per confermare scrivi ELIMINA.`);
           && Number(String(x.campo).replace(/\D/g, '')) === wantCampo
           && String(x.ora).trim() === wantOra;
       };
-      /* Le fonti sono TRE, e la terza l'ha aggiunta una misura sulla pagina viva: le due di
-       * `_staffCalLookupIdReserva` non coprono tutto quello che il calendario disegna.
-       * 📏 Contate su TEST l'11/09: `prenotazioni` **288** righe · `prenotazioniOccupazione`
-       *    **163** · `staffBookings` **36**. ⇒ Fermarsi alle prime due lasciava fuori la fonte
-       *    più capiente, e con lei gli slot per cui il ripiego «partita» fa danno.
-       * ⚖️ L'ordine non è indifferente: prima le NOSTRE (`staffBookings`, col nostro vocabolario
-       *    e la durata già in minuti), poi le due importate dal circolo. */
       var sb = (typeof safeLoad === 'function') ? safeLoad('staffBookings', []) : [];
       var b = (Array.isArray(sb) ? sb : []).find(match);
-      if (!b) {
-        var occ = (typeof prenotazioniOccupazione !== 'undefined' && Array.isArray(prenotazioniOccupazione))
-          ? prenotazioniOccupazione
-          : ((typeof safeLoad === 'function') ? safeLoad('prenotazioniOccupazione', []) : []);
-        b = (Array.isArray(occ) ? occ : []).find(match);
-      }
-      if (!b) {
-        var pre = (typeof prenotazioni !== 'undefined' && Array.isArray(prenotazioni))
-          ? prenotazioni
-          : ((typeof safeLoad === 'function') ? safeLoad('prenotazioni', []) : []);
-        b = (Array.isArray(pre) ? pre : []).find(match);
-      }
+      if (b) return b;
+      var occ = (typeof prenotazioniOccupazione !== 'undefined' && Array.isArray(prenotazioniOccupazione))
+        ? prenotazioniOccupazione
+        : ((typeof safeLoad === 'function') ? safeLoad('prenotazioniOccupazione', []) : []);
+      b = (Array.isArray(occ) ? occ : []).find(match);
+      if (b) return b;
+      var pre = (typeof prenotazioni !== 'undefined' && Array.isArray(prenotazioni))
+        ? prenotazioni
+        : ((typeof safeLoad === 'function') ? safeLoad('prenotazioni', []) : []);
+      return (Array.isArray(pre) ? pre : []).find(match) || null;
+    } catch (e) { return null; }
+  }
+
+  /* 💶⭐⭐ VOCE 198, passo ③ — IL DOVUTO DELLA PARTITA, e NON di una persona.
+   *
+   * 🚨⭐⭐ PERCHÉ PER PARTITA E NON PER GIOCATORE: è una MISURA, non una preferenza. 📏 Contate
+   *    l'11/09 sulle 17 righe giocatore che hanno un importo, abbinandole ai pagamenti per
+   *    `data+campo+ora+nome`:
+   *    · **12** non hanno nessun pagamento sullo slot ⇒ lì «non pagato» sarebbe vero;
+   *    · **07/09 C2 18:00**: il dovuto è di *Fabio De Luca*, e i 3 pagamenti su quello slot sono
+   *      di **altre tre persone** ⇒ un conto per nome direbbe che LUI non ha pagato, e può
+   *      essere falso (uno può pagare per tutti, e il roster può essere cambiato);
+   *    · **03/09 C2 21:00**: nel roster ci sono **DUE «Ospite»** e pagamenti «Ospite» ⇒ per
+   *      persona è **indecidibile**: non esiste un modo di sapere quale dei due ha pagato.
+   * ⇒ **Il nome non è una chiave**, e un giudice per persona accuserebbe qualcuno che ha pagato.
+   *   Il livello a cui i soldi hanno senso è la **partita**: chi paga per chi è affare loro.
+   * 📌 *Quando l'unità di misura sbagliata produce un'accusa, non si affina: si cambia unità.*
+   *
+   * ⛔ E torna `ignoti` invece di arrotondare: se una riga non ha importo, il dovuto è un
+   *    **minimo**, non un totale — la regola della 152, che qui vale identica.
+   */
+  function _pmoDovutoDelloSlot(iso, campoNum, ora) {
+    var vuoto = { cents: null, ignoti: 0, righe: 0, trovato: false };
+    try {
+      var b = _pmoTrovaSlot(iso, campoNum, ora);
+      if (!b) return vuoto;
+      var gio = Array.isArray(b.giocatori) ? b.giocatori : [];
+      if (!gio.length) return { cents: null, ignoti: 0, righe: 0, trovato: true };
+      // `incassato: false` per tutte: qui serve il DOVUTO, non il saldo — l'incassato nel focus
+      // si sa dai pagamenti, e sommarlo due volte da due strade darebbe due verità.
+      var voci = gio.map(function (g) {
+        var c = (g && typeof g.importoCents === 'number' && isFinite(g.importoCents)) ? g.importoCents : null;
+        return { cents: c, incassato: false };
+      });
+      var conto = (typeof _pmoContoPartita === 'function') ? _pmoContoPartita(voci) : null;
+      if (!conto) return vuoto;
+      return {
+        cents: conto.aCaricoCents,
+        ignoti: conto.ignoti,
+        righe: gio.length,
+        trovato: true,
+      };
+    } catch (e) { return vuoto; }
+  }
+
+  function _pmoLookupTipoDurata(iso, campoNum, ora) {
+    var vuoto = { tipo: null, durata: null };
+    try {
+      /* Le fonti sono TRE, e le cerca `_pmoTrovaSlot` (sopra) — un punto solo, condiviso col
+       * dovuto. 📏 Contate su TEST l'11/09: `prenotazioni` **288** righe ·
+       * `prenotazioniOccupazione` **163** · `staffBookings` **37** (le VIVE: 303 su 340 sono
+       * `deleted`, e chi conta senza guardare quella colonna trova 340 — misurato sbagliando). */
+      var b = _pmoTrovaSlot(iso, campoNum, ora);
       if (!b) return vuoto;
       // `tipoReale` prima solo perché un oggetto già passato per la memoria può averlo; il campo
       // che esiste nei record è `tipo`. Nessuno dei due si confronta a mano.
