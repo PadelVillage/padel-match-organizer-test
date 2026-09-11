@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.443';
+    const APP_VERSION = '6.444';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -11575,7 +11575,7 @@ Grazie.`
                (`pmoSchedaApriIncassi`), che è l'unico modo perché una sola delle due strade lo
                accenda. 📌 *Uno stato che sopravvive al gesto che lo doveva spegnere diventa un
                difetto che si manifesta a distanza.* */
-            if (tabName === 'incassi') { _incassiState.rows = null; _incassiState.focus = null; renderIncassi(); }
+            if (tabName === 'incassi') { _incassiState.rows = null; _incassiState.focus = _incassiFocusPending; _incassiFocusPending = null; renderIncassi(); }
             if (tabName === 'fillSlots') renderFillSlotsSection();
             if (tabName === 'assessment') {
               displayAssessment();
@@ -26451,6 +26451,23 @@ Grazie!`
        dopo, che è il caso in cui la domanda «chi ha pagato?» si fa davvero.
        📌 *Un filtro che eredita un altro filtro risponde alla domanda dell'altro.* */
     const _incassiState = { from: null, to: null, loading: false, rows: null, loadedAt: 0, lastSync: null, focus: null };
+    /* 🚨⭐⭐ VOCE 198 — `_incassiFocusPending`: IL FOCUS «IN ARRIVO», e non è un giro di parole.
+     *
+     * 📏 IL DIFETTO CHE QUESTA VARIABILE ESISTE PER TOGLIERE, trovato PREMENDO IL BOTTONE sulla
+     *    pagina viva di TEST 6.443 — e il banco era **verde**: il bottone portava in Incassi, e
+     *    il filtro **non si applicava** (totale «Oggi · 2026-09-11», nessuna barra).
+     * 🔎 La causa: il ramo `incassi` di `switchTab` sta dentro un **`setTimeout(…, 0)`** ⇒ il suo
+     *    `focus = null` gira **DOPO** l'assegnazione sincrona che lo seguiva nel codice, e la
+     *    cancellava. Il commento che stava qui diceva *«l'ordine conta: switchTab azzera il
+     *    focus, quindi lo si mette DOPO»*: era **falso**, perché «dopo nel codice» era «prima
+     *    nel tempo».
+     * 📌 *Fra due scritture dello stesso stato non decide l'ordine delle righe: decide chi gira
+     *    per ultimo. Con un lavoro differito in mezzo, le due cose sono opposte.*
+     * ⇒ Adesso il focus lo scrive **UN SOLO PUNTO**, ed è quello che gira per ultimo: il ramo di
+     *   `switchTab` **consuma** questo pending. Dal menu il pending è vuoto ⇒ focus a `null`;
+     *   dalla porta della scheda è pieno ⇒ focus applicato. Nessuna corsa, perché non ci sono
+     *   più due scritture da mettere in ordine. */
+    let _incassiFocusPending = null;
     function _incassiToday() {
       try { return (typeof formatLocalDate === 'function') ? formatLocalDate(new Date()) : new Date().toISOString().slice(0,10); }
       catch (e) { return new Date().toISOString().slice(0,10); }
@@ -27107,10 +27124,12 @@ Grazie!`
         if (!iso || !campo || !ora) {
           return showAlert('⚠️ Di questa prenotazione non ho data, campo e ora: senza, non so quali incassi mostrarti.', 'warning');
         }
-        // L'ordine conta: `switchTab` azzera il focus (sopra), quindi lo si mette DOPO.
+        /* Si CHIEDE il focus e non si scrive: lo applica il ramo di `switchTab`, che gira per
+           ultimo (è dentro un `setTimeout`). Scriverlo qui lo faceva cancellare — misurato
+           premendo il bottone, non dedotto. ⇒ Un solo punto di scrittura, sopra. */
+        _incassiFocusPending = { bdata: iso, campo: campo, ora: ora, nome: String(nome || '') };
         if (typeof switchTab === 'function') switchTab('incassi');
-        _incassiState.focus = { bdata: iso, campo: campo, ora: ora, nome: String(nome || '') };
-        renderIncassi();
+        else { _incassiState.focus = _incassiFocusPending; _incassiFocusPending = null; renderIncassi(); }
       } catch (e) {
         console.warn('pmoSchedaApriIncassi:', e);
         try { showAlert('⚠️ Non riesco ad aprire gli incassi di questa prenotazione.', 'warning'); } catch (e2) {}
