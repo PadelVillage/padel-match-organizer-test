@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.449';
+    const APP_VERSION = '6.450';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -43992,6 +43992,54 @@ Per confermare scrivi ELIMINA.`);
   function _pmoCassaKey(isoDate, campo, ora, playerName) {
     return PMO_CASSA_PAY_PREFIX + _payNatKey(isoDate, campo, ora) + '|' + _payNormName(playerName);
   }
+  /* 🔓⭐⭐ «L'IDRESERVA È UN CODICE DI MATCHPOINT» — regola del committente, 11/09/2026.
+   *
+   * 🗣️ Sue parole: *«ti dico che idreserva non ci serve più perché è un codice di matchpoint»*.
+   *
+   * 📏 **IL DIFETTO CHE NE DISCENDE, misurato**: tre strade che devono sopravvivere allo
+   *    spegnimento di Matchpoint erano chiuse **da un codice di Matchpoint**, perché la guardia
+   *    `NO_IDRESERVA` stava **prima del bivio** invece che dentro la strada che lo usa:
+   *    `_pmoCollectPayment` (l'incasso), `_pmoSetCharges` (l'importo a carico) e
+   *    `_pmoVoidPayment` (lo storno). ⇒ Il ramo nativo dichiarava *«niente edge, niente worker,
+   *    niente Matchpoint — per costruzione»*, e **non poteva nemmeno essere raggiunto** senza un
+   *    identificativo del circolo.
+   * 🎯 **È la prova del futuro di questo progetto, applicata e fallita**: *il giorno in cui
+   *    Matchpoint si spegne, questa strada non si tocca.* Oggi si toccava — anzi, si fermava.
+   *
+   * ⚖️ **COSA NON CAMBIA, e va detto o la cura sembra più larga di quello che è**: sulla strada
+   *    di **Matchpoint** l'identificativo resta **obbligatorio**, ed è giusto — là serve davvero
+   *    a mirare la ficha, e senza si scriverebbe a caso. La guardia non è stata **tolta**: è stata
+   *    **spostata dentro il ramo che la vuole**.
+   * 📌 *Una guardia che protegge una strada non va messa al bivio: da lì ferma anche chi
+   *    prende l'altra.*
+   *
+   * ⚠️ **E OGGI NON SBLOCCA NIENTE**, misurato prima di scriverlo: su `cudi` le **37**
+   *    `staff_booking` vive hanno **tutte** un `id_reserva` — comprese le **4** non promosse da
+   *    Matchpoint. ⇒ Il comportamento di oggi è **identico**; quello che cambia è il giorno in cui
+   *    nascerà la prima prenotazione senza. È una cura **preventiva**, e si dichiara per tale.
+   */
+  function _pmoRichiedeIdReserva(stradaDiMatchpoint) { return stradaDiMatchpoint === true; }
+
+  /** La scheda aperta è QUESTA? Con l'idReserva si confronta quello; senza — dopo il distacco —
+   *  si confrontano le coordinate, che sono la chiave naturale dello slot.
+   *  🚨 Senza questo, `String(st.idReserva||'') === idReserva` con tutti e due vuoti dà
+   *     `'' === ''` ⇒ **vero per QUALUNQUE scheda aperta**, e l'incasso aggiornerebbe il roster
+   *     di una partita che non c'entra. 📌 *Due assenze che si confrontano uguali non sono
+   *     una corrispondenza: sono la mancanza di una domanda.* */
+  function _pmoStessaScheda(st, idReserva, data, campo, ora) {
+    if (!st) return false;
+    var idSt = String((st && st.idReserva) || '').trim();
+    var idOp = String(idReserva || '').trim();
+    if (idSt && idOp) return idSt === idOp;
+    if (!data || !campo || !ora) return false;
+    return String(st.origIso || st.isoDate || '').trim() === String(data).trim()
+      && (Number(String(st.origCampo != null ? st.origCampo : st.campo).replace(/\D/g, '')) || 0)
+         === (Number(String(campo).replace(/\D/g, '')) || 0)
+      && (typeof _pmoOraNorm === 'function'
+            ? _pmoOraNorm(st.origOra || st.ora) === _pmoOraNorm(ora)
+            : String(st.origOra || st.ora).trim() === String(ora).trim());
+  }
+
   async function _pmoCassaScriviIncasso(opts) {
     const _data = opts.data || (typeof _incassiToday === 'function' ? _incassiToday() : '');
     const payload = {
@@ -44446,7 +44494,9 @@ Per confermare scrivi ELIMINA.`);
       try { svcAddMessage('system', '⚠️ Importo non valido: controlla il campo “€ a carico”.', 'error'); } catch (e) {}
       return { ok: false, message: 'INVALID_AMOUNT' };
     }
-    if (!idReserva) {
+    // 🔓 «l'idReserva è un codice di Matchpoint» — la guardia vale sulla strada del circolo, non
+    //    su quella nostra: la cassa nativa non ha niente da mirare su Matchpoint.
+    if (!idReserva && _pmoRichiedeIdReserva(!_cassa)) {
       try { svcAddMessage('system', '⚠️ Prenotazione non identificata su Matchpoint (idReserva mancante). Riapri la scheda e riprova.', 'error'); } catch (e) {}
       return { ok: false, message: 'NO_IDRESERVA' };
     }
@@ -44481,7 +44531,7 @@ Per confermare scrivi ELIMINA.`);
       }
       try {
         const stOpen = staffCalPlayersState;
-        if (stOpen && String(stOpen.idReserva || '') === idReserva && Array.isArray(stOpen.roster)) {
+        if (stOpen && _pmoStessaScheda(stOpen, idReserva, opts.data, opts.campo, opts.ora) && Array.isArray(stOpen.roster)) {
           const tgt = stOpen.roster.find(function (x) {
             return String(x.idx) === String(opts.idx)
               || (x.idCliente && idCliente && String(x.idCliente) === idCliente)
@@ -44519,7 +44569,7 @@ Per confermare scrivi ELIMINA.`);
         // SUCCESS — aggiorno lo stato ottimisticamente: giocatore riscosso + indice chip.
         try {
           const stOpen = staffCalPlayersState;
-          if (stOpen && String(stOpen.idReserva || '') === idReserva && Array.isArray(stOpen.roster)) {
+          if (stOpen && _pmoStessaScheda(stOpen, idReserva, opts.data, opts.campo, opts.ora) && Array.isArray(stOpen.roster)) {
             const tgt = stOpen.roster.find(function (x) {
               return String(x.idx) === String(opts.idx)
                 || (x.idCliente && idCliente && String(x.idCliente) === idCliente)
@@ -44761,10 +44811,6 @@ Per confermare scrivi ELIMINA.`);
       try { svcAddMessage('system', 'ℹ️ Il salvataggio dell\'importo a carico non è attivo.'); } catch (e) {}
       return { ok: false, done: 0, failed: changes.length, message: 'CHARGE_WRITE_DISABLED' };
     }
-    if (!idReserva) {
-      try { svcAddMessage('system', '⚠️ Importi non salvati: la prenotazione non è identificata su Matchpoint (idReserva mancante). Riapri la scheda e riprova.', 'error'); } catch (e) {}
-      return { ok: false, done: 0, failed: changes.length, message: 'NO_IDRESERVA' };
-    }
 
     /* 🎯⭐⭐ VOCE 188/B — IL BIVIO DEL DISTACCO, e si decide **a runtime** sul ref del gestionale.
      * ⛔ NON sull'hostname: quello scade il giorno del passaggio (⇒ voce 184), e una guardia che
@@ -44780,6 +44826,13 @@ Per confermare scrivi ELIMINA.`);
     //    salvataggio e si vede subito; sbagliare dall'altra scriverebbe in un libro solo nostro
     //    una cifra che il circolo si aspetta di vedere. È lo stesso verso del dubbio del recinto.
     const _dove = _collegatoAlCircolo ? ' su Matchpoint' : ' nel gestionale';
+    /* 🔓 «l'idReserva è un codice di Matchpoint» — la guardia stava PRIMA di questo bivio, quindi
+       fermava anche la strada nostra (`_pmoSetChargesNativo`, che l'identificativo non lo riceve
+       nemmeno). Adesso sta qui: dopo che si sa dove si va, e prima di annunciarlo. */
+    if (_collegatoAlCircolo && !idReserva) {
+      try { svcAddMessage('system', '⚠️ Importi non salvati: la prenotazione non è identificata su Matchpoint (idReserva mancante). Riapri la scheda e riprova.', 'error'); } catch (e) {}
+      return { ok: false, done: 0, failed: changes.length, message: 'NO_IDRESERVA' };
+    }
 
     // VOCE 149 — il «da» si scrive solo se lo sappiamo: `daCents` è `null` quando l'importo non
     // era stato letto da Matchpoint, e stampare «0,00 →» sarebbe un valore di partenza inventato.
@@ -44848,7 +44901,7 @@ Per confermare scrivi ELIMINA.`);
         // ma il pendente che si scrive qui è quello riletto, non quello sperato.
         try {
           const stOpen = staffCalPlayersState;
-          if (stOpen && String(stOpen.idReserva || '') === idReserva && Array.isArray(stOpen.roster)) {
+          if (stOpen && _pmoStessaScheda(stOpen, idReserva, opts.data, opts.campo, opts.ora) && Array.isArray(stOpen.roster)) {
             const tgt = stOpen.roster.find(function (x) {
               return (c.idx && String(x.idx) === String(c.idx))
                 || (x.idCliente && c.idCliente && String(x.idCliente) === String(c.idCliente))
@@ -44940,7 +44993,9 @@ Per confermare scrivi ELIMINA.`);
     const playerName = opts.playerName || '';
     const importoCents = (typeof opts.importoCents === 'number') ? opts.importoCents : null;
     const btns = Array.isArray(opts.sourceBtns) ? opts.sourceBtns : [];
-    if (!idReserva) {
+    // 🔓 come per l'incasso: lo storno nativo è il medesimo libro letto al contrario, e non
+    //    attraversa Matchpoint ⇒ non gli serve il codice di Matchpoint.
+    if (!idReserva && _pmoRichiedeIdReserva(!_cassa)) {
       try { svcAddMessage('system', '⚠️ Prenotazione non identificata su Matchpoint (idReserva mancante). Riapri la scheda e riprova.', 'error'); } catch (e) {}
       return { ok: false, message: 'NO_IDRESERVA' };
     }
@@ -44962,7 +45017,7 @@ Per confermare scrivi ELIMINA.`);
       }
       try {
         const stOpen = staffCalPlayersState;
-        if (stOpen && String(stOpen.idReserva || '') === idReserva && Array.isArray(stOpen.roster)) {
+        if (stOpen && _pmoStessaScheda(stOpen, idReserva, opts.data, opts.campo, opts.ora) && Array.isArray(stOpen.roster)) {
           const tgt = stOpen.roster.find(function (x) {
             return String(x.idx) === String(opts.idx)
               || (x.idCliente && idCliente && String(x.idCliente) === idCliente)
@@ -45002,7 +45057,7 @@ Per confermare scrivi ELIMINA.`);
         // SUCCESS — il giocatore torna "da pagare": aggiorno stato + tolgo dall'indice chip.
         try {
           const stOpen = staffCalPlayersState;
-          if (stOpen && String(stOpen.idReserva || '') === idReserva && Array.isArray(stOpen.roster)) {
+          if (stOpen && _pmoStessaScheda(stOpen, idReserva, opts.data, opts.campo, opts.ora) && Array.isArray(stOpen.roster)) {
             const tgt = stOpen.roster.find(function (x) {
               return String(x.idx) === String(opts.idx)
                 || (x.idCliente && idCliente && String(x.idCliente) === idCliente)
