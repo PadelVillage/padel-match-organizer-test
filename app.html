@@ -8753,7 +8753,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.442';
+    const APP_VERSION = '6.443';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -11568,7 +11568,14 @@ Grazie.`
             // Ogni rientro nella scheda Incassi ri-legge dal cloud (refresh leggero, non
             // la sync MP pesante): sostituisce il vecchio pulsante ↻ Aggiorna rimosso, così
             // i dati non restano fermi alla cache caricata al primo ingresso.
-            if (tabName === 'incassi') { _incassiState.rows = null; renderIncassi(); }
+            /* 💶 VOCE 198 — entrare in Incassi AZZERA il focus della prenotazione. Un filtro
+               che sopravvive al menu farebbe trovare a chi apre «Incassi» una tabella con tre
+               righe e un totale di 8 €, e la spiegazione starebbe in una barra che lui non ha
+               mai chiesto di vedere. ⇒ La porta della scheda lo rimette DOPO questo azzeramento
+               (`pmoSchedaApriIncassi`), che è l'unico modo perché una sola delle due strade lo
+               accenda. 📌 *Uno stato che sopravvive al gesto che lo doveva spegnere diventa un
+               difetto che si manifesta a distanza.* */
+            if (tabName === 'incassi') { _incassiState.rows = null; _incassiState.focus = null; renderIncassi(); }
             if (tabName === 'fillSlots') renderFillSlotsSection();
             if (tabName === 'assessment') {
               displayAssessment();
@@ -26434,7 +26441,16 @@ Grazie!`
     // [from,to] (un solo giorno = from==to; "Oggi" = entrambi a oggi), split
     // contanti vs carta. Fonte = pmo_get_records_admin. Denaro in interi cents.
     // ════════════════════════════════════════════════════════════════════════
-    const _incassiState = { from: null, to: null, loading: false, rows: null, loadedAt: 0, lastSync: null };
+    /* 💶 VOCE 198 — `focus`: la porta che arriva dalla SCHEDA di una prenotazione.
+       Quando è pieno (`{bdata, campo, ora, nome}`) la tabella mostra **solo** i movimenti di
+       quella prenotazione, e **ignora l'intervallo di date**.
+       🚨⭐⭐ Ignorarlo non è una comodità, è una correttezza: il pagamento di una partita può
+       essere incassato in un GIORNO DIVERSO da quello della partita — la tabella lo sa già e lo
+       mostra (`mv.bdata !== k` disegna la data della partita accanto all'ora). ⇒ Un focus che
+       rispettasse l'intervallo direbbe *«nessun incasso»* proprio per la partita pagata il giorno
+       dopo, che è il caso in cui la domanda «chi ha pagato?» si fa davvero.
+       📌 *Un filtro che eredita un altro filtro risponde alla domanda dell'altro.* */
+    const _incassiState = { from: null, to: null, loading: false, rows: null, loadedAt: 0, lastSync: null, focus: null };
     function _incassiToday() {
       try { return (typeof formatLocalDate === 'function') ? formatLocalDate(new Date()) : new Date().toISOString().slice(0,10); }
       catch (e) { return new Date().toISOString().slice(0,10); }
@@ -26826,13 +26842,30 @@ Grazie!`
           </div>
         </div>`;
 
-      if (st.loading) { root.innerHTML = controls + `<div class="section" style="text-align:center;padding:30px;color:#888;">Carico gli incassi…</div>`; return; }
-      if (st.rows == null) { root.innerHTML = controls + `<div class="section" style="text-align:center;padding:30px;color:#888;">—</div>`; _incassiReload(); return; }
+      /* 💶 VOCE 198 — LA BARRA DEL FOCUS, e deve stare DENTRO `controls`, cioè nella parte
+         sticky: un filtro che scorre via lascia numeri parziali sullo schermo senza dire che
+         sono parziali. 📌 *Un totale filtrato senza il filtro accanto è un totale sbagliato.* */
+      const _fxBar = (function () {
+        const f = st.focus;
+        if (!f || !f.bdata || !f.campo || !f.ora) return '';
+        const _e = (typeof escapeHtml === 'function') ? escapeHtml : (x => String(x == null ? '' : x));
+        const _gg = String(f.bdata).slice(8, 10) + '/' + String(f.bdata).slice(5, 7) + '/' + String(f.bdata).slice(0, 4);
+        return `<div class="section" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;background:#fff8e6;border:1px solid #e6c86a;border-radius:10px;padding:10px 12px;">
+          <span style="font-weight:800;">🎯 Solo i pagamenti di questa prenotazione</span>
+          <span style="color:#555;">Campo <strong>${_e(f.campo)}</strong> · ${_e(_gg)} · ore <strong>${_e(f.ora)}</strong>${f.nome ? ' · ' + _e(f.nome) : ''}</span>
+          <span style="font-size:11px;color:#8a6d1f;">l'intervallo di date qui sopra è ignorato: un incasso può essere stato registrato un altro giorno</span>
+          <button type="button" class="btn-secondary small-btn" style="margin-left:auto;" onclick="_incassiFocusClear()">✕ Mostra tutti gli incassi</button>
+        </div>`;
+      })();
+
+      if (st.loading) { root.innerHTML = controls + _fxBar + `<div class="section" style="text-align:center;padding:30px;color:#888;">Carico gli incassi…</div>`; return; }
+      if (st.rows == null) { root.innerHTML = controls + _fxBar + `<div class="section" style="text-align:center;padding:30px;color:#888;">—</div>`; _incassiReload(); return; }
 
       // somma i pagamenti nell'intervallo [from,to]; raggruppa per GIORNO e, dentro, per GIOCATORE.
       // Gli OMAGGI (method 'gift', quota offerta a 0 €) contano a parte: compaiono come riga a
       // 0,00 € e nel contatore «omaggi», ma NON gonfiano il numero di pagamenti né i totali.
       const byDay = new Map();
+      const _fx = st.focus && st.focus.bdata && st.focus.campo && st.focus.ora ? st.focus : null;
       const sel = { contanti: 0, carta: 0, borsellino: 0, altro: 0, totale: 0, n: 0, omaggi: 0 };
       for (const p of st.rows) {
         // 💰 VOCE 142 — stessa regola dello storno usata dai Movimenti e dall'indice dei
@@ -26841,7 +26874,14 @@ Grazie!`
         // 📌 Due regole per la stessa domanda divergono il giorno in cui una sola viene corretta.
         if (p.voided_at || (p.status && p.status !== 'paid')) continue;
         const data = p.data || (p.recorded_at ? String(p.recorded_at).slice(0, 10) : '');
-        if (!data || data < st.from || data > st.to) continue;
+        // 💶 VOCE 198 — col focus attivo comanda la PRENOTAZIONE, non il giorno dell'incasso.
+        if (_fx) {
+          const _fCampo = (typeof _payCampoNum === 'function') ? _payCampoNum(p.campo) : String(p.campo || '').replace(/\D/g, '');
+          const _fOra = (typeof _payOraHm === 'function') ? _payOraHm(p.ora) : String(p.ora || '');
+          const _fBdata = String(p.booking_data || '').slice(0, 10);
+          if (_fBdata !== _fx.bdata || String(_fCampo) !== String(_fx.campo) || _fOra !== _fx.ora) continue;
+          if (!data) continue;
+        } else if (!data || data < st.from || data > st.to) continue;
         const isGiftRec = /gift|omagg|offert/i.test(String(p.method || '')) || p.source === 'pmo_gift';
         const bucket = _incassiMethodBucket(p.method); const cents = Number(p.amount_cents) || 0;
         if (!byDay.has(data)) byDay.set(data, { contanti: 0, carta: 0, borsellino: 0, altro: 0, totale: 0, n: 0, omaggi: 0, movimenti: [] });
@@ -26872,7 +26912,7 @@ Grazie!`
         d[bucket] += cents; d.totale += cents; d.n += 1;
         sel[bucket] += cents; sel.totale += cents; sel.n += 1;
       }
-      const selKey = isToday ? `Oggi · ${st.from}` : `${st.from} → ${st.to}`;
+      const selKey = _fx ? 'questa prenotazione' : (isToday ? `Oggi · ${st.from}` : `${st.from} → ${st.to}`);
 
       // % di incidenza sul totale del periodo (— se totale 0)
       const _incassiPct = (cents) => sel.totale > 0
@@ -26903,7 +26943,15 @@ Grazie!`
       const esc = (typeof escapeHtml === 'function') ? escapeHtml : (s => String(s == null ? '' : s));
       let table;
       if (!keys.length) {
-        table = `<div class="section" style="text-align:center;padding:36px;color:#999;border:1px dashed #ddd;border-radius:10px;">
+        /* 💶 VOCE 198 — col focus il vuoto vuol dire un'altra cosa, e dirlo con la frase
+           dell'intervallo sarebbe falso: l'intervallo col focus non c'entra. ⚠️ E si dice
+           «non risulta», non «non ha pagato»: qui si sa solo cosa il gestionale ha REGISTRATO.
+           📌 *La trappola della 111: un cancello vuole tre esiti, e «non lo so» è uno di quelli.* */
+        table = _fx
+          ? `<div class="section" style="text-align:center;padding:36px;color:#999;border:1px dashed #ddd;border-radius:10px;">
+              Per questa prenotazione <strong>non risulta nessun incasso</strong> registrato nel gestionale.
+              <br><span style="font-size:12px;">Non vuol dire che nessuno abbia pagato: vuol dire che qui non c'è nessuna riga di cassa.</span></div>`
+          : `<div class="section" style="text-align:center;padding:36px;color:#999;border:1px dashed #ddd;border-radius:10px;">
           Nessun incasso nell'intervallo selezionato.${pmoCircoloEsternoCollegato() === true ? `<br><span style="font-size:12px;">Premi «⟳ Sincronizza da ${pmoNomeCircoloEsterno()}» per leggere i pagamenti delle prenotazioni dal report 11.13.</span>` : ''}</div>`;
       } else {
         let bodyRows = '';
@@ -26981,7 +27029,7 @@ Grazie!`
       // Titolo + riepilogo totali PINNATI in alto durante lo scroll (sticky); la tabella
       // (intestazione colonne + righe giocatori) scorre sotto. Sfondo opaco = pagina (#f8f9fb)
       // così le righe non traspaiono sotto la parte fissa.
-      root.innerHTML = `<div style="position:sticky;top:0;z-index:5;background:#f8f9fb;box-shadow:0 6px 10px -8px rgba(0,0,0,.18);">${controls}${summary}</div>${table}`;
+      root.innerHTML = `<div style="position:sticky;top:0;z-index:5;background:#f8f9fb;box-shadow:0 6px 10px -8px rgba(0,0,0,.18);">${controls}${_fxBar}${summary}</div>${table}`;
     }
     function _incassiSetToday() { const t = _incassiToday(); _incassiState.from = t; _incassiState.to = t; renderIncassi(); }
     // Sposta l'intervallo di ±1 giorno. Giorno singolo → prev/next; intervallo → trasla intero.
@@ -27026,12 +27074,51 @@ Grazie!`
         if (typeof switchTab === 'function') switchTab('dashboard');
         const inp = document.getElementById('staffCalDate');
         if (inp && inp.value !== iso) { inp.value = iso; try { renderStaffCalendar(); } catch (e) {} }
-        if (typeof staffCalEditPlayers === 'function') staffCalEditPlayers(iso, campo, ora, String(nome || ''), 90, 'partita');
+        /* 💶 VOCE 198 — IL TIPO E LA DURATA SI LEGGONO, NON SI INVENTANO.
+           Qui c'erano `90` e `'partita'` CABLATI, ed era l'unico dei 12 chiamanti di
+           `staffCalEditPlayers` a farlo: una riga di cassa di una LEZIONE apriva la scheda come
+           partita, cioè **senza il selettore del maestro**. Il ripiego resta quello di prima
+           (`90`/`'partita'`) per il caso in cui lo slot non si trovi in nessuna delle due fonti:
+           una scheda che si apre imperfetta è meglio di una che non si apre. */
+        var _td = (typeof _pmoLookupTipoDurata === 'function') ? _pmoLookupTipoDurata(iso, campo, ora) : null;
+        var _tipoVero = (_td && _td.tipo) || 'partita';
+        var _durVera = (_td && _td.durata != null) ? _td.durata : 90;
+        if (typeof staffCalEditPlayers === 'function') staffCalEditPlayers(iso, campo, ora, String(nome || ''), _durVera, _tipoVero);
       } catch (e) {
         console.warn('pmoIncassiApriPartita:', e);
         try { showAlert('⚠️ Non riesco ad aprire la partita di questo pagamento.', 'warning'); } catch (e2) {}
       }
     }
+
+    /* 💶⭐⭐ VOCE 198 — LA PORTA DALLA SCHEDA A INCASSI, cioè il verso che MANCAVA.
+     * 🗣️ Sua richiesta: *«bisogna collegare la sezione incassi con i pagamenti tramite la scheda
+     *    partite e lezioni e tornei e anche il borsellino»*.
+     * ⚖️ E si è scelta la **navigazione** e non la riconciliazione, con un motivo dichiarato: il
+     *    rischio non è simmetrico — una porta che sbaglia apre la pagina sbagliata e te ne accorgi
+     *    subito, un conto che sbaglia **accusa una persona che aveva già pagato**. 📏 E il «dovuto»
+     *    oggi non c'è: delle 256 prenotazioni vive solo **14** portano gli importi ⇒ un giudice
+     *    costruito adesso direbbe «non pagato» nel 94% dei casi.
+     * 📌 *Prima le porte, poi il dovuto, e il giudice solo quando ha su cosa giudicare.* */
+    function pmoSchedaApriIncassi(dataIso, campoNum, oraHm, nome) {
+      try {
+        const iso = String(dataIso || '').slice(0, 10);
+        const campo = String(campoNum || '').replace(/\D/g, '');
+        const ora = String(oraHm || '').slice(0, 5);
+        if (!iso || !campo || !ora) {
+          return showAlert('⚠️ Di questa prenotazione non ho data, campo e ora: senza, non so quali incassi mostrarti.', 'warning');
+        }
+        // L'ordine conta: `switchTab` azzera il focus (sopra), quindi lo si mette DOPO.
+        if (typeof switchTab === 'function') switchTab('incassi');
+        _incassiState.focus = { bdata: iso, campo: campo, ora: ora, nome: String(nome || '') };
+        renderIncassi();
+      } catch (e) {
+        console.warn('pmoSchedaApriIncassi:', e);
+        try { showAlert('⚠️ Non riesco ad aprire gli incassi di questa prenotazione.', 'warning'); } catch (e2) {}
+      }
+    }
+    function _incassiFocusClear() { _incassiState.focus = null; renderIncassi(); }
+    window.pmoSchedaApriIncassi = pmoSchedaApriIncassi;
+    window._incassiFocusClear = _incassiFocusClear;
 
     async function _incassiReload() {
       _incassiState.loading = true; renderIncassi();
@@ -48250,6 +48337,31 @@ Per confermare scrivi ELIMINA.`);
                   : 'Stato letto da Matchpoint. L’incasso (Cash/Card/Wallet) è disattivato (si abilita nel test dal vivo).'));
         playersSec.appendChild(payHint);
       }
+      /* 💶⭐⭐ VOCE 198 — LA PORTA VERSO INCASSI, il verso che mancava.
+       * ⚖️ Sta QUI, in fondo a «Giocatori e pagamenti», e non nel piè della scheda insieme agli
+       *    altri bottoni: quelli sono gesti che SCRIVONO (salva, annulla, sposta), questo è una
+       *    navigazione che non tocca niente. Metterlo là lo avrebbe messo in fila con tre gesti
+       *    irreversibili, dove un dito che sbaglia costa. 📌 *Un bottone che guarda non si mette
+       *    dove stanno i bottoni che fanno.*
+       * ⚠️ Le coordinate sono `st.orig*`, le stesse con cui l'altro verso apre questa scheda
+       *    (`pmoIncassiApriPartita`): la porta è la stessa strada percorsa al contrario, e se un
+       *    giorno una delle due cambia chiave, l'altra va cambiata con lei. */
+      if (st.origIso && st.origCampo && st.origOra) {
+        const _goInc = document.createElement('button');
+        _goInc.type = 'button';
+        _goInc.className = 'btn-secondary small-btn';
+        _goInc.style.cssText = 'margin-top:10px;';
+        _goInc.innerHTML = '<i class="ti ti-cash" style="font-size:13px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i>Vedi gli incassi di questa prenotazione';
+        _goInc.title = 'Apre la sezione Incassi mostrando solo i pagamenti di questa prenotazione';
+        _goInc.addEventListener('click', function () {
+          try {
+            if (typeof pmoSchedaApriIncassi === 'function') {
+              pmoSchedaApriIncassi(st.origIso, st.origCampo, st.origOra, st.nome || '');
+            }
+          } catch (e) { console.warn('vedi incassi:', e); }
+        });
+        playersSec.appendChild(_goInc);
+      }
       box.appendChild(playersSec);
     }
 
@@ -50940,6 +51052,63 @@ Per confermare scrivi ELIMINA.`);
     return (typeof crypto !== 'undefined' && crypto.randomUUID)
       ? crypto.randomUUID()
       : ('sb-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+  }
+
+  /* 💶⭐⭐ VOCE 198 — IL TIPO E LA DURATA DI UNO SLOT, dalle stesse due fonti dell'idReserva.
+   *
+   * ⚖️ Nasce da un difetto MISURATO costruendo la porta fra Incassi e la scheda: dei **12**
+   *    chiamanti di `staffCalEditPlayers` esattamente **uno** non aveva il tipo da passare e lo
+   *    CABLAVA — `pmoIncassiApriPartita`, con `'partita'` e `90`. ⇒ Una riga di cassa di una
+   *    LEZIONE apriva la scheda come PARTITA, e una scheda «partita» non disegna il selettore
+   *    del maestro (`st.hasPlayers && pmoTipoVuoleMaestro`): il maestro spariva dalla vista.
+   * 📌 *Un chiamante che non sa un dato non deve inventarlo: deve andare a leggerlo dove sta.*
+   *
+   * 🚨⭐⭐ E IL CAMPO GIUSTO NON È QUELLO CHE USA IL CALENDARIO. Il calendario legge
+   *    `slot.tipoReale || slot.tipo`, e leggendo lui si sarebbe scritto `tipoReale` anche qui.
+   *    📏 Misurato sui record veri: `tipoReale` **non esiste in nessuno dei 2.027 record**
+   *    (`staff_booking` 338, `booking_occupancy` 838, `booking` 851) — vive **solo in memoria**,
+   *    costruito dagli slot. Nei record il campo è **`tipo`**.
+   * 📌 *Un campo presente in memoria e assente nel dato è la sonda che guarda nel cassetto
+   *    sbagliato: risponde, e risponde `undefined` per sempre.*
+   *
+   * ⚠️ E i due vocabolari NON sono lo stesso, sempre misurato: i record NOSTRI dicono
+   *    `partita` · `lezione` · `manutenzione` (minuscoli), quelli arrivati dal circolo dicono
+   *    `Partita` · **`Lezione Libera`** · `manutenzione`. ⇒ Non si confronta: si passa da
+   *    `pmoTipoScheda`, che è la fonte unica della 207 e le conosce tutte.
+   * ⚠️ **59 `staff_booking` su 338 non hanno `tipo` affatto** (e 6 nemmeno `durata`) ⇒ il
+   *    ripiego non è teorico: `pmoTipoScheda('')` cade su `partita`, che è ciò che l'app fa oggi.
+   */
+  function _pmoLookupTipoDurata(iso, campoNum, ora) {
+    var vuoto = { tipo: null, durata: null };
+    try {
+      var wantData = String(iso).trim();
+      var wantCampo = Number(String(campoNum).replace(/\D/g, ''));
+      var wantOra = String(ora).trim();
+      var match = function (x) {
+        return x
+          && String(x.data).trim() === wantData
+          && Number(String(x.campo).replace(/\D/g, '')) === wantCampo
+          && String(x.ora).trim() === wantOra;
+      };
+      // Stesse due fonti, e nello stesso ordine, di `_staffCalLookupIdReserva`: prima le nostre
+      // (più fresche e col nostro vocabolario), poi quelle importate dal circolo.
+      var sb = (typeof safeLoad === 'function') ? safeLoad('staffBookings', []) : [];
+      var b = (Array.isArray(sb) ? sb : []).find(match);
+      if (!b) {
+        var occ = (typeof prenotazioniOccupazione !== 'undefined' && Array.isArray(prenotazioniOccupazione))
+          ? prenotazioniOccupazione
+          : ((typeof safeLoad === 'function') ? safeLoad('prenotazioniOccupazione', []) : []);
+        b = (Array.isArray(occ) ? occ : []).find(match);
+      }
+      if (!b) return vuoto;
+      // `tipoReale` prima solo perché un oggetto già passato per la memoria può averlo; il campo
+      // che esiste nei record è `tipo`. Nessuno dei due si confronta a mano.
+      var grezzo = b.tipoReale || b.tipo || '';
+      return {
+        tipo: grezzo ? pmoTipoParola(grezzo) : null,
+        durata: (b.durata != null && b.durata !== '') ? b.durata : null,
+      };
+    } catch (e) { return vuoto; }
   }
 
   // Helper v5.720: cerca l'idReserva Matchpoint di una prenotazione per slot (data+campo+ora).
