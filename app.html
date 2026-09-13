@@ -3183,8 +3183,14 @@
             Questa voce non disfa quelle due decisioni — le rende **visibili**.
          📌 *Un bottone che cambia il contenuto non è un bottone che chiude la scheda: se stanno
             nella stessa riga, almeno si veda che non sono la stessa cosa.* */
-      .svc-edit-actions-bar > .svc-edit-add {
-        margin-left:14px; padding-left:16px; border-left:1px solid #e6e8ee;
+      /* 🩹 Il filo si disegna con uno PSEUDO-ELEMENTO nello spazio vuoto, NON con un
+         `border-left` sul bottone: il bottone un bordo ce l'ha già tutt'intorno, e metterne
+         un altro sopra lo stesso lato non si vede — allarga il bottone e basta.
+         📏 Provato così al primo giro e guardato in fotografia: la riga non c'era. */
+      .svc-edit-actions-bar > .svc-edit-add { position:relative; margin-left:30px; }
+      .svc-edit-actions-bar > .svc-edit-add::before {
+        content:''; position:absolute; left:-15px; top:4px; bottom:4px;
+        border-left:1px solid #d7dbe4;
       }
       /* 🚨 La DISTANZA è la protezione: `margin-left:auto` spinge l'unico gesto distruttivo
          della scheda all'estremo opposto di Salva. */
@@ -3431,8 +3437,11 @@
          che manca è la **riga che dice dove finisce la scheda e comincia l'irreversibile**.
          ⚖️ Su schermo grande a separarlo è lo spazio (`margin-left:auto`), qui non può esserci:
          il filo fa lo stesso mestiere in verticale. */
-      .svc-edit-actions-bar > .svc-edit-del   { flex:1 0 100%;
-        margin-top:8px; padding-top:10px; border-top:1px solid #e6e8ee; }
+      .svc-edit-actions-bar > .svc-edit-del   { flex:1 0 100%; position:relative; margin-top:18px; }
+      .svc-edit-actions-bar > .svc-edit-del::before {
+        content:''; position:absolute; left:0; right:0; top:-9px;
+        border-top:1px solid #d7dbe4;
+      }
     }
     @media (min-width:900px) {
       .svc-layout { flex-direction:row; height:min(80vh, 860px); }
@@ -8743,7 +8752,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.463';
+    const APP_VERSION = '6.464';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
