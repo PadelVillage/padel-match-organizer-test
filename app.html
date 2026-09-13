@@ -8722,7 +8722,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.459';
+    const APP_VERSION = '6.460';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -9181,8 +9181,43 @@ body.assessment-public-mode .assessment-public-only-card {
     // 🚨 Gated su !PMO_IS_TEST_ENV: girando in TEST queste chiavi sono i dati VIVI e
     // cancellarle butterebbe la sessione e i dati di lavoro. Il gate è lo stesso
     // riconoscimento d'ambiente messo in sicurezza con la v6.112.
+    //
+    /* 🆕🧨⭐⭐ VOCE 184 — E QUEL GATE, DA SOLO, ERA UN'ARMA CARICA.
+     *
+     * ⚖️ `PMO_IS_TEST_ENV` risponde a *«l'indirizzo comincia per `test.`?»*, e la voce 184 fa
+     * scadere quella domanda. ⇒ Il giorno in cui l'app smette di riconoscersi «di prova»
+     * MENTRE È ANCORA SERVITA DALL'ORIGINE CHE TIENE LE CHIAVI `test:`, questa funzione — che
+     * fin qui ha dormito — si sveglia e le **cancella tutte**. Una volta per dispositivo, si
+     * segna che l'ha fatto, e l'unica traccia è un `console.info`.
+     * 📏 Misurato il 13/09/2026 sulla pagina viva di TEST: **19 chiavi su 19 hanno il prefisso
+     * `test:`, 1,5 MB** — sessione staff, soci, prenotazioni, dati Matchpoint — e il marchio
+     * `pmoTestLeftoverSweepV1` è **assente**, cioè lo sfratto su quell'origine non è mai passato:
+     * è armato, non scarico.
+     *
+     * 🎯 IL CASO VERO NON È IL PASSAGGIO, ED È PIÙ PROBABILE DEL PASSAGGIO. Su
+     * `soci.padelvillage.club` non c'è niente da cancellare: è un'**origine diversa**, e il
+     * `localStorage` non attraversa le origini — nasce vuota. A far male è la **prova generale**:
+     * chi vuole vedere «come si comporta l'app quando non si crede più un test» lo prova
+     * naturalmente dove l'app c'è già, cioè su `test.` — ed è lì che sono i 1,5 MB.
+     *
+     * 🔨 ⇒ La domanda giusta non è «che ambiente sono?» ma **«sono sull'origine dove il vecchio
+     * `/test/` conviveva con PROD?»** — perché è l'unico posto al mondo in cui una chiave `test:`
+     * non appartiene a nessuno. Ovunque altro, `test:` è di chi ci sta lavorando.
+     * ⛔ È un **fatto positivo**, e per una cancellazione dev'esserlo: nel dubbio non si cancella.
+     * La vecchia guardia resta come **seconda cintura** — non serve più a reggere, ma costa nulla.
+     *
+     * 📌 *Una pulizia scritta per un mondo diventa una distruzione nel mondo dopo, e non se ne
+     *    accorge nessuno perché continua a fare esattamente quello per cui era stata scritta.* */
     const PMO_TEST_LEFTOVER_MARK = 'pmoTestLeftoverSweepV1';
+    /** L'origine su cui il vecchio `/test/` stava insieme a PROD: lì, e solo lì, una chiave
+     *  `test:` è un residuo. Nel dubbio `false` ⇒ non si cancella niente. */
+    function pmoOrigineDelVecchioTest() {
+      try {
+        return window.location.origin === new URL(PMO_PROD_PUBLIC_BASE_URL).origin;
+      } catch (e) { return false; }
+    }
     function pmoSweepTestLeftovers() {
+      if (!pmoOrigineDelVecchioTest()) return null;         // fatto positivo: nel dubbio non si cancella
       if (PMO_IS_TEST_ENV) return null;                     // in TEST sono dati vivi
       try {
         if (localStorage.getItem(PMO_TEST_LEFTOVER_MARK)) return null;  // già fatto
