@@ -8722,7 +8722,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.458';
+    const APP_VERSION = '6.459';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -31881,7 +31881,53 @@ Per confermare scrivi ELIMINA.`);
 	        return '';
 	      }
 	    }
+	    /* 🆕🔑⭐⭐ VOCE 184 — LA COPPIA ATTESA LA DICHIARA IL DEPLOY, NON L'INDIRIZZO.
+	     *
+	     * ⚖️ Questa funzione dice *«a quale progetto Supabase DEVE essere collegata quest'app»*, e
+	     * la risposta serve a `pmoAssertSupabaseMatchesRuntime` per fermare una configurazione
+	     * scambiata (il `configUrl` è modificabile dalle impostazioni: puntare TEST al config di
+	     * PROD è un gesto di due secondi).
+	     *
+	     * 🚨 Rispondeva `PMO_IS_TEST_ENV ? cudi : qqbf`, cioè deduceva il backend dall'**indirizzo**
+	     * — e la voce 184 fa scadere quella domanda. Il giorno in cui il sistema nuovo è servito da
+	     * `soci.padelvillage.club`, l'hostname non comincia più per `test.` ⇒ questa funzione si
+	     * aspetterebbe **qqbf**, troverebbe **cudi**, e `pmoAssertSupabaseMatchesRuntime`
+	     * **lancerebbe** su un sistema perfettamente sano: *«Invio bloccato: configurazione
+	     * ambiente non coerente»*. Una guardia giusta puntata sul bersaglio sbagliato.
+	     *
+	     * ⇒ La verità si sposta dove appartiene: **un deploy sa qual è il proprio backend**. Il
+	     * caricatore lo dichiara in `window.PMO_EXPECTED_SUPABASE_REF`, esattamente come già
+	     * dichiara `window.PMO_PUBLIC_BASE_URL` (⇒ `pmoDetectPublicBaseUrl`): una riga accanto
+	     * all'altra, nello stesso posto, per la stessa ragione.
+	     *
+	     * ⛔ E lo dichiara il **CARICATORE**, non `config.js` — non è un dettaglio di posizione.
+	     * `config.js` è precisamente la cosa che questa guardia deve verificare: se fosse lui a
+	     * dire quale progetto ci si aspetta, il confronto sarebbe fra il config e sé stesso, e la
+	     * guardia direbbe sempre «va bene» — cioè sarebbe tolta senza che nessuno l'abbia tolta.
+	     * 📌 *Chi è sotto esame non porta la propria pagella.*
+	     *
+	     * 🩹 Nel dubbio si torna alla risposta di prima, che oggi è quella giusta su tutti e due gli
+	     * ambienti: se nessuno dichiara niente — cioè **oggi**, ovunque — questa funzione risponde
+	     * esattamente come rispondeva. La dichiarazione si accetta solo se **ha la forma** di un ref
+	     * Supabase; una stringa storpiata non allarga niente, viene ignorata.
+	     *
+	     * 🔁 `il-backend-lo-dichiara-il-deploy.test.mjs` tiene ferme le tre cose che contano:
+	     * il ripiego invariato, la dichiarazione onorata, e la spazzatura scartata. */
+	    const PMO_FORMA_REF_SUPABASE = /^[a-z0-9-]{16,63}$/;
+	    function pmoRefSupabaseDichiaratoDalDeploy() {
+	      try {
+	        const raw = String(window.PMO_EXPECTED_SUPABASE_REF || '').trim().toLowerCase();
+	        if (!raw) return '';
+	        // Si accetta sia il ref nudo sia l'URL intero: chi scrive il caricatore non deve
+	        // ricordarsi quale delle due forme volevamo.
+	        const m = raw.match(/^https?:\/\/([a-z0-9-]+)\.supabase\.co\/?$/);
+	        const ref = m ? m[1] : raw;
+	        return PMO_FORMA_REF_SUPABASE.test(ref) ? ref : '';
+	      } catch (e) { return ''; }
+	    }
 	    function pmoExpectedSupabaseProjectRef() {
+	      const dichiarato = pmoRefSupabaseDichiaratoDalDeploy();
+	      if (dichiarato) return dichiarato;
 	      return PMO_IS_TEST_ENV ? PMO_TEST_SUPABASE_PROJECT_REF : PMO_PROD_SUPABASE_PROJECT_REF;
 	    }
 	    function pmoAssertSupabaseMatchesRuntime(supabaseUrl, actionLabel='questa operazione') {
