@@ -8722,7 +8722,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.461';
+    const APP_VERSION = '6.462';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -8811,6 +8811,25 @@ body.assessment-public-mode .assessment-public-only-card {
         // TEST sul suo indirizzo: la base pubblica è la RADICE di quell'origine (lì stanno
         // config-test.js e le pagine pubbliche di TEST), non la /test/ di PROD.
         if (pmoIsTestHostname()) return `${current.origin}/`;
+        /* 🆕🏠⭐⭐ VOCE 184 — L'ULTIMO RIPIEGO È «CASA MIA», NON «PROD».
+         *
+         * 🚨 Qui si tornava sempre `PMO_PROD_PUBLIC_BASE_URL`, e su PROD è la risposta giusta —
+         * ma è anche la **trappola centrale della voce 184**: il giorno in cui l'app è servita da
+         * `soci.padelvillage.club` l'hostname non comincia più per `test.`, nessuno dei rami
+         * sopra scatta, e si cadeva su `https://app.padelvillage.club/` ⇒ l'app avrebbe caricato
+         * il **`config.js` di PROD**, si sarebbe collegata a **`qqbf`** e — riconosciuta come
+         * produzione — avrebbe scritto sul **Matchpoint del circolo**.
+         * ⛔ E non solo la configurazione: da questa base nascono anche i link che vanno ai soci
+         * (autovalutazione, feedback partita), che sarebbero finiti sul PROD **congelato**.
+         *
+         * ⇒ Un'app servita da un indirizzo cerca le proprie cose **a quell'indirizzo**. Su PROD la
+         * risposta non cambia di una virgola (`origin` è esattamente `app.padelvillage.club`), e
+         * ovunque altro smette di andare a prendere la roba di casa d'altri.
+         * 🩹 Il caricatore che dichiara `window.PMO_PUBLIC_BASE_URL` (prima riga di questa
+         * funzione) resta la strada maestra: questo è ciò che succede **se qualcuno se ne
+         * dimentica**, e prima era la cosa peggiore possibile.
+         * 📌 *Un ripiego non deve essere comodo, deve essere innocuo.* */
+        if (current.protocol === 'http:' || current.protocol === 'https:') return `${current.origin}/`;
       } catch {}
       return PMO_PROD_PUBLIC_BASE_URL;
     }
@@ -31653,7 +31672,17 @@ Per confermare scrivi ELIMINA.`);
 	      // Escludi le occupancy `_retained` (bridge locale anti-buco mezzanotte, v6.067): sono copie
 	      // LIVE di date passate che il cloud ha già tombstonato → NON vanno ripushate (le resusciterebbe).
 	      (Array.isArray(prenotazioniOccupazione) ? prenotazioniOccupazione : []).filter(item => !(item && item._retained)).forEach((item, index) => pmoAddCloudRecord(records, 'booking_occupancy', pmoBookingCloudKey(item, index, 'occupancy'), item));
-	      if (!PMO_IS_TEST_ENV) {
+	      /* 🆕📚 VOCE 184 — QUI NON SI DECIDE NIENTE DI NUOVO, si toglie un ribaltone automatico.
+	       * Era `if (!PMO_IS_TEST_ENV)`, cioè *«l'indirizzo non comincia per test.»* ⇒ il giorno
+	       * del passaggio il sistema nuovo avrebbe cominciato a spingere **tutto lo storico in un
+	       * colpo**, senza che nessuno l'avesse chiesto — e un primo giro grosso su un compute da
+	       * 1 GB è esattamente la forma dell'avaria del 05/09 (voce 160).
+	       * ⇒ Adesso la domanda è *«sono il sistema nuovo?»*, e la risposta **non cambia col
+	       * passaggio**: il comportamento di oggi resta quello di domani.
+	       * ⚠️ **La decisione vera resta APERTA e non è mia**: se il sistema nuovo debba caricare
+	       * il proprio storico nel cloud è una scelta che costa un primo giro pesante, e va presa
+	       * da lui — non presa per inerzia da un cambio di indirizzo. */
+	      if (!(typeof pmoSistemaNuovo === 'function' && pmoSistemaNuovo())) {
 	        pmoHistoryUploadRecords(storicoPrenotazioni, options.retiredHistoryKeys).forEach(record => records.push(record));
 	      }
 	      pmoCloudObjectEntries(lunchMatchInvitations).forEach(([key, item]) => pmoAddCloudRecord(records, 'match_invitation', item.key || key, item));
@@ -31960,7 +31989,36 @@ Per confermare scrivi ELIMINA.`);
 	        return PMO_FORMA_REF_SUPABASE.test(ref) ? ref : '';
 	      } catch (e) { return ''; }
 	    }
-	    function pmoExpectedSupabaseProjectRef() {
+		    /* 🆕🌿⭐ VOCE 184 — QUALE RAMO SERVE QUESTO DEPLOY.
+	     *
+	     * 🚨 Il ramo si sceglieva con `PMO_IS_TEST_ENV ? 'test-preview' : 'main'`, cioè dall'hostname
+	     * ⇒ il giorno del passaggio il sistema nuovo avrebbe letto le regole del parser da **`main`**,
+	     * che è il ramo di **PROD CONGELATA** — e con `parser-rules-update` ci avrebbe pure **scritto**.
+	     *
+	     * 🔑 Tre risposte in ordine, dalla più autorevole alla più vecchia:
+	     *   ① quello che il **caricatore dichiara** (`window.PMO_APP_BRANCH`) — un deploy sa da quale
+	     *      ramo è fatto, come sa il proprio backend e la propria base pubblica;
+	     *   ② altrimenti lo dice il **database** con cui si sta parlando, quando lo si conosce: è la
+	     *      stessa domanda di `pmoEtichettaEnvDelDatabase`, e non scade col passaggio;
+	     *   ③ e in ultimo l'**ambiente**, che è la risposta di oggi ⇒ senza dichiarazione e senza
+	     *      database, oggi non cambia niente da nessuna parte.
+	     * ⚠️ Il ③ è quello che scade: su `soci.` senza la dichiarazione né la config caricata
+	     *    risponderebbe di nuovo `main`. ⇒ La riga nel caricatore **non è facoltativa**, ed è
+	     *    scritta come obbligatoria in `docs/voce-184-passaggio-a-soci/README.md`. */
+	    const PMO_FORMA_RAMO = /^[A-Za-z0-9._\/-]{1,120}$/;
+	    function pmoRamoDelDeploy(supabaseUrl) {
+	      try {
+	        const dichiarato = String(window.PMO_APP_BRANCH || '').trim();
+	        if (dichiarato && PMO_FORMA_RAMO.test(dichiarato)) return dichiarato;
+	      } catch (e) {}
+	      try {
+	        if (supabaseUrl && typeof pmoGestionaleCollegatoAlCircolo === 'function') {
+	          return pmoGestionaleCollegatoAlCircolo(supabaseUrl) ? 'main' : 'test-preview';
+	        }
+	      } catch (e) {}
+	      return (typeof PMO_IS_TEST_ENV !== 'undefined' && PMO_IS_TEST_ENV) ? 'test-preview' : 'main';
+	    }
+    function pmoExpectedSupabaseProjectRef() {
 	      const dichiarato = pmoRefSupabaseDichiaratoDalDeploy();
 	      if (dichiarato) return dichiarato;
 	      return PMO_IS_TEST_ENV ? PMO_TEST_SUPABASE_PROJECT_REF : PMO_PROD_SUPABASE_PROJECT_REF;
@@ -41767,7 +41825,7 @@ Per confermare scrivi ELIMINA.`);
     try {
       const cfg   = await loadAssessmentSupabaseConfig();
       const staff = await pmoRequireStaffPermission('manage_users', 'aggiornare il parser');
-      const branch = (typeof PMO_IS_TEST_ENV !== 'undefined' && PMO_IS_TEST_ENV) ? 'test-preview' : 'main';
+      const branch = pmoRamoDelDeploy(cfg.supabaseUrl);
       const res = await fetch(cfg.supabaseUrl + '/functions/v1/parser-rules-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: cfg.supabaseKey, Authorization: 'Bearer ' + staff.accessToken },
@@ -42067,11 +42125,19 @@ Per confermare scrivi ELIMINA.`);
   };
 
   (function _staffCalInitParserRules() {
-    const branch = (typeof PMO_IS_TEST_ENV !== 'undefined' && PMO_IS_TEST_ENV) ? 'test-preview' : 'main';
-    const url = `https://raw.githubusercontent.com/PadelVillage/padel-match-organizer/${branch}/supabase/functions/parser-rules/parser_rules.json`;
+    /* 🆕🌿 VOCE 184 — l'URL si costruisce AL MOMENTO DELLA CHIAMATA, non all'avvio del modulo.
+     * Prima il ramo si fissava qui una volta per tutte, da `PMO_IS_TEST_ENV` ⇒ al passaggio
+     * sarebbero arrivate le regole di `main`, cioè di PROD congelata. Calcolandolo dentro
+     * `loadParserRules` la domanda si rifà a ogni giro (all'avvio e al rinfresco dell'ora dopo),
+     * e può usare la dichiarazione del caricatore. ⚠️ Il primo giro parte prima che la config sia
+     * caricata: lì risponde la dichiarazione, e per questo su `soci.` non è facoltativa. */
+    const RAMO_PATH = '/supabase/functions/parser-rules/parser_rules.json';
+    function parserRulesUrl() {
+      return `https://raw.githubusercontent.com/PadelVillage/padel-match-organizer/${pmoRamoDelDeploy()}${RAMO_PATH}`;
+    }
     async function loadParserRules() {
       try {
-        const res = await fetch(url + '?_=' + Date.now(), { cache: 'no-store' });
+        const res = await fetch(parserRulesUrl() + '?_=' + Date.now(), { cache: 'no-store' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
         PARSER_RULES = json;
@@ -50436,8 +50502,17 @@ Per confermare scrivi ELIMINA.`);
   // riceve un messaggio di avanzamento per l'attesa breve ("↻ Preparo X su Matchpoint…").
   async function pmoEnsureBookingPlayersOnMatchpoint(parsed, onStatus) {
     if (!parsed) return;
-    // In TEST il collegamento Matchpoint è staccato: niente creazione reale, niente blocco.
-    if (typeof PMO_IS_TEST_ENV !== 'undefined' && PMO_IS_TEST_ENV) return;
+    /* 🆕🔌 VOCE 184 — «sono il sistema nuovo?», non «mi chiamo test?».
+     * Era gated su `PMO_IS_TEST_ENV` ⇒ al passaggio si sarebbe sganciato e il sistema nuovo
+     * avrebbe ricominciato a cercare i giocatori **su Matchpoint**, che nel disegno dichiarato
+     * non deve più chiamare affatto. ✅ Il circolo resterebbe protetto lo stesso — la barriera
+     * `scritturaAlCircoloConsentita` è cablata sul ref di PROD, 11 copie byte-identiche — ma la
+     * protezione sta nell'**edge**, non qui: l'app avrebbe comunque fatto il giro, con l'attesa e
+     * l'errore davanti alla segreteria.
+     * 🩹 Nel dubbio si prosegue sulla strada vecchia, che su PROD è quella giusta e sul sistema
+     * nuovo è quella che si comporta come oggi (la barriera risponde di no). È la stessa forma
+     * della voce 193. */
+    if (typeof pmoSistemaNuovo === 'function' && pmoSistemaNuovo()) return;
     if ((parsed.tipo || 'partita') === 'manutenzione') return;
     // Elenco {nome, code} da controllare: prima parsed.giocatori (che spesso porta già il
     // codice cliente), altrimenti parsed.nome (solo partita/lezione).
