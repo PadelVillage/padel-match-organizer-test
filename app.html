@@ -3170,6 +3170,22 @@
       .svc-edit-actions-bar > .svc-edit-save,
       .svc-edit-actions-bar > .svc-edit-close,
       .svc-edit-actions-bar > .svc-edit-add { flex:0 1 auto; }
+      /* 🆕🔘⭐ VOCE 208 — TRE GRUPPI, NON QUATTRO BOTTONI IN FILA.
+         🗣️ Sua: «ottimizzare la posizione dei bottoni nella scheda». 📏 Guardata sul vivo
+         (TEST 6.462, console remota): `Salva` · `Chiudi` · `+ Aggiungi giocatore` formavano
+         un **grumo unico** a sinistra, indistinguibili a colpo d'occhio — e lì dentro stanno
+         due mestieri diversi: i primi due agiscono sulla **scheda** (la salvano, la chiudono),
+         il terzo cambia il **contenuto** (aggiunge una persona all'elenco), e la sezione su cui
+         agisce sta nell'altra colonna.
+         ⇒ Una riga sola, ma **tre gruppi leggibili**: [Salva · Chiudi] │ [+ Aggiungi] ··· [Annulla].
+         ⛔ NON si sposta niente: la voce **167** ha messo «+ Aggiungi» qui **su sua richiesta**
+            («tutti i bottoni… in orizzontale»), e la **168** ha reso la barra sticky in testa.
+            Questa voce non disfa quelle due decisioni — le rende **visibili**.
+         📌 *Un bottone che cambia il contenuto non è un bottone che chiude la scheda: se stanno
+            nella stessa riga, almeno si veda che non sono la stessa cosa.* */
+      .svc-edit-actions-bar > .svc-edit-add {
+        margin-left:14px; padding-left:16px; border-left:1px solid #e6e8ee;
+      }
       /* 🚨 La DISTANZA è la protezione: `margin-left:auto` spinge l'unico gesto distruttivo
          della scheda all'estremo opposto di Salva. */
       .svc-edit-actions-bar > .svc-edit-del { flex:0 1 auto; margin-left:auto; }
@@ -3411,7 +3427,12 @@
       .svc-edit-actions-bar > .svc-edit-save  { flex:2 1 auto; }
       .svc-edit-actions-bar > .svc-edit-close { flex:1 1 auto; }
       .svc-edit-actions-bar > .svc-edit-add   { flex:1 0 100%; justify-content:center; box-sizing:border-box; }
-      .svc-edit-actions-bar > .svc-edit-del   { flex:1 0 100%; }
+      /* 🆕🔘 VOCE 208 — sul telefono i quattro vanno già a capo, quindi la distanza c'è; quello
+         che manca è la **riga che dice dove finisce la scheda e comincia l'irreversibile**.
+         ⚖️ Su schermo grande a separarlo è lo spazio (`margin-left:auto`), qui non può esserci:
+         il filo fa lo stesso mestiere in verticale. */
+      .svc-edit-actions-bar > .svc-edit-del   { flex:1 0 100%;
+        margin-top:8px; padding-top:10px; border-top:1px solid #e6e8ee; }
     }
     @media (min-width:900px) {
       .svc-layout { flex-direction:row; height:min(80vh, 860px); }
@@ -8722,7 +8743,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.462';
+    const APP_VERSION = '6.463';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -9112,6 +9133,35 @@ body.assessment-public-mode .assessment-public-only-card {
         const memoria = pmoConfigMemoria && pmoConfigMemoria.valore;
         return pmoSistemaNuovoPer(memoria && memoria.supabaseUrl);
       } catch (e) { return false; }
+    }
+    /* 🆕🔌⭐⭐ VOCE 206 — DOVE FINISCE QUESTO GESTO, detto all'operatore.
+     *
+     * 📏 Misurato il 13/09/2026 premendo Salva su `cudi`: la scheda chiedeva *«Salvare su
+     * **Matchpoint**?»* ed elencava sotto *«Tipo: Partita → Lezione»* — un gesto che su Matchpoint
+     * **non esiste**, perché là una partita e una lezione sono due schede diverse. E due centimetri
+     * più in là la edge rispondeva *«Questa partita nasce qui: il circolo esterno non è stato
+     * chiamato»* ⇒ **la domanda e la risposta si contraddicevano nello stesso gesto**.
+     *
+     * 🎯 Non è una pignoleria di parole. Sul sistema che fra poco diventa quello vero, una frase
+     * che nomina Matchpoint come **destinazione di una scrittura** dice il falso all'unica persona
+     * che potrebbe accorgersene — e le fa credere che il circolo sappia una cosa che non sa.
+     *
+     * ⇒ Una funzione sola risponde a *«dove finisce?»*, e tutte le frasi la leggono da lì: due
+     * copie della stessa risposta divergono al primo ripensamento senza dirlo a nessuno.
+     * 🩹 Nel dubbio dice **«su Matchpoint»**, ed è il verso giusto: una frase che avverte di una
+     * scrittura al circolo quando il circolo non c'è **spaventa**; il contrario **inganna**.
+     *
+     * ⛔ NON copre — e non è una dimenticanza, è il confine della voce:
+     *   · le frasi degli **import** e della fonte dei numeri (*«ultimo import Matchpoint»*,
+     *     *«clienti aggiornati da Matchpoint»*): parlano di Matchpoint **a ragione**, ed è vero
+     *     finché il distacco non arriva;
+     *   · `_pmoConfirmCollect` e lo storno del pagamento, che il **ramo nativo ce l'hanno già**
+     *     (voce 181) e nominano il circolo solo quando ci parlano davvero;
+     *   · i messaggi di **esito** di una chiamata a Matchpoint realmente avvenuta. */
+    function pmoDoveFinisceIlGesto() {
+      try {
+        return (typeof pmoSistemaNuovo === 'function' && pmoSistemaNuovo()) ? 'sul gestionale' : 'su Matchpoint';
+      } catch (e) { return 'su Matchpoint'; }
     }
     function pmoDetectRuntimeEnv() {
       try {
@@ -31355,7 +31405,7 @@ Per confermare scrivi ELIMINA.`);
         if (_isMobileChat) setTimeout(function () { try { if (typeof svcCloseChat === 'function') svcCloseChat(); } catch (e) {} }, 8000);
       };
       if (st === 'ok') {
-        _setSync('✅ Salvato su Matchpoint', '#067647');
+        _setSync('✅ Salvato ' + pmoDoveFinisceIlGesto(), '#067647');
         _lingerScheda();
       } else if (st === 'ok_level_failed') {
         _setSync('⚠️ Salvato, ma il LIVELLO non è passato su Matchpoint', '#b54708');
@@ -31368,7 +31418,7 @@ Per confermare scrivi ELIMINA.`);
         _setSync('💾 Salvato nell\'app', '#475467');
       } else {
         const reason = (res && res.reason) ? String(res.reason).slice(0, 140) : 'errore sconosciuto';
-        _setSync('⚠️ NON salvato su Matchpoint', '#d92d20');
+        _setSync('⚠️ NON salvato ' + pmoDoveFinisceIlGesto(), '#d92d20');
         svcAddMessage('system', '❌ Aggiornamento su Matchpoint non riuscito: ' + esc(reason) + '<br><span style="color:var(--text-muted);font-size:.78rem;">I dati restano salvati nell\'app.</span>', 'error');
       }
     }
@@ -45232,7 +45282,7 @@ Per confermare scrivi ELIMINA.`);
       const esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return String(s == null ? '' : s); };
       const imp = '<strong>' + _incassiEuro(subtractCents) + '</strong>';
       const quale = isTotal ? ('l\'intero saldo (' + imp + ')') : (imp);
-      const msg = svcAddMessage('system', '↩︎ Stornare ' + quale + ' dal wallet di <strong>' + esc(name) + '</strong>?<br><span style="color:var(--text-muted);font-size:.78rem;">Sottrae il credito su Matchpoint (operazione reale).</span>');
+      const msg = svcAddMessage('system', '↩︎ Stornare ' + quale + ' dal wallet di <strong>' + esc(name) + '</strong>?<br><span style="color:var(--text-muted);font-size:.78rem;">' + (pmoSistemaNuovo() ? 'Sottrae il credito dal borsellino, qui nel gestionale.' : 'Sottrae il credito su Matchpoint (operazione reale).') + '</span>');
       let _done = false;
       const btns = svcMakeStepButtons(['↩︎ Sì, storna'],
         function () { if (_done) return; _done = true; resolve(true); },
@@ -45418,7 +45468,7 @@ Per confermare scrivi ELIMINA.`);
       if (_harness) { resolve(true); return; }
       const esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return String(s == null ? '' : s); };
       const imp = '<strong>' + _incassiEuro(addCents) + '</strong>';
-      const msg = svcAddMessage('system', '＋ Ricaricare ' + imp + ' sul wallet di <strong>' + esc(name) + '</strong>?<br><span style="color:var(--text-muted);font-size:.78rem;">Aggiunge credito su Matchpoint (operazione reale).</span>');
+      const msg = svcAddMessage('system', '＋ Ricaricare ' + imp + ' sul wallet di <strong>' + esc(name) + '</strong>?<br><span style="color:var(--text-muted);font-size:.78rem;">' + (pmoSistemaNuovo() ? 'Aggiunge credito al borsellino, qui nel gestionale.' : 'Aggiunge credito su Matchpoint (operazione reale).') + '</span>');
       let _done = false;
       const btns = svcMakeStepButtons(['＋ Sì, ricarica'],
         function () { if (_done) return; _done = true; resolve(true); },
@@ -48887,7 +48937,7 @@ Per confermare scrivi ELIMINA.`);
     //    mette non è mai più di 2 righe». Resta TRASCINABILE (`resize:vertical`), quindi chi
     //    ha da scrivere di più se la allarga e non perde niente.
     editNoteTA.rows = 2; editNoteTA.maxLength = 300;
-    editNoteTA.placeholder = st.isManut ? 'Osservazioni aggiuntive (campo separato dalla descrizione)…' : 'Scrivi qui le osservazioni… (verranno salvate su Matchpoint)';
+    editNoteTA.placeholder = st.isManut ? 'Osservazioni aggiuntive (campo separato dalla descrizione)…' : ('Scrivi qui le osservazioni… (verranno salvate ' + pmoDoveFinisceIlGesto() + ')');
     editNoteTA.className = 'svc-note-edit';
     editNoteTA.value = st.note || '';
     editNoteTA.addEventListener('input', function () { st.note = editNoteTA.value.trim(); });
@@ -49546,7 +49596,7 @@ Per confermare scrivi ELIMINA.`);
     }
     // skipConfirm = chiamata dall'assistente ("salva" a voce): la conferma è già stata data a voce,
     // niente popup nativo (che spezzerebbe il flusso vocale). Il pulsante Salva manuale lo mantiene.
-    if (!opts.skipConfirm && !confirm('Salvare su Matchpoint?\n\n' + parts.join('\n'))) return;
+    if (!opts.skipConfirm && !confirm('Salvare ' + pmoDoveFinisceIlGesto() + '?\n\n' + parts.join('\n'))) return;
 
     // 💶 VOCE 132 — GLI IMPORTI SI SCRIVONO PRIMA, e si ASPETTANO.
     //
@@ -51936,7 +51986,7 @@ Per confermare scrivi ELIMINA.`);
   async function staffCalAskCancel(isoDate, campo, ora, nome) {
     const dataIt = isoDate.split('-').reverse().join('/');
     const chi = nome ? ` di ${nome}` : '';
-    const confirmed = confirm(`Annullare su Matchpoint la prenotazione${chi}?\nCampo ${campo} · ${dataIt} · ${ora}\n\nL'operazione è irreversibile.`);
+    const confirmed = confirm(`Annullare ${pmoDoveFinisceIlGesto()} la prenotazione${chi}?\nCampo ${campo} · ${dataIt} · ${ora}\n\nL'operazione è irreversibile.`);
     if (!confirmed) return;
     return staffCalDoCancel(isoDate, campo, ora, nome);
   }
@@ -58137,7 +58187,7 @@ Per confermare scrivi ELIMINA.`);
       aiFlowState = { kind: 'prenota', stage: 'confirm', draft: draft };
       let html = _pick(['📋 <strong>Ecco com’è</strong>, controlla:', '📋 <strong>Ci siamo</strong>, ti riepilogo:', '📋 <strong>Perfetto</strong>, ecco il riepilogo:']) + '<br>' + _summaryHtml(draft);
       if (draft.notes && draft.notes.length) html += '<br><span style="color:#98a2b3;font-size:12px">⚠️ ' + draft.notes.map(_escapeHtml).join('<br>⚠️ ') + '</span>';
-      html += '<br><span style="color:#98a2b3;font-size:12px">' + _pick(['Va bene così? Dimmi <strong>conferma</strong> e la scrivo su Matchpoint.', 'Confermi? Al tuo “<strong>ok</strong>” la metto su Matchpoint.', 'Procedo? Dimmi <strong>sì</strong> e la prenoto su Matchpoint.']) + '</span>';
+      html += '<br><span style="color:#98a2b3;font-size:12px">' + _pick([('Va bene così? Dimmi <strong>conferma</strong> e la scrivo ' + pmoDoveFinisceIlGesto() + '.'), 'Confermi? Al tuo “<strong>ok</strong>” la metto su Matchpoint.', 'Procedo? Dimmi <strong>sì</strong> e la prenoto su Matchpoint.']) + '</span>';
       const div = _say(html);
       _appendConfirmButtons(div, draft);
     }
@@ -60040,7 +60090,8 @@ Per confermare scrivi ELIMINA.`);
       aiFlowState = { kind: 'anagrafica', op: 'deactivate', stage: 'confirm', target: member };
       const nm = _escapeHtml(playerFullName(member));
       const html = '⏸️ <strong>Disattivo ' + nm + '</strong>'
-        + '<br><span style="color:#98a2b3;font-size:12px">Lo marco come <strong>inattivo</strong> in anagrafica e su Supabase, e lo <strong>disiscrivo da Matchpoint</strong>. '
+        + '<br><span style="color:#98a2b3;font-size:12px">Lo marco come <strong>inattivo</strong> in anagrafica e su Supabase'
+        + (pmoSistemaNuovo() ? '' : ', e lo <strong>disiscrivo da Matchpoint</strong>') + '. '
         + 'Non lo elimino: resta nello storico e potrai riattivarlo quando vuoi. Confermi?</span>';
       _anaAppendConfirmButtons(_say(html));
     }
@@ -60107,7 +60158,8 @@ Per confermare scrivi ELIMINA.`);
       aiFlowState = { kind: 'anagrafica', op: 'reactivate', stage: 'confirm', target: member };
       const nm = _escapeHtml(playerFullName(member));
       const html = '▶️ <strong>Riattivo ' + nm + '</strong>'
-        + '<br><span style="color:#98a2b3;font-size:12px">Lo rimetto <strong>attivo</strong> in anagrafica e su Supabase, e lo <strong>ri-iscrivo su Matchpoint</strong>. Confermi?</span>';
+        + '<br><span style="color:#98a2b3;font-size:12px">Lo rimetto <strong>attivo</strong> in anagrafica e su Supabase'
+        + (pmoSistemaNuovo() ? '' : ', e lo <strong>ri-iscrivo su Matchpoint</strong>') + '. Confermi?</span>';
       _anaAppendConfirmButtons(_say(html));
     }
     function _anaExecuteReactivate(member) {
