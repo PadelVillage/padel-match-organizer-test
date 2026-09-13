@@ -8722,7 +8722,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.460';
+    const APP_VERSION = '6.461';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -55028,10 +55028,17 @@ Per confermare scrivi ELIMINA.`);
         const cfg = await loadAssessmentSupabaseConfig();
         let token = cfg.supabaseKey;
         try { if (typeof pmoGetSupabaseStaffAccessToken === 'function') { const t = await pmoGetSupabaseStaffAccessToken(); if (t) token = t; } } catch (e) {}
+        /* 🆕 VOCE 184 — l'etichetta `env` si mette QUI, che è l'unico punto in cui si sa a
+         * QUALE database si sta scrivendo. Nei costruttori della riga si decideva senza
+         * saperlo (da `PMO_RUNTIME_ENV`, cioè dall'indirizzo) ⇒ dopo il passaggio avrebbero
+         * scritto `'prod'` dentro un database le cui righe sono `'test'`, divergendo dalla
+         * lettura. 📌 Scrittura e lettura chiedono la stessa cosa alla stessa funzione: così
+         * non possono più separarsi. */
+        const corpo = Object.assign({}, row, { env: pmoEtichettaEnvDelDatabase(cfg.supabaseUrl) });
         const res = await fetch(cfg.supabaseUrl + '/rest/v1/pmo_ai_turns', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': cfg.supabaseKey, 'Authorization': 'Bearer ' + token, 'Prefer': 'return=minimal' },
-          body: JSON.stringify(row)
+          body: JSON.stringify(corpo)
         });
         if (!res.ok) { console.warn('[PMOAi] turn insert HTTP', res.status); return null; }
         return row.id || null;
@@ -55074,7 +55081,6 @@ Per confermare scrivi ELIMINA.`);
         id: _aiTurnNewId(),
         session_id: _aiTurnSessionId(),
         staff_id: _aiTurnStaffId(),
-        env: (typeof PMO_RUNTIME_ENV !== 'undefined') ? PMO_RUNTIME_ENV : 'test',
         domain: _aiTurnDomain(res),
         source: (res && res.source === 'gemini') ? 'gemini' : 'rules',
         utterance: text,
@@ -55101,7 +55107,6 @@ Per confermare scrivi ELIMINA.`);
         id: _aiTurnNewId(),
         session_id: _aiTurnSessionId(),
         staff_id: _aiTurnStaffId(),
-        env: (typeof PMO_RUNTIME_ENV !== 'undefined') ? PMO_RUNTIME_ENV : 'test',
         domain: domain || null,
         source: 'manual',
         utterance: null,
@@ -55213,13 +55218,57 @@ Per confermare scrivi ELIMINA.`);
       if (!esc) return null;
       try { return new RegExp('(?<![A-Za-zÀ-ÿ0-9])' + esc + '(?![A-Za-zÀ-ÿ0-9])', flags || 'gi'); } catch (e) { return null; }
     }
+    /* 🆕🗣️⭐⭐ VOCE 184 — L'ETICHETTA `env` DICE QUALE DATABASE, NON QUALE AMBIENTE.
+     *
+     * 🚨 IL DIFETTO. Le due letture qui sotto chiedevano `env=eq.<PMO_RUNTIME_ENV>`, cioè
+     * filtravano il vocabolario dell'assistente con *«l'indirizzo comincia per `test.`?»* — la
+     * domanda che la voce 184 fa scadere. ⇒ Il giorno del passaggio `PMO_RUNTIME_ENV` diventa
+     * `'prod'`, le righe scritte come `'test'` **smettono di essere lette**, e non lo dice
+     * nessuno: `if (!res.ok) return;` e `catch { lascia il default }`. L'assistente si
+     * ritroverebbe **senza vocabolario e con l'apprendimento al valore di fabbrica**, senza un
+     * errore da nessuna parte.
+     *
+     * 📏 MISURATO IL 13/09/2026 SUI DUE DATABASE, e la misura dice qual è la cura:
+     *   · su `cudi`  → `pmo_lessico` **5**, `pmo_ai_settings` **2**, `pmo_ai_turns` **737**,
+     *     `pmo_ai_usage` **4** — e sono **tutte `env='test'`**;
+     *   · su `qqbf`  → **25 · 2 · 1138 · 25**, e sono **tutte `env='prod'`**.
+     * ⇒ **Ogni progetto ha un solo valore.** Quella colonna non ha mai separato niente: **ripete
+     * in quale database sei**, che è una cosa che il database sa già. E nessuna RLS la usa
+     * (misurato: tutte le policy di queste quattro tabelle sono `true`).
+     *
+     * 🔨 ⇒ La domanda diventa *«qual è l'etichetta DI QUESTO DATABASE?»*, e si ricava dal **ref
+     * Supabase** — cioè da con chi si sta parlando — invece che dall'indirizzo da cui si è
+     * scaricata la pagina. Il giorno del passaggio la risposta su `cudi` resta `'test'`, le righe
+     * restano al loro posto, e **non serve nessuna migrazione**.
+     * ⛔ **Il nome dell'etichetta non è più una descrizione dell'ambiente**, ed è voluto: dal
+     * passaggio `cudi` è **produzione** e le sue righe restano marcate `'test'`. È un'etichetta
+     * **di provenienza storica**, non un'affermazione. Rinominarla vorrebbe dire riscrivere 786
+     * righe su `cudi` e 1190 su `qqbf` per guadagnare una parola più bella.
+     * 🚨 **E QUI STA LA TRAPPOLA PER CHI LEGGE DOPO**: vedere `env: 'test'` scritto da un sistema
+     * in produzione sembra un errore da correggere. **Non lo è.** Rimetterci `PMO_RUNTIME_ENV`
+     * rifà esattamente il guasto che questa funzione cura — in silenzio, come la prima volta.
+     * Il banco `il-vocabolario-non-sparisce-al-passaggio.test.mjs` lo impedisce apposta.
+     *
+     * ⭐ E NON È UN'INVENZIONE: la lettura dei **turni** (`pmo_ai_turns`, poco sopra) non ha mai
+     * filtrato per `env` — legge tutto ciò che sta nel database. Questa cura non aggiunge una
+     * regola nuova, **allinea le due letture rimaste** a quella che c'era già.
+     *
+     * 🩹 Nel dubbio risponde `'test'`, cioè l'etichetta del **sistema nuovo**: è quello che deve
+     * continuare a funzionare, e `pmoGestionaleCollegatoAlCircolo` è un cancello che fallisce
+     * chiuso per la sua domanda (*«nel dubbio non è il circolo»*). */
+    function pmoEtichettaEnvDelDatabase(supabaseUrl) {
+      try {
+        if (typeof pmoGestionaleCollegatoAlCircolo !== 'function') return 'test';
+        return pmoGestionaleCollegatoAlCircolo(supabaseUrl) ? 'prod' : 'test';
+      } catch (e) { return 'test'; }
+    }
     async function _lessicoLoad() {
       if (!_LESSICO_ENABLED) return;
       try {
         const cfg = await loadAssessmentSupabaseConfig();
         let token = cfg.supabaseKey;
         try { if (typeof pmoGetSupabaseStaffAccessToken === 'function') { const t = await pmoGetSupabaseStaffAccessToken(); if (t) token = t; } } catch (e) {}
-        const env = (typeof PMO_RUNTIME_ENV !== 'undefined') ? PMO_RUNTIME_ENV : 'test';
+        const env = pmoEtichettaEnvDelDatabase(cfg.supabaseUrl);
         const url = cfg.supabaseUrl + '/rest/v1/pmo_lessico?status=eq.approved&env=eq.' + encodeURIComponent(env) + '&select=surface,canonical,domain,kind,meta';
         const res = await fetch(url, { headers: { apikey: cfg.supabaseKey, Authorization: 'Bearer ' + token, Accept: 'application/json' } });
         if (!res.ok) return;
@@ -55403,7 +55452,7 @@ Per confermare scrivi ELIMINA.`);
       try {
         const cfg = await loadAssessmentSupabaseConfig();
         let token = cfg.supabaseKey; try { if (typeof pmoGetSupabaseStaffAccessToken === 'function') { const t = await pmoGetSupabaseStaffAccessToken(); if (t) token = t; } } catch (e) {}
-        const env = (typeof PMO_RUNTIME_ENV !== 'undefined') ? PMO_RUNTIME_ENV : 'test';
+        const env = pmoEtichettaEnvDelDatabase(cfg.supabaseUrl);
         const url = cfg.supabaseUrl + '/rest/v1/pmo_ai_settings?env=eq.' + encodeURIComponent(env) + '&key=eq.learning_mode&select=value&limit=1';
         const res = await fetch(url, { headers: { apikey: cfg.supabaseKey, Authorization: 'Bearer ' + token, Accept: 'application/json' } });
         if (res.ok) { const rows = await res.json(); if (Array.isArray(rows) && rows.length) _aiLearningMode = (rows[0].value === true || rows[0].value === 'true'); }
@@ -55546,7 +55595,9 @@ Per confermare scrivi ELIMINA.`);
         const cfg = await loadAssessmentSupabaseConfig();
         let token = cfg.supabaseKey;
         try { if (typeof pmoGetSupabaseStaffAccessToken === 'function') { const tk = await pmoGetSupabaseStaffAccessToken(); if (tk) token = tk; } } catch (e) {}
-        const env = (typeof PMO_RUNTIME_ENV !== 'undefined') ? PMO_RUNTIME_ENV : 'test';
+        // 🆕 VOCE 184 — la stessa etichetta che userà `_lessicoLoad` per rileggerla: se le due
+        // divergessero, una proposta approvata sparirebbe dal vocabolario senza dirlo a nessuno.
+        const env = pmoEtichettaEnvDelDatabase(cfg.supabaseUrl);
         const esempi = Array.isArray(proposta.esempi_test) ? proposta.esempi_test : [];
         let row = null;
         if (proposta.tipo === 'sinonimo' && proposta.surface && proposta.canonical) {
