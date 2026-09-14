@@ -6898,8 +6898,6 @@ body.assessment-public-mode .assessment-public-only-card {
     .wa-msg-badges { display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; }
 
     /* Detail panel — scroll interno, sticky, separatore visivo */
-    #waDetailPanel { max-height:calc(100vh - 220px); overflow-y:auto; padding-right:3px; scrollbar-width:thin; border-left:1px solid #e8ecf3; padding-left:14px; }
-    @media (max-width:960px) { #waDetailPanel { border-left:none; padding-left:0; max-height:none; overflow-y:visible; } }
     .wa-detail-placeholder { text-align:center; padding:36px 16px; color:#9e9e9e; font-size:13px; }
     .wa-detail-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
     .wa-detail-head h4 { color:var(--primary); font-size:15px; margin:0 0 2px; }
@@ -7015,8 +7013,6 @@ body.assessment-public-mode .assessment-public-only-card {
     .wa-toolbar select { padding:6px 7px; border:1px solid var(--border); border-radius:5px; font-size:12px; background:#fff; box-sizing:border-box; width:100%; }
 
     /* Reply modal reuses existing .whatsapp-composer-overlay classes */
-    #waReplyModal textarea { width:100%; min-height:140px; padding:10px; border:1px solid var(--border); border-radius:5px; font:inherit; font-size:13px; line-height:1.5; resize:vertical; }
-    #waReplyModal .modal-ctx { background:#f8fbff; border:1px solid #dfe8f3; border-radius:6px; padding:9px 11px; font-size:13px; color:#667085; line-height:1.45; max-height:72px; overflow-y:auto; }
 
     /* ── Timer attesa ── */
     .wa-wait-ok   { color:#9e9e9e; font-size:11px; }
@@ -7050,8 +7046,6 @@ body.assessment-public-mode .assessment-public-only-card {
     .wa-val-btn.rifiuta:hover { background:#ffcdd2; }
     .wa-val-btn.rifiuta.voted { background:#c62828; color:#fff; border-color:#b71c1c; }
     .wa-val-btn:disabled { opacity:.45; cursor:not-allowed; pointer-events:none; }
-    #waShadowEditArea { display:none; margin-top:8px; }
-    #waShadowEditArea textarea { width:100%; min-height:110px; padding:8px 10px; border:1px solid #ce93d8; border-radius:6px; font:inherit; font-size:13px; line-height:1.5; resize:vertical; background:#fdf8ff; color:#4a148c; box-sizing:border-box; }
     .wa-revision-badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:.3px; }
     .wa-revision-badge.da_revisionare { background:#fff8e1; color:#f57f17; border:1px solid #ffe082; }
     .wa-revision-badge.approvato { background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; }
@@ -7183,9 +7177,6 @@ body.assessment-public-mode .assessment-public-only-card {
           <span class="nav-copy"><span class="nav-main">Incassi</span><span class="nav-sub">Cassa e rendicontazione</span></span>
         </button>
 
-        <button class="tab-button side-nav-main-item" data-section-key="contact" onclick="switchTab('contact', this)">
-          <span class="nav-copy"><span class="nav-main">Messaggi WhatsApp</span><span class="nav-sub">Libreria testi e template</span></span>
-        </button>
 
         <button class="side-nav-parent side-nav-main-item" data-section-key="administration" data-submenu-target="subAdministration" aria-expanded="false" onclick="switchSidebarParent('administration','subAdministration')">
           <span class="nav-copy"><span class="nav-main">Impostazioni</span><span class="nav-sub">Utenti, dati e controlli</span></span>
@@ -7265,7 +7256,6 @@ body.assessment-public-mode .assessment-public-only-card {
         </div>
       </div>
       <button type="button" class="pmo-chapter-item" data-section-key="incassi" onclick="switchTab('incassi', this)">Incassi</button>
-      <button type="button" class="pmo-chapter-item" data-section-key="contact" onclick="switchTab('contact', this)">Messaggi WhatsApp</button>
       <div class="pmo-chapter-group" data-section-key="administration">
         <button type="button" class="pmo-chapter-item has-dropdown" data-section-key="administration" aria-haspopup="true" aria-expanded="false" onclick="pmoToggleChapterDropdown(this, event)">Impostazioni <span class="pmo-chapter-caret">▾</span></button>
         <div class="pmo-chapter-dropdown">
@@ -8017,167 +8007,6 @@ body.assessment-public-mode .assessment-public-only-card {
       <div id="incassiRoot"></div>
     </div>
 
-    <div id="contact" class="tab-content">
-      <div class="pmo-section-head"><div><h2>Messaggi WhatsApp</h2><p>Libreria testi e template.</p></div></div>
-
-      <!-- ════ WA Inbound Dashboard (solo env TEST) ════ -->
-      <div id="waInboundDashboard" class="section" style="display:none;">
-
-        <!-- Banner modalità TEST — iniettato via JS se env=test -->
-        <div id="waTestModeBanner" style="display:none;margin-bottom:12px;padding:10px 14px;background:#fff3cd;border:1px solid #f0a500;border-left:5px solid #e65100;border-radius:8px;font-size:13px;font-weight:800;color:#7a3a00;">
-          ⚠️ MODALITÀ TEST ATTIVA — Tutti i messaggi WhatsApp vengono reindirizzati a <span style="font-family:monospace;">+39 335 7615 855</span> (Maurizio). Nessun cliente reale verrà contattato.
-        </div>
-
-        <div class="wa-section-head">
-          <div>
-            <h3>📲 Messaggi in entrata</h3>
-            <span style="font-size:12px;color:#667085;">Messaggi WhatsApp ricevuti · aggiornamento automatico</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:#667085;">
-              <span class="wa-rt-dot" id="waRtDot"></span>
-              <span id="waRtLabel">Connessione…</span>
-            </span>
-            <button class="btn-secondary small-btn" onclick="waLoadMessages()">↻ Aggiorna</button>
-          </div>
-        </div>
-
-        <!-- Stats -->
-        <div class="wa-stats-bar">
-          <div class="wa-stat-card"><div class="wa-stat-val" id="waStatTotal">–</div><div class="wa-stat-lbl">Totale</div></div>
-          <div class="wa-stat-card"><div class="wa-stat-val" id="waStatNew" style="color:#1565c0;">–</div><div class="wa-stat-lbl">Da elaborare</div></div>
-          <div class="wa-stat-card"><div class="wa-stat-val" id="waStatReplied" style="color:#2e7d32;">–</div><div class="wa-stat-lbl">Risposti</div></div>
-          <div class="wa-stat-card"><div class="wa-stat-val" id="waStatUrgent" style="color:#e65100;">–</div><div class="wa-stat-lbl">Urgenti</div></div>
-        </div>
-
-        <!-- ── Consumi WhatsApp — SOLO aggregati (conteggi): nessun testo né numero di
-             telefono, quindi attiva anche in TEST (la decisione #5 di spegnere la dashboard
-             in TEST riguarda i CONTENUTI reali dei clienti, non i volumi). ── -->
-        <div id="waUsageCard" style="margin:4px 0 18px;padding:14px 16px;background:#fff;border:1px solid #e4e9f2;border-radius:10px;">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-            <div>
-              <h3 style="margin:0;">💶 Consumi WhatsApp</h3>
-              <span style="font-size:12px;color:#667085;">Volumi giornalieri e costo stimato · ultimi 30 giorni · <span id="waUsageUpdatedAt">–</span></span>
-            </div>
-            <button class="btn-secondary small-btn" onclick="waUsageLoad()">↻ Aggiorna</button>
-          </div>
-          <div id="waUsageBody" style="overflow-x:auto;">
-            <div style="font-size:13px;color:#98a2b3;padding:8px 0;">Caricamento…</div>
-          </div>
-          <div style="margin-top:8px;font-size:11.5px;color:#98a2b3;line-height:1.5;">
-            Le <b>conversazioni di servizio</b> (il socio scrive, il circolo risponde entro 24&nbsp;h — tutto il flusso attuale, auto-risposte comprese) sono <b>gratuite</b> per policy Meta. Si pagano solo i <b>messaggi template proattivi</b>, non ancora attivi: finché la colonna Template resta a 0, il costo è 0,00&nbsp;€.
-          </div>
-        </div>
-
-        <!-- Grid: list + detail -->
-        <div class="wa-inbound-grid">
-
-          <!-- LEFT: list -->
-          <div>
-            <!-- Pill filters -->
-            <div class="wa-pill-row" id="waPillRow">
-              <button class="wa-pill active" data-pill="tutti" onclick="waPillFilter('tutti')">Tutti</button>
-              <button class="wa-pill" data-pill="PRENOTAZIONE" onclick="waPillFilter('PRENOTAZIONE')">Prenot. <span class="wa-pill-count" id="waPillCountPRENOTAZIONE"></span></button>
-              <button class="wa-pill" data-pill="DISDETTA" onclick="waPillFilter('DISDETTA')">Disdette <span class="wa-pill-count" id="waPillCountDISDETTA"></span></button>
-              <button class="wa-pill" data-pill="INFO" onclick="waPillFilter('INFO')">Info <span class="wa-pill-count" id="waPillCountINFO"></span></button>
-              <button class="wa-pill spam-pill" data-pill="SPAM_NOT_RELEVANT" onclick="waPillFilter('SPAM_NOT_RELEVANT')">Spam <span class="wa-pill-count" id="waPillCountSPAM"></span></button>
-            </div>
-            <div class="wa-toolbar">
-              <input type="text" id="waFilterSearch" placeholder="Cerca mittente o testo…" oninput="waApplyFilters()" />
-              <select id="waFilterStatus" onchange="waApplyFilters()">
-                <option value="">Tutti gli stati</option>
-                <option value="Da elaborare">Da elaborare</option>
-                <option value="In revisione">In revisione</option>
-                <option value="Completato">Completato</option>
-                <option value="Risposto">Risposto</option>
-              </select>
-            </div>
-            <div id="waMsgList" class="wa-msg-list">
-              <div class="wa-detail-placeholder">Caricamento…</div>
-            </div>
-            <div class="wa-status-bar" id="waStatusBar">Inizializzazione…</div>
-          </div>
-
-          <!-- RIGHT: detail -->
-          <div id="waDetailPanel">
-            <div class="wa-detail-placeholder" id="waDetailPlaceholder">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" style="opacity:.3;display:block;margin:0 auto 10px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              Seleziona un messaggio per vedere i dettagli
-            </div>
-            <div id="waDetailContent" style="display:none;">
-
-              <div class="wa-detail-head">
-                <div>
-                  <h4 id="waDetName">–</h4>
-                  <div class="wa-detail-meta" id="waDetPhone">–</div>
-                  <div class="wa-detail-meta" id="waDetTime" style="color:#bbb;font-size:11px;"></div>
-                </div>
-                <div id="waDetStatusBadge"></div>
-              </div>
-
-              <div style="font-size:11px;font-weight:900;color:#9e9e9e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;">Messaggio</div>
-              <div class="wa-body-box" id="waDetBody">–</div>
-              <div class="wa-analysis" id="waDetAnalysis" style="display:none;"></div>
-
-              <div style="font-size:11px;font-weight:900;color:#9e9e9e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">Triage</div>
-              <div class="wa-triage-bar">
-                <button class="wa-triage-chip" data-cat="PRENOTAZIONE" onclick="waToggleCat('PRENOTAZIONE')">🎾 Prenotazione</button>
-                <button class="wa-triage-chip" data-cat="INFO"         onclick="waToggleCat('INFO')">ℹ️ Info</button>
-                <button class="wa-triage-chip" data-cat="RECLAMO"      onclick="waToggleCat('RECLAMO')">⚠️ Reclamo</button>
-                <button class="wa-triage-chip" data-cat="URGENTE"      onclick="waToggleCat('URGENTE')">🔴 Urgente</button>
-                <button class="wa-triage-chip" data-cat="DISDETTA"     onclick="waToggleCat('DISDETTA')">❌ Disdetta</button>
-                <button class="wa-triage-chip" data-cat="ALTRO"        onclick="waToggleCat('ALTRO')">💬 Altro</button>
-              </div>
-
-              <!-- Shadow Mode -->
-              <div class="wa-shadow-box">
-                <div class="wa-shadow-head">
-                  🤖 Suggerimento IA – Shadow Mode
-                  <span class="badge badge-muted" style="font-size:10px;text-transform:none;letter-spacing:0;">non inviato</span>
-                </div>
-                <div id="waDetShadow"><span class="wa-shadow-empty">Nessun suggerimento disponibile.</span></div>
-                <div id="waShadowEditArea" style="display:none;margin-top:8px;">
-                  <textarea id="waShadowEditText" style="width:100%;min-height:80px;font-size:13px;padding:8px;border:1px solid #dfe8f3;border-radius:6px;resize:vertical;box-sizing:border-box;"></textarea>
-                  <div style="display:flex;gap:8px;margin-top:6px;">
-                    <button class="btn-success small-btn" onclick="waSaveEditedRevision()">💾 Salva modifica</button>
-                    <button class="btn-secondary small-btn" onclick="waCancelEditRevision()">✕ Annulla</button>
-                  </div>
-                </div>
-                <div class="wa-shadow-actions" id="waDetShadowActions" style="display:none;">
-                  <div class="wa-tip">
-                    <button class="wa-val-btn approva" onclick="waApproveRevision()">👍 Approva</button>
-                    <div class="wa-tip-bubble">Conferma che la risposta suggerita è corretta e salva il voto positivo nel DB (nessun invio al cliente).</div>
-                  </div>
-                  <div class="wa-tip">
-                    <button class="wa-val-btn modifica" onclick="waEditRevision()">✏️ Modifica testo</button>
-                    <div class="wa-tip-bubble">Abilita la modifica del testo per correggere dettagli prima di salvare.</div>
-                  </div>
-                  <div class="wa-tip">
-                    <button class="wa-val-btn rifiuta" onclick="waRejectRevision()">👎 Rifiuta</button>
-                    <div class="wa-tip-bubble">Scarta la proposta dell'IA se ha sbagliato intento o dettagli e traccia l'errore nel DB.</div>
-                  </div>
-                  <button class="wa-val-btn modifica" onclick="waCopyShadow()" style="margin-left:auto;">📋 Copia</button>
-                </div>
-              </div>
-
-              <!-- Actions -->
-              <div class="wa-detail-actions">
-                <button class="btn-primary small-btn" id="waBtnReply" onclick="waOpenReply()">📤 Rispondi</button>
-                <button class="btn-secondary small-btn" onclick="waMarkDone()">✓ Segna completato</button>
-              </div>
-
-            </div>
-          </div>
-
-        </div><!-- /wa-inbound-grid -->
-      </div>
-      <!-- ════ end WA Inbound Dashboard ════ -->
-
-      <div class="section">
-        <div id="anchor-whatsapp-top" class="whatsapp-template-board"></div>
-        <div id="contactForm" style="display:none;"></div>
-      </div>
-    </div>
 
 
     <!-- WA reply modal -->
@@ -8752,7 +8581,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.464';
+    const APP_VERSION = '6.465';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -11345,11 +11174,6 @@ Grazie.`
         'partite chiuse': '#anchor-match-history-toolbar, #matchHistoryDashboard',
         'annullate': '#anchor-match-history-toolbar, #matchHistoryDashboard'
       },
-      contact: {
-        'messaggi whatsapp': '#anchor-whatsapp-top',
-        'template': '#anchor-whatsapp-top',
-        'testi': '#anchor-whatsapp-top'
-      },
       fillSlots: {
         'riempi slot': '#fillSlotsCalendar',
         'proposte partite': '#fillSlotsCalendar',
@@ -11669,7 +11493,6 @@ Grazie.`
               displayAssessment();
               if (!pmoIsPublicAccessMode()) refreshAssessmentSectionDataOnEnter();
             }
-            if (tabName === 'contact') renderWhatsAppTemplateManager();
             if (tabName === 'administration' && pmoAdminSectionKey(pmoAdminState.activeSection || 'users') === 'matchpoint-data') {
               refreshDataActionStatuses();
               scheduleMatchpointRoutineCloudRefresh({ force:true });
@@ -16347,7 +16170,7 @@ Grazie.`
           'apikey': supabaseKey,
           'Authorization': `Bearer ${staff.accessToken}`
         },
-        body: JSON.stringify({ action, ...payload, source:'pmo_assessment_email', appVersion:APP_VERSION, runtimeEnv:PMO_RUNTIME_ENV, ...(PMO_IS_TEST_ENV && { test_override_recipient: 'aprea.maurizio@gmail.com' /* TEST: destinatario di prova = Maurizio Aprea (email). Telefono test: vedi WA_TEST_OVERRIDE_NUMBER. */ }) })
+        body: JSON.stringify({ action, ...payload, source:'pmo_assessment_email', appVersion:APP_VERSION, runtimeEnv:PMO_RUNTIME_ENV, ...(PMO_IS_TEST_ENV && { test_override_recipient: 'aprea.maurizio@gmail.com' /* TEST: destinatario di prova = Maurizio Aprea (email). La riga gemella sul telefono non c'e' piu': il modulo WhatsApp e' stato tolto il 14/09/2026 (progetto abolito dal committente). */ }) })
       });
       const text = await response.text();
       let data = null;
@@ -22168,7 +21991,6 @@ Ciao ${firstName}! Ti va di giocare una partita di padel il ${niceDate} ${timeTe
       openWhatsAppWebSameTab(phone, message);
       markContacted(String(player.id), slotKey);
       markLunchInviteSent(String(player.id));
-      displayContactForm();
       renderInviteResponsesDashboard();
       showAlert(`📨 Invito segnato come inviato a ${playerFullName(player)}. Quando risponde, aggiorna lo stato con ✅ Sì, ❌ No o 🤔 Forse.`, 'success');
     }
@@ -22293,7 +22115,6 @@ Ciao ${firstName}! Ti va di giocare una partita di padel il ${niceDate} ${timeTe
       record.players[id].updatedAt = new Date().toISOString();
       record.updatedAt = new Date().toISOString();
       save('lunchMatchInvitations', lunchMatchInvitations);
-      displayContactForm();
       renderInviteResponsesDashboard();
       showAlert(`✅ Risposta aggiornata: ${record.players[id].name || id} → ${LUNCH_INVITE_STATUS_LABELS[status] || status}`, 'success');
     }
@@ -22386,73 +22207,6 @@ Per questa partita ti tengo come riserva e ti avviso subito se si libera un post
       if (navigator.clipboard) navigator.clipboard.writeText(message);
       window.__lastConfirmationMessage = message;
       showAlert('✅ Messaggio finale copiato. Puoi incollarlo nella chat WhatsApp.', 'success');
-    }
-    function renderLunchInvitationPanel(record) {
-      const summary = getLunchInvitationSummary(record);
-      const complete = summary.confirmed >= 4;
-      const confirmation = complete ? `<div style="margin-top:10px;"><button class="btn-success" onclick="setActionAnchor(this); copyLunchConfirmationMessage()">📋 Copia messaggio finale</button></div>` : '';
-      return `<div class="alert ${complete ? 'alert-success' : 'alert-info'}">
-        <strong>📋 Risposte inviti</strong><br>
-        Confermati: <strong>${summary.confirmed}/4</strong> · Invitati/in attesa: <strong>${summary.contacted + summary.pending}</strong> · Forse: <strong>${summary.maybe}</strong> · Riserve: <strong>${summary.reserve}</strong> · Non possono: <strong>${summary.declined}</strong><br>
-        <span class="muted">Le risposte arrivano su WhatsApp: dopo averle lette, segnale qui con i pulsanti. Dopo ✅ Sì / ❌ No / 🤔 Forse compare il messaggio standard “💬 Rispondi”.</span>
-        ${complete ? '<br><strong>✅ Partita completa.</strong>' : ''}
-        ${confirmation}
-      </div>`;
-    }
-
-    function displayContactForm() {
-      if (!currentMatchContext.date) return showAlert('⚠️ Crea prima una partita', 'warning');
-      const {date,time,field,alreadyBooked,playersNeeded} = currentMatchContext;
-      const endTime = getCurrentMatchEndTime();
-      const candidates = getContactCandidates();
-      const record = ensureLunchInvitationsForCurrentMatch(candidates);
-      const slotKey = getSlotKey(date, field, time);
-      const htmlRows = candidates.map(p => {
-        const status = getLunchInvitePlayerStatus(p.id);
-        return `<tr>
-          <td><strong>${escapeHtml(playerFullName(p))}</strong></td>
-          <td>${escapeHtml(p.level)}</td>
-          <td>${escapeHtml(p.gender)}</td>
-          <td>${escapeHtml(p.phone)}</td>
-          <td>${lunchInviteStatusBadge(status)}</td>
-          <td class="actions">
-            ${(status === 'pending' || status === 'contacted')
-              ? `<button class="btn-primary small-btn" onclick="setActionAnchor(this); openLunchPlayerWhatsApp('${escapeHtml(String(p.id))}')">💬 Invito</button>
-                 <button class="btn-secondary small-btn" onclick="setActionAnchor(this); copyLunchInviteMessage('${escapeHtml(String(p.id))}')">📋 Testo invito</button>`
-              : `<button class="btn-primary small-btn" onclick="setActionAnchor(this); openLunchStatusReplyWhatsApp('${escapeHtml(String(p.id))}')">💬 Rispondi</button>
-                 <button class="btn-secondary small-btn" onclick="setActionAnchor(this); copyLunchStatusReplyMessage('${escapeHtml(String(p.id))}')">📋 Testo risposta</button>`}
-            <button class="btn-secondary small-btn" onclick="setActionAnchor(this); copyPhone('${escapeHtml(p.phone)}')">📋 Numero</button>
-          </td>
-          <td class="actions">
-            <button class="btn-success small-btn" onclick="setActionAnchor(this); setLunchInviteStatus('${escapeHtml(String(p.id))}', 'confirmed')">✅ Sì</button>
-            <button class="btn-danger small-btn" onclick="setActionAnchor(this); setLunchInviteStatus('${escapeHtml(String(p.id))}', 'declined')">❌ No</button>
-            <button class="btn-warning small-btn" onclick="setActionAnchor(this); setLunchInviteStatus('${escapeHtml(String(p.id))}', 'maybe')">🤔 Forse</button>
-            <button class="btn-secondary small-btn" onclick="setActionAnchor(this); setLunchInviteStatus('${escapeHtml(String(p.id))}', 'pending')">⏳ Attesa</button>
-          </td>
-        </tr>`;
-      }).join('');
-      document.getElementById('contactForm').innerHTML = `<div class="alert alert-info"><strong>Partita:</strong> ${date} ${time}${endTime ? ' - ' + endTime : ''} - ${field}<br><span class="muted">I pulsanti WhatsApp usano una scheda controllata dalla web app. La prima volta può aprire una scheda WhatsApp Web; poi la app prova a riusare sempre quella, aprendo direttamente la chat del giocatore con testo già pronto.</span></div>
-        ${renderLunchInvitationPanel(record)}
-        ${alreadyBooked.length ? `<div class="alert alert-success"><strong>Già confermati:</strong><br>${alreadyBooked.map(p => '• ' + escapeHtml(playerFullName(p))).join('<br>')}</div>` : ''}
-        <p><strong>Da trovare:</strong> ${playersNeeded}. <strong>Contatti suggeriti:</strong> ${candidates.length}</p>
-        ${candidates.length ? `<table><tr><th>Giocatore</th><th>Livello</th><th>Sesso</th><th>Telefono</th><th>Risposta</th><th>Messaggi</th><th>Segna risposta</th></tr>${htmlRows}</table><button class="btn-primary" onclick="setActionAnchor(this); exportContactsCSV()">📥 Esporta CSV</button>` : '<div class="alert alert-warning">Nessun contatto disponibile con telefono e limiti settimanali.</div>'}`;
-      switchTab('contact');
-    }
-    function copyPhone(phone) {
-      if (navigator.clipboard) navigator.clipboard.writeText(phone);
-      showAlert('✅ Numero copiato', 'success');
-    }
-    function exportContactsCSV() {
-      const {date,time,field} = currentMatchContext;
-      const endTime = getCurrentMatchEndTime();
-      const candidates = getContactCandidates();
-      if (!candidates.length) return showAlert('⚠️ Nessun contatto da esportare', 'warning');
-      const csv = 'Nome,Telefono,Email,Livello,Sesso,Link WhatsApp Web\n' + candidates.map(p => {
-        const link = buildWhatsAppWebUrl(p.phone, buildLunchMatchWhatsAppMessage(p, date, time, endTime, currentMatchContext.sourceGroupName, currentMatchContext.sourceGroupFormat));
-        return `"${playerFullName(p)}","${p.phone || ''}","${p.email || ''}","${p.level}","${p.gender}","${link}"`;
-      }).join('\n');
-      downloadText(csv, `Contatti_${date}_${time.replace(':','')}.csv`, 'text/csv');
-      showAlert('✅ CSV contatti esportato', 'success');
     }
 
 
@@ -22655,7 +22409,6 @@ Per questa partita ti tengo come riserva e ti avviso subito se si libera un post
       if (status === 'confirmed' && getLunchInvitationSummary(record).confirmed >= 4 && record.status !== 'closed') record.status = 'complete';
       saveLunchInvitationRecord(record);
       renderInviteResponsesDashboard();
-      if (currentMatchContext && getLunchMatchInviteKey() === recordKey) displayContactForm();
       showAlert(`✅ Risposta aggiornata: ${record.players[id].name || id} → ${LUNCH_INVITE_STATUS_LABELS[status] || status}`, 'success');
     }
     function openLunchInviteWhatsAppFromRecord(recordKey, playerId) {
@@ -22676,7 +22429,6 @@ Per questa partita ti tengo come riserva e ti avviso subito se si libera un post
       if (!record.status || record.status === 'created') record.status = 'inviting';
       saveLunchInvitationRecord(record);
       renderInviteResponsesDashboard();
-      if (currentMatchContext && getLunchMatchInviteKey() === recordKey) displayContactForm();
       showAlert('📨 Invito aperto in WhatsApp Web e segnato come “Invitato”.', 'success');
     }
     function openLunchStatusReplyWhatsAppFromRecord(recordKey, playerId) {
@@ -23128,7 +22880,6 @@ Per questa partita ti tengo come riserva e ti avviso subito se si libera un post
       saveLunchInvitationRecord(record);
       window.__inviteWorkContext = { ...(window.__inviteWorkContext || {}), recordKey:String(recordKey), sheetOpen:true, panel:'players' };
       renderInviteResponsesDashboard();
-      if (currentMatchContext && getLunchMatchInviteKey() === recordKey) displayContactForm();
       showAlert(`✅ Aggiunto alla partita: ${matchDisplayNameForRecord(player, record)}.`, 'success');
     }
 
@@ -23307,7 +23058,6 @@ Per questa partita ti tengo come riserva e ti avviso subito se si libera un post
       saveLunchInvitationRecord(record);
       window.__inviteWorkContext = { ...(window.__inviteWorkContext || {}), recordKey:String(recordKey), sheetOpen:true, panel:'players' };
       renderInviteResponsesDashboard();
-      if (currentMatchContext && getLunchMatchInviteKey() === recordKey) displayContactForm();
       const notes = option.notes?.length ? ` (${option.notes.join(', ')})` : '';
       showAlert(`✅ Aggiunto alla partita: ${matchDisplayNameForRecord(player, record)}${notes}.`, 'success');
     }
@@ -23324,7 +23074,6 @@ Per questa partita ti tengo come riserva e ti avviso subito se si libera un post
       if (!record.status || record.status === 'created') record.status = 'inviting';
       saveLunchInvitationRecord(record);
       renderInviteResponsesDashboard();
-      if (currentMatchContext && getLunchMatchInviteKey() === recordKey) displayContactForm();
       showAlert(`✅ Aggiunto alla partita: ${matchDisplayNameForRecord(option.player, record)}.`, 'success');
     }
 
@@ -23379,7 +23128,6 @@ Per questa partita ti tengo come riserva e ti avviso subito se si libera un post
       if (!record.status || record.status === 'created') record.status = 'inviting';
       saveLunchInvitationRecord(record);
       renderInviteResponsesDashboard();
-      if (currentMatchContext && getLunchMatchInviteKey() === recordKey) displayContactForm();
       showAlert(`✅ Aggiunti ${selected.length} altri nominativi. Ora puoi invitarli dalla tabella della partita.`, 'success');
     }
 
@@ -23412,7 +23160,6 @@ Per questa partita ti tengo come riserva e ti avviso subito se si libera un post
       if (!record.status || record.status === 'created') record.status = 'inviting';
       saveLunchInvitationRecord(record);
       renderInviteResponsesDashboard();
-      if (currentMatchContext && getLunchMatchInviteKey() === recordKey) displayContactForm();
       showAlert(`✅ Aggiunto alla partita: ${matchDisplayNameForRecord(p, record)}.`, 'success');
     }
 
@@ -40664,771 +40411,6 @@ Per confermare scrivi ELIMINA.`);
 
   </script>
 
-  <!-- ════ WA Inbound Dashboard ════ -->
-  <script>
-  (function () {
-    /* ── Config ── */
-    const WA_URL  = 'https://aylykijfirtegyxzdwgu.supabase.co';
-    const WA_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5bHlraWpmaXJ0ZWd5eHpkd2d1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDA4OTcsImV4cCI6MjA5NDg3Njg5N30._wJ9l8-yHbDtcjSe5rNT2qRKK6bfdyERQKI_D2EljEg';
-    // NB: URL e token dello Shadow backend NON sono più nel client (erano in chiaro nel
-    // sorgente pubblico). Le chiamate /webhook/* passano dall'edge autenticata
-    // wa-shadow-proxy, che tiene il token come secret server-side (vedi waShadowCall).
-    // Dal v6.104 anche LISTA e TRIAGE passano dal proxy (azioni inbox-list/inbox-update):
-    // le tabelle whatsapp_* hanno RLS deny-all e l'anon key (WA_KEY, usata solo per la
-    // RPC aggregata wa_usage_stats della card Consumi) non legge più i messaggi.
-
-    /* Detect test env using the same logic as the main app */
-    function isTestEnv() {
-      try {
-        const p = new URLSearchParams(window.location.search || '');
-        const r = String(p.get('env') || p.get('ambiente') || window.PMO_FORCE_ENV || '').trim().toLowerCase();
-        if (['test','staging','collaudo'].includes(r)) return true;
-        if (/\/(?:test|staging|collaudo)(?:\/|\.html?$)/i.test(window.location.pathname || '')) return true;
-        // Come sopra: TEST su un indirizzo suo. Qui NON è cosmetico — da questo dipende
-        // waTestOverrideNumero(), che in TEST dirotta i messaggi sul numero interno: se
-        // tornasse false, un invio di prova finirebbe al CLIENTE VERO.
-        if (typeof pmoIsTestHostname === 'function' && pmoIsTestHostname()) return true;
-      } catch {}
-      return false;
-    }
-
-    /* ── Test-env safety overrides (HARDCODED — non sovrascrivibili) ── */
-    const WA_TEST_OVERRIDE_NUMBER = '+393357615855'; // Maurizio — solo env=test
-    function waTestOverrideNumero(realNumber) {
-      return isTestEnv() ? WA_TEST_OVERRIDE_NUMBER : realNumber;
-    }
-
-    /* ── State ── */
-    let waMsgs     = [];
-    let waFiltered = [];
-    let waActiveId = null;
-    let waActiveMsg = null;
-    let waInited   = false;
-    let waActivePill    = 'tutti';
-    let waLoadedOnce    = false;
-    let waPollTimer     = null;
-
-    /* ── Metadata ── */
-    const WA_CAT_META = {
-      PRENOTAZIONE: { cls:'badge-success', lbl:'🎾 Prenotazione' },
-      INFO:         { cls:'badge-info',    lbl:'ℹ️ Info' },
-      RECLAMO:      { cls:'badge-danger',  lbl:'⚠️ Reclamo' },
-      URGENTE:      { cls:'badge-warning', lbl:'🔴 Urgente' },
-      DISDETTA:     { cls:'badge-warning', lbl:'❌ Disdetta' },
-      ALTRO:             { cls:'badge-muted',   lbl:'💬 Altro' },
-      SPAM_NOT_RELEVANT: { cls:'badge-muted',   lbl:'🚫 Spam' },
-    };
-    const WA_STATUS_META = {
-      'Da elaborare': { cls:'badge-info',    lbl:'Da elaborare' },
-      'In revisione': { cls:'badge-warning', lbl:'In revisione' },
-      'Completato':   { cls:'badge-muted',   lbl:'Completato' },
-      'Risposto':     { cls:'badge-success', lbl:'Risposto' },
-    };
-    function waCatBadges(cats) {
-      if (!cats || !cats.length) return '<span class="badge badge-muted">—</span>';
-      return cats.map(c => {
-        const m = WA_CAT_META[c] || { cls:'badge-muted', lbl:c };
-        return `<span class="badge ${m.cls}">${m.lbl}</span>`;
-      }).join(' ');
-    }
-    function waStatusBadge(s) {
-      const m = WA_STATUS_META[s] || { cls:'badge-muted', lbl: s || '?' };
-      return `<span class="badge ${m.cls}">${m.lbl}</span>`;
-    }
-    function waFmtTime(ts) {
-      if (!ts) return '–';
-      try {
-        const d = new Date(ts), t = new Date();
-        const same = d.toDateString() === t.toDateString();
-        return same
-          ? d.toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit' })
-          : d.toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit' }) + ' ' + d.toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit' });
-      } catch { return ts; }
-    }
-    function waGetWaitInfo(ts) {
-      if (!ts) return { cls:'wa-wait-ok', txt:'' };
-      const mins = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
-      if (mins >= 20) return { cls:'wa-wait-crit', txt:`⏱ In attesa da ${mins} min` };
-      if (mins >= 10) return { cls:'wa-wait-warn', txt:`⏱ In attesa da ${mins} min` };
-      return { cls:'wa-wait-ok', txt:`In attesa da ${mins} min` };
-    }
-    function waEsc(s) {
-      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
-
-    /* ── Toast ── */
-    function waToast(txt, type='') {
-      let area = document.getElementById('waToastArea');
-      if (!area) {
-        area = document.createElement('div');
-        area.id = 'waToastArea';
-        area.className = 'wa-toast-area';
-        document.body.appendChild(area);
-      }
-      const t = document.createElement('div');
-      t.className = 'wa-toast' + (type ? ' '+type : '');
-      t.textContent = txt;
-      area.appendChild(t);
-      setTimeout(() => t.remove(), 3200);
-    }
-
-    /* ── Realtime status ── */
-    function waSetRt(state, lbl) {
-      const dot = document.getElementById('waRtDot');
-      const lab = document.getElementById('waRtLabel');
-      if (dot) dot.className = 'wa-rt-dot' + (state ? ' '+state : '');
-      if (lab) lab.textContent = lbl;
-    }
-    function waSetStatus(txt) {
-      const el = document.getElementById('waStatusBar');
-      if (el) el.textContent = txt;
-    }
-
-    /* ── Stats ── */
-    function waUpdateStats() {
-      const g = id => document.getElementById(id);
-      if (g('waStatTotal'))   g('waStatTotal').textContent   = waMsgs.length;
-      if (g('waStatNew'))     g('waStatNew').textContent     = waMsgs.filter(m => m.status === 'Da elaborare' || !m.status).length;
-      if (g('waStatReplied')) g('waStatReplied').textContent = waMsgs.filter(m => m.status === 'Risposto').length;
-      if (g('waStatUrgent'))  g('waStatUrgent').textContent  = waMsgs.filter(m => (m.categories||[]).includes('URGENTE')).length;
-    }
-
-    /* ── Load messages ──
-       Via wa-shadow-proxy (JWT staff → service_role lato server): l'anon non legge
-       le tabelle whatsapp_* (RLS deny-all, voluto). opts.quiet = polling/boot:
-       niente placeholder "Caricamento…" e, finché non c'è un primo caricamento
-       riuscito, l'errore di login mostra un invito e non un errore rosso. */
-    window.waLoadMessages = async function(opts) {
-      const quiet = !!(opts && opts.quiet);
-      const listEl = document.getElementById('waMsgList');
-      if (!listEl) return;
-      if (!quiet) listEl.innerHTML = '<div class="wa-detail-placeholder">Caricamento…</div>';
-      try {
-        const { ok, status, data } = await waShadowCall('inbox-list', { limit: 100 });
-        if (!ok || !data.success) throw new Error(data.errore || `HTTP ${status}`);
-        const fresh = Array.isArray(data.messages) ? data.messages : [];
-        const byId = new Map(waMsgs.map(m => [String(m.id), m]));
-        const prevIds = waLoadedOnce ? new Set(byId.keys()) : null;
-        /* Merge riga DB su stato locale: i flag effimeri (_fallback_ia, …) sopravvivono */
-        waMsgs = fresh.map(f => {
-          const old = byId.get(String(f.id));
-          return old ? { ...old, ...f } : f;
-        });
-        if (waActiveId) {
-          const sel = waMsgs.find(m => String(m.id) === String(waActiveId));
-          if (sel) { waActiveMsg = sel; waRenderDetail(waActiveMsg); }
-        }
-        waApplyFilters();
-        waUpdateStats();
-        waUpdatePillCounts();
-        waSetStatus(`${waMsgs.length} messaggi · ${new Date().toLocaleTimeString('it-IT')}`);
-        waSetRt('connected', 'Aggiornamento automatico (60s)');
-        if (prevIds) {
-          const nuovi = waMsgs.filter(m => !prevIds.has(String(m.id)));
-          if (nuovi.length === 1) waToast('📲 Nuovo messaggio da ' + (nuovi[0].sender_name || nuovi[0].sender_number || '–'));
-          else if (nuovi.length > 1) waToast(`📲 ${nuovi.length} nuovi messaggi`);
-        }
-        waLoadedOnce = true;
-      } catch (err) {
-        const msg = String(err?.message || err);
-        if (quiet && waLoadedOnce) return; /* polling fallito: tieni la lista che c'è */
-        /* "Accedi…" = niente token locale; "Autenticazione staff richiesta." = 401
-           dell'edge (sessione scaduta/stantia): in entrambi i casi serve il login. */
-        if (/^Accedi|Autenticazione staff richiesta/.test(msg)) {
-          listEl.innerHTML = '<div class="wa-detail-placeholder">🔐 Accedi come staff per vedere i messaggi.</div>';
-          waSetRt('', 'In attesa di login');
-          waSetStatus('Login staff richiesto');
-        } else {
-          listEl.innerHTML = `<div class="wa-detail-placeholder" style="color:#c62828;">❌ ${waEsc(msg)}</div>`;
-          waSetRt('error', 'Errore');
-          waSetStatus('Errore caricamento');
-        }
-      }
-    };
-
-    /* ── Filters & render list ── */
-    window.waApplyFilters = function() {
-      const search = (document.getElementById('waFilterSearch')?.value || '').toLowerCase();
-      const status = document.getElementById('waFilterStatus')?.value || '';
-      waFiltered = waMsgs.filter(m => {
-        const cats = m.categories || [];
-        /* Spam hidden by default unless spam pill active */
-        if (waActivePill !== 'SPAM_NOT_RELEVANT' && cats.includes('SPAM_NOT_RELEVANT')) return false;
-        const ok1 = !search || (m.sender_name||'').toLowerCase().includes(search) || (m.sender_number||'').toLowerCase().includes(search) || (m.message_text||'').toLowerCase().includes(search);
-        const ok2 = waActivePill === 'tutti' || waActivePill === 'SPAM_NOT_RELEVANT'
-          ? true
-          : cats.includes(waActivePill) || (waActivePill === 'INFO' && cats.some(c => ['INFO','RECLAMO','URGENTE','ALTRO'].includes(c)));
-        const ok3 = !status || m.status === status;
-        return ok1 && ok2 && ok3;
-      });
-      waRenderList();
-    };
-
-    function waRenderList() {
-      const el = document.getElementById('waMsgList');
-      if (!el) return;
-      if (!waFiltered.length) { el.innerHTML = '<div class="wa-detail-placeholder">Nessun messaggio trovato.</div>'; return; }
-      el.innerHTML = waFiltered.map(m => {
-        const active = m.id === waActiveId ? ' active' : '';
-        const name   = waEsc(m.sender_name   || 'Sconosciuto');
-        const phone  = waEsc(m.sender_number || '');
-        const body   = waEsc((m.message_text || '').substring(0, 80));
-        const time   = waFmtTime(m.created_at);
-        const wait   = waGetWaitInfo(m.created_at);
-        return `<div class="wa-msg-row${active}" data-id="${waEsc(m.id)}" onclick="waSelect('${waEsc(m.id)}')">
-          <div class="wa-msg-row-top">
-            <div><span class="wa-msg-sender">${name}</span>${phone ? `<span class="wa-msg-phone"> · ${phone}</span>` : ''}</div>
-            <span class="wa-msg-time">${time}</span>
-          </div>
-          <div class="wa-msg-preview">${body || '<em>messaggio vuoto</em>'}</div>
-          <div class="wa-msg-badges">${waCatBadges(m.categories)} ${waStatusBadge(m.status||'Da elaborare')}</div>
-          ${wait.txt ? `<div class="${wait.cls}" style="margin-top:3px;">${wait.txt}</div>` : ''}
-        </div>`;
-      }).join('');
-    }
-
-    /* ── Pill filter ── */
-    window.waPillFilter = function(pill) {
-      waActivePill = pill;
-      document.querySelectorAll('#waPillRow .wa-pill').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.pill === pill);
-      });
-      waApplyFilters();
-    };
-    function waUpdatePillCounts() {
-      const counts = {};
-      waMsgs.forEach(m => {
-        (m.categories || []).forEach(c => { counts[c] = (counts[c] || 0) + 1; });
-      });
-      const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val > 0 ? val : ''; };
-      set('waPillCountPRENOTAZIONE', counts['PRENOTAZIONE'] || 0);
-      set('waPillCountDISDETTA',     counts['DISDETTA']     || 0);
-      set('waPillCountINFO',         (counts['INFO']||0) + (counts['RECLAMO']||0) + (counts['URGENTE']||0) + (counts['ALTRO']||0));
-      set('waPillCountSPAM',         counts['SPAM_NOT_RELEVANT'] || 0);
-    }
-    /* ── Select message ── */
-    window.waSelect = function(id) {
-      waActiveId  = id;
-      waActiveMsg = waMsgs.find(m => String(m.id) === String(id)) || null;
-      document.querySelectorAll('.wa-msg-row').forEach(r => r.classList.toggle('active', r.dataset.id === String(id)));
-      if (!waActiveMsg) return;
-      waRenderDetail(waActiveMsg);
-    };
-
-    function waRenderDetail(m) {
-      document.getElementById('waDetailPlaceholder').style.display = 'none';
-      document.getElementById('waDetailContent').style.display     = 'block';
-      document.getElementById('waDetName').textContent    = m.sender_name   || 'Sconosciuto';
-      document.getElementById('waDetPhone').textContent   = m.sender_number || 'Numero non disponibile';
-      document.getElementById('waDetTime').textContent    = m.created_at ? 'Ricevuto ' + new Date(m.created_at).toLocaleString('it-IT') : '';
-      document.getElementById('waDetBody').textContent    = m.message_text  || '(messaggio vuoto)';
-      document.getElementById('waDetStatusBadge').innerHTML = waStatusBadge(m.status||'Da elaborare');
-      const anaEl = document.getElementById('waDetAnalysis');
-      if (m.triage_analysis) { anaEl.style.display='block'; anaEl.textContent='🔍 ' + m.triage_analysis; }
-      else anaEl.style.display='none';
-
-      /* Triage chips */
-      const active = m.categories || [];
-      document.querySelectorAll('.wa-triage-chip').forEach(chip => {
-        const c = chip.dataset.cat;
-        chip.className = 'wa-triage-chip';
-        if (active.includes(c)) chip.classList.add('active-' + c);
-      });
-
-      /* Shadow mode */
-      const shadowEl  = document.getElementById('waDetShadow');
-      const shadowAct = document.getElementById('waDetShadowActions');
-      shadowEl.innerHTML = '';
-      shadowAct.style.display = 'none';
-      document.getElementById('waShadowEditArea').style.display = 'none';
-
-      const haiVarianteScelta = m.variante_scelta && Array.isArray(m.varianti_ia) && m.varianti_ia.length > 0;
-      const haiVarianti = !haiVarianteScelta && Array.isArray(m.varianti_ia) && m.varianti_ia.length > 0;
-
-      if (haiVarianteScelta) {
-        /* Stato 3 — variante scelta: mostra testo + bottoni validazione */
-        const v = m.varianti_ia.find(x => x.indice === m.variante_scelta);
-        if (v) {
-          shadowEl.innerHTML = `<div class="wa-shadow-text">${waEsc(v.testo)}</div>`;
-          shadowAct.style.display = 'flex';
-        }
-      } else if (haiVarianti) {
-        /* Stato 2 — varianti generate, nessuna scelta: mostra 3 card */
-        const cid = m.contact_id || '';
-        const cards = m.varianti_ia.map(v => `
-          <div class="wa-variant-card">
-            <div class="wa-variant-head">
-              <span class="wa-variant-badge">Var. ${v.indice}${v.stile ? ' · ' + waEsc(v.stile) : ''}</span>
-              <button class="wa-variant-scegli" onclick="waScelgiVariante(${v.indice},'${waEsc(cid)}')">✓ Scegli</button>
-            </div>
-            <div class="wa-variant-testo">${waEsc(v.testo)}</div>
-            ${v.motivazione ? `<div class="wa-variant-motiv">💡 ${waEsc(v.motivazione)}</div>` : ''}
-          </div>`).join('');
-        shadowEl.innerHTML = `<div class="wa-variant-cards">${cards}</div>`;
-      } else if (m._fallback_ia || (m.richiede_operatore && !haiVarianteScelta && !haiVarianti)) {
-        /* Stato 0 — fallback IA o handover senza varianti: operatore deve intervenire */
-        const motivo = m._fallback_motivo || '';
-        shadowEl.innerHTML = `<div class="wa-fallback-alert">
-          <strong>L'IA ha passato la mano su questa chat per mancanza di dati.</strong>
-          ${motivo ? `<div style="margin-top:3px;font-size:12px;">${waEsc(motivo)}</div>` : ''}
-          <div style="margin-top:6px;">Rispondi manualmente.</div>
-        </div>`;
-      } else {
-        /* Stato 1 — nessuna variante: pulsante Genera */
-        shadowEl.innerHTML = `<button class="wa-generate-btn" id="waBtnGenera" onclick="waGeneraVarianti()">🤖 Genera varianti IA</button>`;
-      }
-
-      document.getElementById('waBtnReply').disabled = m.status === 'Risposto';
-    }
-
-    /* ── Update triage via proxy ──
-       Whitelist server-side: categories | status | stato_revisione | risposta_suggerita_ia. */
-    async function waInboxUpdate(id, fields) {
-      const { ok, status, data } = await waShadowCall('inbox-update', { id, fields });
-      if (!ok || !data.success) throw new Error(data.errore || `HTTP ${status}`);
-      return data.message;
-    }
-
-    /* ── Toggle category ── */
-    window.waToggleCat = async function(cat) {
-      if (!waActiveMsg) return;
-      const cur = waActiveMsg.categories || [];
-      const upd = cur.includes(cat) ? cur.filter(c => c !== cat) : [...cur, cat];
-      try {
-        await waInboxUpdate(waActiveMsg.id, { categories: upd });
-        waActiveMsg.categories = upd;
-        const i = waMsgs.findIndex(m => m.id === waActiveMsg.id);
-        if (i !== -1) waMsgs[i].categories = upd;
-        document.querySelectorAll('.wa-triage-chip').forEach(chip => {
-          chip.className = 'wa-triage-chip';
-          if (upd.includes(chip.dataset.cat)) chip.classList.add('active-' + chip.dataset.cat);
-        });
-        waApplyFilters();
-        waToast('Categoria aggiornata', 'ok');
-      } catch (err) { waToast('Errore: ' + (err.message||err), 'err'); }
-    };
-
-    /* ── Mark done ── */
-    window.waMarkDone = async function() {
-      if (!waActiveMsg) return;
-      try {
-        await waInboxUpdate(waActiveMsg.id, { status:'Completato' });
-        waActiveMsg.status = 'Completato';
-        const i = waMsgs.findIndex(m => m.id === waActiveMsg.id);
-        if (i !== -1) waMsgs[i].status = 'Completato';
-        document.getElementById('waDetStatusBadge').innerHTML = waStatusBadge('Completato');
-        waApplyFilters(); waUpdateStats();
-        waToast('Segnato come completato', 'ok');
-      } catch (err) { waToast('Errore: ' + (err.message||err), 'err'); }
-    };
-
-    /* ── Shadow actions ── */
-    function waGetShadowText() {
-      const m = waActiveMsg;
-      if (!m) return '';
-      if (m.variante_scelta && Array.isArray(m.varianti_ia)) {
-        const v = m.varianti_ia.find(x => x.indice === m.variante_scelta);
-        if (v?.testo) return v.testo;
-      }
-      return m.risposta_suggerita_ia || '';
-    }
-    window.waCopyShadow = function() {
-      const t = waGetShadowText();
-      if (!t) return;
-      navigator.clipboard.writeText(t).then(() => waToast('Copiato negli appunti', 'ok')).catch(() => waToast('Copia non riuscita', 'err'));
-    };
-    window.waUseShadow = function() {
-      const t = waGetShadowText();
-      if (!t) return;
-      document.getElementById('waReplyText').value = t;
-      waOpenReply();
-    };
-
-    /* ── Revision (Shadow Mode validation) ── */
-    window.waApproveRevision = async function() {
-      if (!waActiveMsg) return;
-      try {
-        await waInboxUpdate(waActiveMsg.id, { stato_revisione: 'approvato' });
-        waActiveMsg.stato_revisione = 'approvato';
-        const i = waMsgs.findIndex(m => m.id === waActiveMsg.id);
-        if (i !== -1) waMsgs[i].stato_revisione = 'approvato';
-        waToast('👍 Risposta approvata', 'ok');
-      } catch (err) { waToast('Errore: ' + (err.message||err), 'err'); }
-    };
-    window.waRejectRevision = async function() {
-      if (!waActiveMsg) return;
-      try {
-        await waInboxUpdate(waActiveMsg.id, { stato_revisione: 'rifiutato' });
-        waActiveMsg.stato_revisione = 'rifiutato';
-        const i = waMsgs.findIndex(m => m.id === waActiveMsg.id);
-        if (i !== -1) waMsgs[i].stato_revisione = 'rifiutato';
-        waToast('👎 Proposta rifiutata', 'ok');
-      } catch (err) { waToast('Errore: ' + (err.message||err), 'err'); }
-    };
-    window.waEditRevision = function() {
-      const current = waActiveMsg?.risposta_suggerita_ia || '';
-      const area = document.getElementById('waShadowEditArea');
-      const ta   = document.getElementById('waShadowEditText');
-      if (!area || !ta) return;
-      ta.value = current;
-      area.style.display = 'block';
-      ta.focus();
-    };
-    window.waSaveEditedRevision = async function() {
-      if (!waActiveMsg) return;
-      const txt = (document.getElementById('waShadowEditText')?.value || '').trim();
-      if (!txt) { waToast('Testo vuoto', 'err'); return; }
-      try {
-        await waInboxUpdate(waActiveMsg.id, { risposta_suggerita_ia: txt, stato_revisione: 'modificato' });
-        waActiveMsg.risposta_suggerita_ia = txt;
-        waActiveMsg.stato_revisione = 'modificato';
-        const i = waMsgs.findIndex(m => m.id === waActiveMsg.id);
-        if (i !== -1) { waMsgs[i].risposta_suggerita_ia = txt; waMsgs[i].stato_revisione = 'modificato'; }
-        document.getElementById('waDetShadow').innerHTML = `<div class="wa-shadow-text">${waEsc(txt)}</div>`;
-        document.getElementById('waShadowEditArea').style.display = 'none';
-        waToast('✅ Testo salvato', 'ok');
-      } catch (err) { waToast('Errore: ' + (err.message||err), 'err'); }
-    };
-    window.waCancelEditRevision = function() {
-      const area = document.getElementById('waShadowEditArea');
-      if (area) area.style.display = 'none';
-    };
-
-    /* ── Shadow Mode backend integration ── */
-
-    /** Proxy autenticato verso lo Shadow backend: il token NON è più nel client,
-     *  vive come secret nell'edge function wa-shadow-proxy. Passa il JWT staff.
-     *  Ritorna { status, ok, data } preservando lo status (es. 429). */
-    async function waShadowCall(action, payload) {
-      const { supabaseUrl, supabaseKey } = await loadAssessmentSupabaseConfig();
-      const staff = await pmoRequireStaffPermission('', 'usare la messaggistica WhatsApp');
-      const resp = await fetch(`${supabaseUrl}/functions/v1/wa-shadow-proxy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': supabaseKey, 'Authorization': `Bearer ${staff.accessToken}` },
-        body: JSON.stringify({ action, payload }),
-      });
-      const data = await resp.json().catch(() => ({}));
-      return { status: resp.status, ok: resp.ok, data };
-    }
-
-    /** Chiama POST /webhook/suggest → genera 3 varianti IA */
-    window.waGeneraVarianti = async function() {
-      if (!waActiveMsg) return;
-      const btn = document.getElementById('waBtnGenera');
-      if (btn) { btn.disabled = true; btn.textContent = '⏳ Generazione in corso…'; }
-      try {
-        const { status, ok, data } = await waShadowCall('suggest', { message_id: waActiveMsg.id });
-        if (status === 429) throw new Error(data.errore || '⏱ Limite IA: riprova tra un minuto.');
-        if (!ok || !data.success) throw new Error(data.errore || `HTTP ${status}`);
-        /* Fallback IA: dati insufficienti, l'operatore deve rispondere manualmente */
-        if (data.fallback) {
-          waActiveMsg._fallback_ia    = true;
-          waActiveMsg._fallback_motivo = data.motivo || '';
-          waActiveMsg.varianti_ia     = null;
-          waActiveMsg.contact_id      = data.contatto?.id || waActiveMsg.contact_id;
-          const fi = waMsgs.findIndex(m => m.id === waActiveMsg.id);
-          if (fi !== -1) { waMsgs[fi]._fallback_ia = true; waMsgs[fi]._fallback_motivo = waActiveMsg._fallback_motivo; waMsgs[fi].contact_id = waActiveMsg.contact_id; }
-          waRenderDetail(waActiveMsg);
-          waToast('L\'IA ha passato la mano — rispondere manualmente', 'err');
-          return;
-        }
-        /* Aggiorna stato locale */
-        waActiveMsg.varianti_ia  = data.varianti;
-        waActiveMsg.contact_id   = data.contatto?.id || waActiveMsg.contact_id;
-        const i = waMsgs.findIndex(m => m.id === waActiveMsg.id);
-        if (i !== -1) { waMsgs[i].varianti_ia = data.varianti; waMsgs[i].contact_id = waActiveMsg.contact_id; }
-        waRenderDetail(waActiveMsg);
-        waToast('✅ 3 varianti generate dall\'IA', 'ok');
-      } catch (err) {
-        waToast('Errore generazione: ' + (err.message || err), 'err');
-        if (btn) { btn.disabled = false; btn.textContent = '🤖 Genera varianti IA'; }
-      }
-    };
-
-    /** Chiama POST /webhook/approve-suggestion → salva variante scelta + avvia apprendimento profilo,
-     *  poi POST /webhook/send → invia il testo al numero WhatsApp del contatto (invio MANUALE staff). */
-    window.waScelgiVariante = async function(indice, contactId) {
-      if (!waActiveMsg) return;
-
-      /* Blocca tutti i pulsanti Scegli per prevenire doppio click */
-      const scegliButtons = document.querySelectorAll('.wa-variant-scegli');
-      scegliButtons.forEach(b => { b.disabled = true; b.textContent = '⏳ Invio…'; });
-
-      try {
-        /* Step 1 — approva variante sul backend (aggiorna profilo IA) */
-        const approveBody = { message_id: waActiveMsg.id, variante_indice: indice };
-        if (contactId) approveBody.contact_id = contactId;
-        const { ok, data, status } = await waShadowCall('approve-suggestion', approveBody);
-        if (!ok || !data.success) throw new Error(data.errore || `HTTP ${status}`);
-
-        /* Step 2 — recupera testo variante e invia via WhatsApp */
-        const chosenV = (waActiveMsg.varianti_ia || []).find(v => v.indice === indice);
-        const testo = chosenV?.testo || '';
-        if (!testo) throw new Error('Testo variante vuoto, impossibile inviare.');
-
-        const sent = await waShadowCall('send', {
-          message_id: waActiveMsg.id,
-          testo,
-          numero:     waTestOverrideNumero(waActiveMsg.sender_number || ''),
-          contact_id: waActiveMsg.contact_id   || undefined,
-        });
-        const sendData = sent.data;
-        if (!sent.ok || !sendData.success) throw new Error(sendData.errore || `HTTP ${sent.status}`);
-
-        /* Step 3 — aggiorna stato locale */
-        waActiveMsg.variante_scelta        = indice;
-        waActiveMsg.stato_revisione        = 'approvato';
-        waActiveMsg.status                 = 'Risposto';
-        waActiveMsg.risposta_suggerita_ia  = testo;
-        if (chosenV) waActiveMsg.risposta_suggerita_ia = chosenV.testo;
-        const i = waMsgs.findIndex(m => m.id === waActiveMsg.id);
-        if (i !== -1) {
-          waMsgs[i].variante_scelta       = indice;
-          waMsgs[i].stato_revisione       = 'approvato';
-          waMsgs[i].status                = 'Risposto';
-          if (chosenV) waMsgs[i].risposta_suggerita_ia = chosenV.testo;
-        }
-        waRenderDetail(waActiveMsg);
-        waApplyFilters();
-        waUpdateStats();
-        const etichetta = sendData.inviato_meta ? '📤 Inviato via WhatsApp' : '✅ Risposta registrata';
-        waToast(`${etichetta} · variante ${indice} selezionata`, 'ok');
-      } catch (err) {
-        waToast('Errore invio: ' + (err.message || err), 'err');
-        /* Ripristina pulsanti in caso di errore */
-        scegliButtons.forEach((b, idx) => { b.disabled = false; b.textContent = '✓ Scegli'; });
-      }
-    };
-
-    /* ── Reply modal ── */
-    window.waOpenReply = function() {
-      if (!waActiveMsg) return;
-      document.getElementById('waModalRecipient').textContent = (waActiveMsg.sender_name||'Sconosciuto') + (waActiveMsg.sender_number ? ' · '+waActiveMsg.sender_number : '');
-      document.getElementById('waModalOriginal').textContent  = waActiveMsg.message_text || '(messaggio vuoto)';
-      if (!document.getElementById('waReplyText').value) {
-        const prefill = waGetShadowText();
-        if (prefill) document.getElementById('waReplyText').value = prefill;
-      }
-      document.getElementById('waReplyModal').classList.add('active');
-      document.getElementById('waReplyText').focus();
-    };
-    window.waCloseReply = function() {
-      document.getElementById('waReplyModal').classList.remove('active');
-      document.getElementById('waReplyText').value = '';
-    };
-    window.waSendReply = async function() {
-      const txt = document.getElementById('waReplyText').value.trim();
-      if (!txt) { waToast('Scrivi un testo prima di inviare', 'err'); return; }
-      if (!waActiveMsg) return;
-      const btn = document.getElementById('waBtnSend');
-      btn.disabled = true;
-
-      /* Calcola delay con la stessa formula del backend:
-         base 2s + 0.04s per carattere, cap 10s */
-      const delayMs  = Math.min(2000 + txt.length * 40, 10000);
-      const delaySec = Math.round(delayMs / 1000);
-
-      /* Countdown visivo nel bottone */
-      let remaining = delaySec;
-      btn.textContent = `⌨️ Digitazione… (${remaining}s)`;
-      const countdown = setInterval(() => {
-        remaining = Math.max(0, remaining - 1);
-        btn.textContent = remaining > 0 ? `⌨️ Digitazione… (${remaining}s)` : '⏳ Invio…';
-      }, 1000);
-
-      try {
-        const { ok, data, status } = await waShadowCall('send', {
-          message_id: waActiveMsg.id,
-          testo:      txt,
-          numero:     waTestOverrideNumero(waActiveMsg.sender_number || ''),
-          contact_id: waActiveMsg.contact_id   || undefined,
-        });
-        if (!ok || !data.success) throw new Error(data.errore || `HTTP ${status}`);
-
-        /* Aggiorna stato locale (Supabase lo aggiornerà anche via Realtime) */
-        waActiveMsg.status = 'Risposto';
-        const i = waMsgs.findIndex(m => m.id === waActiveMsg.id);
-        if (i !== -1) waMsgs[i].status = 'Risposto';
-        waCloseReply(); waRenderDetail(waActiveMsg); waApplyFilters(); waUpdateStats();
-        const etichetta = data.inviato_meta ? '📤 Inviato via WhatsApp' : '✅ Risposta registrata';
-        waToast(`${etichetta} · ${data.delay_applicato_sec}s di digitazione simulata`, 'ok');
-      } catch (err) {
-        waToast('Errore invio: ' + (err.message || err), 'err');
-      } finally {
-        clearInterval(countdown);
-        btn.disabled = false;
-        btn.textContent = '📤 Invia risposta';
-      }
-    };
-
-    /* ── Aggiornamento periodico ──
-       La realtime postgres_changes è MUTA per RLS deny-all sul progetto assistente
-       (stesso motivo della lista vuota): al suo posto un polling via proxy ogni 60s.
-       Il poll quiet rinfresca anche i contatori "In attesa da X min" e, senza login,
-       non fa rumore: al primo staff loggato la lista si popola da sola. */
-    function waStartPolling() {
-      if (waPollTimer) return;
-      waPollTimer = setInterval(() => { waLoadMessages({ quiet: true }); }, 60000);
-    }
-
-    /* ── Consumi WhatsApp — card aggregata ──
-       Legge la RPC wa_usage_stats (SECURITY DEFINER sul progetto assistente): ritorna
-       SOLO conteggi per giorno, mai contenuti → chiamabile con l'anon key pubblica e
-       visibile anche in TEST. Costo: servizio 24h = 0 €; template non ancora tracciati. */
-    let waUsageSb = null;
-    let waUsageTimer = null;
-    async function waUsageLoad() {
-      const body = document.getElementById('waUsageBody');
-      if (!body) return;
-      try {
-        waUsageSb = waUsageSb || supabase.createClient(WA_URL, WA_KEY);
-        const { data, error } = await waUsageSb.rpc('wa_usage_stats', { days: 30 });
-        if (error) throw error;
-        waUsageRender(Array.isArray(data) ? data : []);
-        const upd = document.getElementById('waUsageUpdatedAt');
-        if (upd) upd.textContent = 'aggiornato ' + new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-      } catch (err) {
-        console.error('[WA Consumi] load error:', err);
-        body.innerHTML = '<div style="font-size:13px;color:#c62828;padding:8px 0;">Errore nel caricamento dei consumi. Riprova con ↻ Aggiorna.</div>';
-      }
-    }
-    function waUsageFmtDay(iso) {
-      try {
-        const d = new Date(`${iso}T12:00:00`);
-        const wd = new Intl.DateTimeFormat('it-IT', { weekday: 'short' }).format(d);
-        const [, m, day] = String(iso).split('-');
-        return `${wd.charAt(0).toUpperCase()}${wd.slice(1)} ${day}/${m}`;
-      } catch { return iso; }
-    }
-    function waUsageRender(rows) {
-      const body = document.getElementById('waUsageBody');
-      if (!body) return;
-      if (!rows.length) {
-        body.innerHTML = '<div style="font-size:13px;color:#98a2b3;padding:8px 0;">Nessun traffico WhatsApp negli ultimi 30 giorni.</div>';
-        return;
-      }
-      const th = 'padding:6px 10px;font-size:11px;font-weight:900;color:#9e9e9e;text-transform:uppercase;letter-spacing:.4px;text-align:right;border-bottom:1px solid #eef2f7;';
-      const td = 'padding:6px 10px;font-size:13px;color:#344054;text-align:right;border-bottom:1px solid #f4f7fb;';
-      const tot = rows.reduce((a, r) => ({
-        inbound:  a.inbound  + Number(r.inbound || 0),
-        outbound: a.outbound + Number(r.outbound || 0),
-        err:      a.err      + Number(r.outbound_err || 0),
-        replied:  a.replied  + Number(r.replied || 0),
-      }), { inbound: 0, outbound: 0, err: 0, replied: 0 });
-      const rowHtml = rows.map(r => `<tr>
-        <td style="${td}text-align:left;font-weight:700;">${waUsageFmtDay(r.giorno)}</td>
-        <td style="${td}">${r.inbound}</td>
-        <td style="${td}">${r.outbound}</td>
-        <td style="${td}${Number(r.outbound_err) ? 'color:#c62828;font-weight:800;' : ''}">${r.outbound_err}</td>
-        <td style="${td}">${r.replied}</td>
-        <td style="${td}">0</td>
-        <td style="${td}">0,00&nbsp;€</td>
-      </tr>`).join('');
-      body.innerHTML = `<table style="width:100%;border-collapse:collapse;min-width:560px;">
-        <thead><tr>
-          <th style="${th}text-align:left;">Giorno</th>
-          <th style="${th}">Ricevuti</th>
-          <th style="${th}">Inviati</th>
-          <th style="${th}">Errori invio</th>
-          <th style="${th}">Con risposta</th>
-          <th style="${th}">Template</th>
-          <th style="${th}">Costo stimato</th>
-        </tr></thead>
-        <tbody>${rowHtml}
-          <tr>
-            <td style="${td}text-align:left;font-weight:900;border-bottom:none;">Totale</td>
-            <td style="${td}font-weight:900;border-bottom:none;">${tot.inbound}</td>
-            <td style="${td}font-weight:900;border-bottom:none;">${tot.outbound}</td>
-            <td style="${td}font-weight:900;border-bottom:none;${tot.err ? 'color:#c62828;' : ''}">${tot.err}</td>
-            <td style="${td}font-weight:900;border-bottom:none;">${tot.replied}</td>
-            <td style="${td}font-weight:900;border-bottom:none;">0</td>
-            <td style="${td}font-weight:900;border-bottom:none;">0,00&nbsp;€</td>
-          </tr>
-        </tbody></table>`;
-    }
-    window.waUsageLoad = waUsageLoad;
-
-    /* ── Init ── */
-    function waInit() {
-      if (waInited) return;
-      waInited = true;
-      /* ⛔ DISARMATO il 14/08/2026 — voce 38. Il canale WhatsApp non è soltanto «dismesso»
-         (decisione del 25/07, PR #590): è SMONTATO, e il gestionale non se n'era accorto.
-         Misurato prima di spegnere, non ricordato:
-           · wa-shadow-proxy NON è deployata — né su qqbf… (PROD) né su cudi… (TEST);
-           · il progetto assistente ayly… ha ZERO edge function, quindi niente whatsapp-send;
-           · le tabelle whatsapp_inbound_messages / whatsapp_outbound_messages non esistono
-             più là dentro: wa_usage_stats c'è ancora ma muore con 42P01.
-         Il riquadro però partiva a OGNI caricamento di pagina — questo waInit è agganciato a
-         DOMContentLoaded senza condizioni — e bussava lo stesso, da dentro una scheda chiusa:
-         623 chiamate 404 al giorno su PROD verso wa-shadow-proxy (timer 60s) e 295 su ayly…
-         verso wa_usage_stats (timer 300s), ~1540 al giorno contando i due ambienti. E chi
-         apriva «Messaggi WhatsApp» non trovava un riquadro vuoto ma «❌ HTTP 404» in rosso:
-         il ramo catch di waLoadMessages scrive l'errore in pagina.
-         ⚖️ Rideployare il proxy non era un'opzione: parlerebbe a un backend che non c'è più.
-         Qui si spegne il CHIAMANTE e nient'altro. L'asportazione del riquadro (~150 righe di
-         HTML) e del blocco JS wa* qui sotto (~700) è una potatura a sé, da provare per bene:
-         sta in coda accanto alle voci 28 e 29, che hanno la stessa forma. Da qui in giù il
-         codice resta ma non è più raggiungibile — è dormiente, come quello dei pannelli email.
-         ✅ Resta viva la libreria testi e template, che vive nella stessa scheda e non tocca
-         niente di tutto questo: è l'unica cosa che in quella pagina funzionava davvero.
-         ↩️ Per riaccendere: togliere questo return — ma prima rimettere in piedi il backend
-         (funzione, edge dell'assistente e tabelle), o si torna esattamente qui. */
-      return;
-
-      const dashboard = document.getElementById('waInboundDashboard');
-      if (dashboard) dashboard.style.display = 'block';
-      /* Consumi (aggregati): attivi in OGNI env, anche dove la lista messaggi resta spenta.
-         MAI sotto il banco di prova (fetch mockata __pmoFetchMock): la RPC verso il
-         progetto assistente verrebbe contata come leak. */
-      let underHarness = false;
-      try { underHarness = !!(window.fetch && window.fetch.__pmoFetchMock); } catch {}
-      if (!underHarness) {
-        try { waUsageLoad(); } catch {}
-        if (!waUsageTimer) waUsageTimer = setInterval(waUsageLoad, 300000);
-      }
-      /* Dal v6.104 la dashboard è ATTIVA anche in TEST: lista e triage passano da
-         wa-shadow-proxy (JWT staff → service_role lato server), quindi i contenuti
-         non sono più esposti all'anon. Il progetto assistente resta UNICO: da TEST
-         si vedono i messaggi REALI dei clienti (banner sotto), ma l'INVIO resta
-         reindirizzato a WA_TEST_OVERRIDE_NUMBER — ai clienti veri si risponde solo
-         da PROD. Sotto il banco di prova (fetch mockata) niente lista né polling:
-         ogni chiamata al proxy sarebbe un leak. */
-      const testBanner = document.getElementById('waTestModeBanner');
-      if (isTestEnv()) {
-        if (testBanner) {
-          testBanner.style.display = 'block';
-          testBanner.textContent = '⚠️ MODALITÀ TEST — La lista mostra i messaggi WhatsApp REALI dei clienti (progetto assistente unico). Ogni invio da qui è reindirizzato a +39 335 7615 855 (Maurizio): ai clienti veri si risponde solo da PROD.';
-        }
-      } else if (testBanner) {
-        testBanner.style.display = 'none';
-      }
-      if (underHarness) { waSetRt('', 'Banco di prova'); return; }
-      try {
-        waLoadMessages({ quiet: true }); /* senza login: invito, non errore */
-        waStartPolling();
-      } catch (err) {
-        console.error('[WA Dashboard] init error:', err);
-        waSetRt('error', 'Errore init');
-      }
-    }
-
-    /* Init quando la pagina è pronta */
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', waInit);
-    else waInit();
-
-    /* TEST: ?testValidare=1 → inietta risposta fake per il socio di test Maurizio Aprea (per email) in Da validare */
-    if (PMO_IS_TEST_ENV && new URLSearchParams(window.location.search).get('testValidare') === '1') {
-      setTimeout(() => {
-        assessmentInjectTestValidareEntry();
-        setAssessmentProcessFilter('validare');
-      }, 1500);
-    }
-
-
-  })();
-  </script>
-  <!-- ════ end WA Inbound Dashboard ════ -->
 
 
   <!-- ════ Parser Config Admin Panel (v1.1) ════ -->
