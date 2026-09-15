@@ -8581,7 +8581,7 @@ body.assessment-public-mode .assessment-public-only-card {
   <script>
     'use strict';
 
-    const APP_VERSION = '6.466';
+    const APP_VERSION = '6.467';
     // Fase 1 feature flag — shell UI pagamenti (riga incasso scheda partita +
     // borsellino scheda socio). Sola lettura finché la Fase 2 non collega il worker.
     const PMO_PAYMENTS_UI_ENABLED = true;
@@ -43550,7 +43550,7 @@ Per confermare scrivi ELIMINA.`);
         }) || null;
       }
     } catch (e) {}
-    const idInterno = String((p && p.idCliente) || opts.idCliente || '').trim();
+    const idInterno = _pmoIdInternoDiRiga(p) || String(opts.idCliente || '').trim();
     // 🚨 L'Ospite ha id interno `1` ed è il jolly del circolo, non una persona: nessun borsellino
     //    da rileggere, e chiederlo vorrebbe dire leggere il saldo di un record condiviso.
     if (!/^\d{1,8}$/.test(idInterno) || idInterno.replace(/^0+/, '') === '1') return;
@@ -46013,6 +46013,32 @@ Per confermare scrivi ELIMINA.`);
     return { firma: firma, valori: valori, rimetti: rimetti, persi: false };
   }
 
+  /* 🆔⭐⭐ VOCE 226 — L'ID INTERNO DI UNA RIGA DI ROSTER, IN UN POSTO SOLO.
+   *
+   * 🔎 **Nasce da un suo gesto vero, non da una rilettura**: il 15/09 alle 06:40 ha incassato
+   *    10,00 € in Cash su Marco Aprea (16/09 · C3 · 18:00) e la riga di cassa è nata
+   *    **senza proprietario** — `member_local_id: null`, `pmo_player_id: ""`, `id_cliente: ""`.
+   *    ⇒ Denaro nel libro di cassa che non è di nessuno, e nella scheda del socio non comparirà
+   *    mai. È la **215** che si ripresenta da una porta che nessuno aveva guardato.
+   *
+   * ⚖️ **La causa è la 223 curata a metà, ed è colpa di come l'ho curata**: ieri ho insegnato il
+   *    doppio nome del campo (`idCliente` **e** `codice`) alla funzione che CERCA il socio — ma
+   *    **quattro** altri punti leggono `p.idCliente` **da sé**, senza passare di lì: lo storno,
+   *    l'incasso, la lettura dello stato pagamento e la rilettura del borsellino. Curare quella
+   *    funzione non li ha toccati.
+   * 📌 *Curare l'istanza invece della classe non è una cura: lascia in piedi tutte le copie che
+   *    non si sono viste, e la prossima si scopre con un gesto vero invece che con un banco.*
+   *
+   * ⇒ Da qui in poi il sapere sta **qui**, e chi ha bisogno dell'id interno di una riga di roster
+   *   lo chiede a questa funzione. Aggiungere un terzo nome un domani è una riga sola.
+   *
+   * ⛔ **`codiceCliente` resta FUORI**: quella è la **tessera**, un'altra numerazione — il codice
+   *    cliente di uno può essere l'id interno di un altro (voce 138). PURA. */
+  function _pmoIdInternoDiRiga(p) {
+    const v = String((p && (p.idCliente || p.codice)) || '').trim();
+    return /^\d{1,12}$/.test(v) ? v : '';
+  }
+
   function _staffCalSocioDelGiocatore(p) {
     try {
       if (!p) return null;
@@ -46064,7 +46090,7 @@ Per confermare scrivi ELIMINA.`);
        * 🔒 Fallisce CHIUSA: la guardia `^\d{1,12}$` scarta tutto ciò che non è un numero (un
        *    `codice` di maestro come «LoZio» non entra), e le due serrature sull'Ospite restano
        *    dove sono, a valle, perché guardano `idInterno` — cioè adesso tutt'e due i nomi. */
-      const idInterno = String((p && (p.idCliente || p.codice)) || '').trim();
+      const idInterno = _pmoIdInternoDiRiga(p);
       if (!/^\d{1,12}$/.test(idInterno)) return null;
       // ⛔🎭 L'«OSPITE» NON È UNA PERSONA — DUE SERRATURE, e la prima non bastava.
       // 📏 MISURATO su PROD il 05/09/2026, con la console remota, sulla partita del 07/09 alle
@@ -47600,7 +47626,7 @@ Per confermare scrivi ELIMINA.`);
                 if (sBtn.disabled) return;
                 _pmoVoidPayment({
                   idReserva: (st.idReserva != null ? String(st.idReserva) : ''),
-                  idCliente: (p.idCliente != null ? String(p.idCliente) : ''),
+                  idCliente: _pmoIdInternoDiRiga(p),
                   idx: (p.idx != null ? String(p.idx) : ''),
                   playerName: p.nome, importoCents: importoCents,
                   campo: st.campo, data: st.isoDate, ora: st.ora,
@@ -47699,7 +47725,7 @@ Per confermare scrivi ELIMINA.`);
               baseNatoQui: !!_cas.natoQui,
               // VOCE 188/B — e la stessa cosa per il «da» deciso in segreteria.
               baseDecisoQui: !!_cas.decisoQui,
-              idCliente: (p.idCliente != null ? String(p.idCliente) : ''),
+              idCliente: _pmoIdInternoDiRiga(p),
               idx: (p.idx != null ? String(p.idx) : ''),
               nome: p.nome,
             });
@@ -47812,7 +47838,7 @@ Per confermare scrivi ELIMINA.`);
               const _collect = function (method) {
                 return _pmoCollectPayment({
                   idReserva: (st.idReserva != null ? String(st.idReserva) : ''),
-                  idCliente: (p.idCliente != null ? String(p.idCliente) : ''),
+                  idCliente: _pmoIdInternoDiRiga(p),
                   // 🆔 VOCE 215 — chi è, con l'id nostro: è il campo che rende la riga di cassa
                   //    attribuibile su una prenotazione nata da noi, dove `idCliente` non c'è.
                   pmoId: (p.pmoId != null ? String(p.pmoId) : ''),
